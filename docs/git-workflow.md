@@ -24,9 +24,61 @@ git config --local push.default simple
 2. 小改动可直接留在 main；较大功能建议 `git switch -c codex/<topic>`，方便整体审查或暂停。
 3. 完成一件可说明的改动，执行相关检查，随时用测试入口试用。
 4. `git diff` / VS Code Source Control 审查，按文件暂存。避免无检查地 `git add .`。
-5. 任务完成后自动创建粒度合适的 commit，对于不同模块的改动应该分开提交。标题及描述都必须使用简体中文，禁止自动 push 到远程仓库（push 这一步应该由用户本人完成）。
+5. 任务完成后自动创建细粒度的 commit（规范见下），对于不同模块的改动（例如同时改变了业务代码和文档）应该拆分后分开提交。
+6. 禁止自动 push 到远程仓库（push 这一步应该由用户本人完成）。
 
-提交建议：`build: 初步完成安卓构建设置`、`feat(editor): ...`、`fix(storage): ...`、`docs: ...`。必须使用简体中文，重点是解释行为与原因。
+## Commit Message 规范（Agent 必须遵守）
+
+本仓库使用 Conventional Commits。所有 commit message 必须符合：
+
+<type>(<scope>): <subject>
+
+### 强制规则
+
+1. type 只能从以下列表选择：
+   - feat: 新增用户可感知的功能
+   - fix: 修复缺陷
+   - docs: 仅文档/翻译/注释变更
+   - style: 仅代码格式，不改变逻辑
+   - refactor: 重构，不修 bug 不加功能
+   - perf: 性能优化
+   - test: 测试相关
+   - build: 构建系统、打包器、编译器、Dockerfile
+   - ci: CI/CD 配置或脚本
+   - chore: 依赖升级、工具配置等杂项
+   - revert: 回滚提交
+
+2. scope 可选，仅在需要时添加，使用小写英文或短横线，如 auth、i18n、webpack、deps。
+3. subject 使用祈使句、现在时、必须使用简体中文，不超过 72 字符，不加句号。
+4. 一次提交只做一件事。构建配置与业务代码必须分开提交。
+5. 破坏性变更必须在 type 后加 `!`，并在 body/footer 写 `BREAKING CHANGE:`。
+6. 禁止使用未列出的 type，如 update、change、misc。
+7. 禁止空泛描述，如“更新配置”“修改代码”。
+8. 除了上述 <type>(<scope>): <subject> 的 commit message 规范外，还应附带较为详细的 Description。使用简体中文，用有序列表描述此次 commit 涉及的改动。
+
+### 类型选择决策
+
+- 改构建系统本身 → build
+- 改 CI/CD 流水线 → ci
+- 只升级依赖/锁文件 → chore(deps)
+- 只改翻译/文档 → docs(i18n) 或 docs
+- 修复错误翻译导致显示错误 → fix(i18n)
+- 不确定且不影响业务 → chore，但必须在 body 说明原因
+
+### 正例
+
+build(vite): 调整生产环境分包策略
+ci(github-actions): 增加 Node 20 构建矩阵
+docs(i18n): 修正登录页中文翻译
+fix(i18n): 修复删除按钮误译为编辑
+chore(deps): 升级 esbuild 至 0.21
+
+### 反例
+
+update config
+fix: 改了点东西
+build: 更新配置
+feat: 修改翻译文件
 
 ## 保护与恢复
 
