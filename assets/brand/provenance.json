@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-24",
+  "status": "design draft; not integrated into Android",
+  "sources": [
+    {
+      "name": "fredoka",
+      "revision": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/fredoka/Fredoka%5Bwdth%2Cwght%5D.ttf",
+      "source_sha256": "2ba02e68b152868aef9ba28e24b3648c7d457fe6f25c761f2c2c53fb61a73fc8",
+      "source_bytes": 159184,
+      "license_source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/fredoka/OFL.txt",
+      "license_sha256": "5c9e7eee5c6b25f4b05b8d53b2e470ea4962f9ced742d044a98f7d95d1375bab"
+    },
+    {
+      "name": "notosanssc",
+      "revision": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
+      "source_sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+      "source_bytes": 17772300,
+      "license_source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/notosanssc/OFL.txt",
+      "license_sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9"
+    },
+    {
+      "name": "lucide",
+      "revision": "7faf87628a1ad6175975bc595344337ce14a7db4",
+      "license_source": "https://raw.githubusercontent.com/lucide-icons/lucide/7faf87628a1ad6175975bc595344337ce14a7db4/LICENSE",
+      "license_sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
+      "usage": "host-provided preview icons only; Android icon files not vendored"
+    }
+  ],
+  "wordmark": {
+    "text": "Makudon",
+    "axes": {
+      "wght": 600,
+      "wdth": 100
+    },
+    "tracking_font_units": 4,
+    "source_font_embedded_in_app": false,
+    "sha256": "61d88b4597df1d0154fdfc07d0ec7d582a689e4eac887dad11d57cb7a4ec04c1",
+    "tools": {
+      "fonttools": "4.67.0",
+      "uharfbuzz": "0.57.0"
+    }
+  },
+  "lockup": {
+    "original_icon": "../../icon.svg",
+    "original_icon_sha256": "229034b84ffc15a502b3fe0c5fb8ca8f229ccc871034de949ecf88e3e8af6c56",
+    "changes": "Original icon path geometry retained; transparent background and currentColor for lockup only. Root icon.svg unchanged.",
+    "sha256": "e88bd07dd2d0b4636fd797118ce9f5afa128752e7326fe0dda46b739d5ed992f"
+  }
+}
