@@ -24,7 +24,7 @@ git config --local push.default simple
 2. 小改动可直接留在 main；较大功能建议 `git switch -c codex/<topic>`，方便整体审查或暂停。
 3. 完成一件可说明的改动，执行相关检查，随时用测试入口试用。
 4. `git diff` / VS Code Source Control 审查，按文件暂存。避免无检查地 `git add .`。
-5. 任务完成后自动创建细粒度的 commit（规范见下），对于不同模块的改动（例如同时改变了业务代码和文档）应该拆分后分开提交。
+5. 每轮会话完成、且对项目有实际修改后，自动对本次修改的内容创建细粒度的 commit（规范见下），对于不同模块的改动（例如同时改变了业务代码和文档）应该拆分后分开提交。
 6. 禁止自动 push 到远程仓库（push 这一步应该由用户本人完成）。
 
 ## Commit Message 规范（Agent 必须遵守）
