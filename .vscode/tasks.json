@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Makudon: Run on emulator",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Run"],
+      "group": {"kind": "build", "isDefault": true},
+      "problemMatcher": [], "presentation": {"reveal": "always", "panel": "dedicated"},
+      "runOptions": {"instanceLimit": 1}
+    },
+    {
+      "label": "Makudon: Check (build, unit tests, lint)",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Check"],
+      "group": "test", "problemMatcher": []
+    },
+    {
+      "label": "Makudon: Build APK",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Build"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Makudon: Start emulator",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Emulator"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Makudon: Run on selected device",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Run", "-Serial", "${input:deviceSerial}"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Makudon: Devices",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Devices"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Makudon: Logcat",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Logcat"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Makudon: Screenshot",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Screenshot"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Makudon: Setup",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Setup"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Makudon: Doctor",
+      "type": "process", "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/android.ps1", "-Action", "Doctor"],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [{"id": "deviceSerial", "type": "promptString", "description": "Exact serial from Makudon: Devices (required for a physical device)"}]
+}
