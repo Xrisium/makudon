@@ -16,13 +16,14 @@
 
 ## 当前素材记录
 
-更新：2026-10-24。固定下载 URL、commit 与哈希见 [provenance.json](../assets/brand/provenance.json)。
+更新：2026-10-25。品牌 / 字体来源见 [品牌 provenance.json](../assets/brand/provenance.json)，文件图标见 [图标 provenance.json](../assets/icons/provenance.json)，均记录固定下载 URL、commit 与哈希。
 
 | 素材 | 来源 / 权利人 | 许可与本轮用途 | 分发状态 |
 | --- | --- | --- | --- |
 | Fredoka | [Google Fonts](https://fonts.google.com/specimen/Fredoka)，The Fredoka Project Authors | [OFL 1.1 原文](licenses/fredoka-OFL.txt)；600 字重生成 Makudon 路径字标 | 提交 SVG 图形；字体原文件仅在忽略的 `.local/` 作设计输入，未嵌入应用 |
 | Noto Sans SC | [Google Fonts 官方仓库](https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/notosanssc)，Adobe 版权声明 | [OFL 1.1 原文](licenses/notosanssc-OFL.txt)；设计例图使用修改的文字子集、400–500 范围 | 仅讨论预览；未加入 `app/src/main/res/font` 或 APK；正式版本与体积待定 |
 | Lucide | [官方许可证](https://lucide.dev/license)，Lucide Icons and Contributors；部分图标源自 Cole Bemis / Feather | [完整 ISC 与 Feather MIT 声明](licenses/lucide-LICENSE.txt)；预览由宿主提供图标 | 尚未向仓库导入 Android 图标文件或库；记录的上游许可快照不代表宿主运行版本 |
+| Fluent UI System Icons / Markdown 20 Filled | [微软官方仓库](https://github.com/microsoft/fluentui-system-icons/tree/82ecf7cbdb43684403c7125efa160be04a33dca5)，Microsoft Corporation | [完整 MIT 声明](licenses/fluentui-system-icons-LICENSE.txt)；目录、搜索结果与新建页的 Markdown 文件类型标识 | 提交单个原始 SVG，预览以主题色 mask 显示；无 Iconify 运行库、Android 资源或 APK 集成 |
 | 原始 Makudon 图标 | 用户提供的根 [icon.svg](../icon.svg) | 本项目资产，保持根文件原样 | 已有 Android 图标使用；本轮组合标志复用其几何 |
 
 Fredoka 转路径生成的字标是设计作品，与分发字体软件不同；OFL 官方 [FAQ 1.1–1.1.2](https://openfontlicense.org/ofl-faq/) 说明了 Logo / 图形的使用与许可区别。本项目仍主动保留来源及许可副本以便追溯；不将“转路径”作为处理其他素材许可的通用豁免。

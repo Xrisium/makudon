@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-25",
+  "name": "Fluent UI System Icons / Markdown 20 Filled",
+  "author": "Microsoft Corporation",
+  "copyright": "Copyright (c) 2020 Microsoft Corporation",
+  "license": "MIT",
+  "revision": "82ecf7cbdb43684403c7125efa160be04a33dca5",
+  "official_repository": "https://github.com/microsoft/fluentui-system-icons",
+  "requested_reference": "https://icon-sets.iconify.design/fluent/markdown-20-filled/",
+  "source": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/82ecf7cbdb43684403c7125efa160be04a33dca5/assets/Markdown/SVG/ic_fluent_markdown_20_filled.svg",
+  "source_sha256": "41d753a9d0b3b383876f77ec344477fd68f8044ed072b116922c6a8fd54e176b",
+  "source_bytes": 1024,
+  "license_source": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/82ecf7cbdb43684403c7125efa160be04a33dca5/LICENSE",
+  "license_sha256": "69bc45dc42b9acb96a69823adbc6ae538374e3c0bde169b855b32c48eaaef52f",
+  "local_file": "fluent/markdown-20-filled.svg",
+  "modifications": "None to the source SVG; preview uses it as a theme-colored CSS mask at 20px.",
+  "usage": "Markdown document type indicator and Markdown creation choice in discussion preview; not integrated into Android."
+}
