@@ -10,4 +10,4 @@
 | [0010 离散页签与稳定控件颜色](0010-discrete-tab-transitions.md) | 本地 Check、74 项模拟器检查通过；已向真机覆盖安装一次，待本人验收 |
 | [0011 配色稳定性与页签强调背景横移](0011-theme-and-tab-highlight.md) | 本地 Check、62 项模拟器检查通过；已向真机覆盖安装一次，待本人验收 |
 | [0012 目录与编辑器交互修正](0012-directory-and-editor-fixes.md) | 需求 1–4 本地 Check、25 项 JVM 测试与测试 APK 编译通过；设备验收待执行 |
-| [0013 目录复选机制设计与预览](0013-directory-multiselect-preview.md) | 两种排布交互预览与浏览器检查完成，等待用户决定，未实施原生功能 |
+| [0013 目录复选机制设计与预览](0013-directory-multiselect-preview.md) | 用户选择行尾复选框；已恢复原工具栏、入口改为长按菜单，新预览和浏览器检查完成，未实施原生功能 |
