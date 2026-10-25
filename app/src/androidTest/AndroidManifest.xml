@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Synthetic fixtures exist only in the separate test APK; no provider or permission is added to Makudon. -->
+        <provider android:name="io.github.xrisium.makudon.FixtureProvider"
+            android:authorities="io.github.xrisium.makudon.debug.test.fixtures"
+            android:exported="true" android:grantUriPermissions="true" />
+    </application>
+</manifest>
