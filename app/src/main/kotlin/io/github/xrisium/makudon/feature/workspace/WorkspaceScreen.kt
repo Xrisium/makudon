@@ -119,7 +119,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                         else -> Unit
                     }
                 }
-                if (ui.busy && workspace != null) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
+                if (ui.busy && !ui.savingPreferences && workspace != null) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
             }
         }
     }

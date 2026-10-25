@@ -57,13 +57,16 @@ fun themeLabel(theme: ColorTheme) = when (theme) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsPage(model: WorkspaceViewModel) {
-    val workspace = model.ui.workspace ?: return
+    val ui = model.ui
+    val workspace = ui.workspace ?: return
+    // The model still gates actions while persisting preferences; keep text colors stable.
+    val enabled = !ui.busy || ui.savingPreferences
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Text(stringResource(R.string.settings), Modifier.padding(start = 4.dp, bottom = 6.dp), style = MaterialTheme.typography.headlineMedium) }
         item { Text(stringResource(R.string.theme), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                ColorTheme.entries.forEach { theme -> FilterChip(selected = workspace.theme == theme, enabled = !model.ui.busy, onClick = { model.preferences(theme = theme) }, label = { Text(stringResource(themeLabel(theme))) }, shape = RoundedCornerShape(14.dp)) }
+                ColorTheme.entries.forEach { theme -> FilterChip(selected = workspace.theme == theme, enabled = enabled, onClick = { model.preferences(theme = theme) }, label = { Text(stringResource(themeLabel(theme))) }, shape = RoundedCornerShape(14.dp)) }
             }
         }
         item { Text(stringResource(R.string.font), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -89,7 +92,7 @@ fun SettingsPage(model: WorkspaceViewModel) {
                 }
             }
         }
-        item { TextButton(onClick = model::licenses, enabled = !model.ui.busy) { Text(stringResource(R.string.licenses)); Spacer(Modifier.width(6.dp)); Glyph(R.drawable.ic_chevron_right) } }
+        item { TextButton(onClick = model::licenses, enabled = enabled) { Text(stringResource(R.string.licenses)); Spacer(Modifier.width(6.dp)); Glyph(R.drawable.ic_chevron_right) } }
         item { Text(stringResource(R.string.local_notice), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Box(Modifier.fillMaxWidth().padding(vertical = 18.dp), contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.makudon_lockup), stringResource(R.string.brand_name), Modifier.width(126.dp).height(28.dp)) } }
     }

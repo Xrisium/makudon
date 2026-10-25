@@ -25,6 +25,7 @@ data class WorkspaceUi(
     val workspace: Workspace? = null,
     val page: Page = Page.Recent,
     val busy: Boolean = true,
+    val savingPreferences: Boolean = false,
     val error: Failure? = null,
     val message: Int? = null,
     val selected: String = Workspace.ROOT,
@@ -77,14 +78,14 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     init { reload() }
     private suspend fun <T> disk(block: () -> T): T = withContext(Dispatchers.IO + NonCancellable) { ioLock.withLock { block() } }
     private fun failure(e: Exception) = (e as? WorkspaceException)?.reason ?: Failure.Storage
-    private fun launchWork(block: suspend () -> Unit) {
+    private fun launchWork(savingPreferences: Boolean = false, block: suspend () -> Unit) {
         if (ui.busy || ui.transitioning || ui.tabTransitioning) return
-        ui = ui.copy(busy = true, error = null, message = null)
+        ui = ui.copy(busy = true, savingPreferences = savingPreferences, error = null, message = null)
         viewModelScope.launch {
             try { block() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { ui = ui.copy(error = failure(e)) }
-            finally { ui = ui.copy(busy = false) }
+            finally { ui = ui.copy(busy = false, savingPreferences = false) }
         }
     }
     fun reload() {
@@ -276,11 +277,19 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     } }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null) { launchWork {
-        val w = ui.workspace ?: return@launchWork
-        disk { store.settings(theme ?: w.theme, sort ?: w.sort, descending ?: w.descending, foldersFirst ?: w.foldersFirst) }
-        ui = ui.copy(workspace = disk { store.refresh() })
-    } }
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null) {
+        val w = ui.workspace ?: return
+        val nextTheme = theme ?: w.theme
+        val nextSort = sort ?: w.sort
+        val nextDescending = descending ?: w.descending
+        val nextFoldersFirst = foldersFirst ?: w.foldersFirst
+        // A repeated selection must not write the catalog or flash disabled colors.
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst) return
+        launchWork(savingPreferences = true) {
+            disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst) }
+            ui = ui.copy(workspace = disk { store.refresh() })
+        }
+    }
     fun prepareExport(): Boolean {
         flushParagraphs()
         val text = textState?.text?.toString() ?: return false

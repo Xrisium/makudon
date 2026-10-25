@@ -3,6 +3,7 @@ package io.github.xrisium.makudon.feature.workspace
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
@@ -22,7 +23,6 @@ import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.Entry
 import kotlin.math.abs
@@ -134,22 +135,34 @@ private fun MainWorkspace(
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val indicatorPosition by transition.animateFloat(
+            transitionSpec = { tween(240, easing = FastOutSlowInEasing) }, label = "tab-indicator-position",
+        ) { MainPages.indexOf(it).toFloat() }
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp)) {
+            val tabWidth = (maxWidth - 16.dp) / MainPages.size
+            // One opaque background moves with the page transition; separate fading
+            // backgrounds would briefly lose emphasis and discolor the labels.
+            Box(Modifier.matchParentSize()) {
+                Box(Modifier.offset { IntOffset(((tabWidth + 8.dp) * indicatorPosition).roundToPx(), 0) }.width(tabWidth).fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(18.dp)))
+            }
             val labels = listOf(R.string.directory, R.string.recent, R.string.settings)
             val icons = listOf(R.drawable.ic_folder_tree, R.drawable.ic_clock_3, R.drawable.ic_settings_2)
-            MainPages.forEachIndexed { index, page ->
-                val selected = page == ui.mainTab
-                val background by animateColorAsState(
-                    if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
-                    tween(160), label = "tab-selection",
-                )
-                Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(background)
-                    .selectable(selected, enabled = !ui.busy, role = Role.Tab, onClick = {
-                        if (!moving) model.selectTab(page)
-                    }).padding(vertical = 11.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Glyph(icons[index], tint = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(stringResource(labels[index]), style = MaterialTheme.typography.labelSmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MainPages.forEachIndexed { index, page ->
+                    val selected = page == ui.mainTab
+                    val foreground by animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tween(240, easing = FastOutSlowInEasing), label = "tab-foreground",
+                    )
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
+                        .selectable(selected, enabled = !ui.busy || ui.savingPreferences, role = Role.Tab, onClick = {
+                            if (!moving) model.selectTab(page)
+                        }).padding(vertical = 11.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Glyph(icons[index], tint = foreground)
+                        Text(stringResource(labels[index]), style = MaterialTheme.typography.labelSmall, color = foreground)
+                    }
                 }
             }
         }
