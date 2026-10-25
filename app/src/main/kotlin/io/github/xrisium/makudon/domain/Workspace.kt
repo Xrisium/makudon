@@ -79,7 +79,8 @@ data class Workspace(
 
     companion object {
         const val ROOT = "root"
-        const val INBOX = "inbox"
+        // Schema 1 workspaces may still contain this folder. Preserve its ID and contents.
+        const val LEGACY_INBOX = "inbox"
     }
 }
 

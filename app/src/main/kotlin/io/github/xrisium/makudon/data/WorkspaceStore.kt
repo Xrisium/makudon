@@ -11,7 +11,7 @@ import java.util.Properties
 import java.util.UUID
 
 /** The caller serializes all access on its IO dispatcher. Paths come exclusively from validated IDs. */
-class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk = AtomicDisk(), private val initialNames: Pair<String, String> = "Library" to "Inbox") {
+class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk = AtomicDisk(), private val rootName: String = "Library") {
     private val catalog = File(directory, "catalog.properties")
     private var workspace: Workspace? = null
     private var baselineId: String? = null
@@ -19,7 +19,7 @@ class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk
     private var uncertainBody: ByteArray? = null
     private val idPattern = Regex("[a-f0-9-]{36}|root|inbox")
     private fun nodeDirectory(id: String): File {
-        if (!idPattern.matches(id) || id in setOf(Workspace.ROOT, Workspace.INBOX)) throw WorkspaceException(Failure.Corrupt)
+        if (!idPattern.matches(id) || id in setOf(Workspace.ROOT, Workspace.LEGACY_INBOX)) throw WorkspaceException(Failure.Corrupt)
         return File(directory, "documents/$id")
     }
     private fun body(entry: Entry) = File(nodeDirectory(entry.id), "body.${entry.kind.extension}")
@@ -30,7 +30,7 @@ class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk
         if (!catalog.exists()) {
             if (directory.listFiles().orEmpty().any { it.name != "catalog.properties.new" }) throw WorkspaceException(Failure.Corrupt)
             val now = System.currentTimeMillis()
-            publish(Workspace(listOf(Entry(Workspace.ROOT, initialNames.first, null, DocumentKind.Folder, now), Entry(Workspace.INBOX, initialNames.second, Workspace.ROOT, DocumentKind.Folder, now))))
+            publish(Workspace(listOf(Entry(Workspace.ROOT, rootName, null, DocumentKind.Folder, now))))
         } else {
             val encoded = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(atomic.read(catalog, 4_194_304))).toString()
             val p = Properties().apply { load(StringReader(encoded)) }
@@ -53,7 +53,7 @@ class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk
         state.entries.forEach { node ->
             if (!idPattern.matches(node.id)) throw WorkspaceException(Failure.Corrupt)
             TextRules.checkName(node.name)
-            if (!node.folder && node.id in setOf(Workspace.ROOT, Workspace.INBOX)) throw WorkspaceException(Failure.Corrupt)
+            if (!node.folder && node.id in setOf(Workspace.ROOT, Workspace.LEGACY_INBOX)) throw WorkspaceException(Failure.Corrupt)
             if (node.id != Workspace.ROOT && state.entry(node.parent.orEmpty())?.folder != true) throw WorkspaceException(Failure.Corrupt)
             var ancestor = node.parent
             val visited = mutableSetOf(node.id)
@@ -158,7 +158,7 @@ class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk
     fun move(id: String, destination: String) {
         parent(destination)
         val entry = find(id)
-        if (id in setOf(Workspace.ROOT, Workspace.INBOX)) throw WorkspaceException(Failure.Cycle)
+        if (id == Workspace.ROOT) throw WorkspaceException(Failure.Cycle)
         if (entry.folder && destination in state().descendants(id)) throw WorkspaceException(Failure.Cycle)
         if (TextRules.conflicts(state().entries, entry.name, destination, entry.kind, id)) throw WorkspaceException(Failure.Conflict)
         publish(state().copy(entries = state().entries.map { if (it.id == id) it.copy(parent = destination) else it }))

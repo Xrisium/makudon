@@ -16,10 +16,50 @@ class WorkspaceStoreTest {
     private fun expect(reason: Failure, action: () -> Unit) {
         try { action(); fail("Expected $reason") } catch (e: WorkspaceException) { assertEquals(reason, e.reason) }
     }
+    @Test fun freshWorkspaceCreatesDocumentsAtRootWithoutAddingAnInboxAfterRestart() {
+        val dir = temp.newFolder()
+        val store = store(dir)
+        val id = store.create("新稿", Workspace.ROOT, DocumentKind.Markdown, "# 根目录正文")
+        val next = store(dir)
+        assertEquals(listOf(Workspace.ROOT), next.refresh().entries.filter { it.folder }.map { it.id })
+        assertEquals(Workspace.ROOT, next.refresh().entry(id)?.parent)
+        assertEquals("# 根目录正文", next.read(id))
+    }
+    @Test fun legacyInboxKeepsItsBodyAndBehavesAsAnOrdinaryFolderWithoutRecreation() {
+        val dir = temp.newFolder()
+        val catalog = File(dir, "catalog.properties")
+        checkNotNull(javaClass.getResourceAsStream("/workspace-with-inbox.properties")).use { input ->
+            catalog.outputStream().use { input.copyTo(it) }
+        }
+        val id = "12345678-1234-1234-1234-123456789abc"
+        val body = File(dir, "documents/$id/body.md")
+        checkNotNull(body.parentFile).mkdirs()
+        body.writeText("# 旧稿\n\n中文 👩🏽‍💻  \n")
+        val originalCatalog = catalog.readBytes()
+        val originalBody = body.readBytes()
+        val store = store(dir)
+        assertArrayEquals(originalCatalog, catalog.readBytes())
+        assertEquals(Workspace.LEGACY_INBOX, store.refresh().entry(id)?.parent)
+        val destination = store.create("写作", Workspace.ROOT, DocumentKind.Folder)
+        store.rename(Workspace.LEGACY_INBOX, "旧资料")
+        store.move(Workspace.LEGACY_INBOX, destination)
+        val next = store(dir)
+        assertEquals(destination, next.refresh().entry(Workspace.LEGACY_INBOX)?.parent)
+        assertEquals("旧资料", next.refresh().entry(Workspace.LEGACY_INBOX)?.name)
+        assertEquals(Workspace.LEGACY_INBOX, next.refresh().entry(id)?.parent)
+        assertEquals("# 旧稿\n\n中文 👩🏽‍💻  \n", next.read(id))
+        assertArrayEquals(originalBody, body.readBytes())
+        expect(Failure.Cycle) { next.move(Workspace.LEGACY_INBOX, Workspace.LEGACY_INBOX) }
+        next.delete(Workspace.LEGACY_INBOX)
+        val reopened = store(dir).refresh()
+        assertNull(reopened.entry(Workspace.LEGACY_INBOX))
+        assertNull(reopened.entry(id))
+        assertNotNull(reopened.entry(destination))
+    }
     @Test fun independentDocumentsSurviveRestartAndEmptySave() {
         val dir = temp.newFolder(); val store = store(dir)
-        val a = store.create("记事", Workspace.INBOX, DocumentKind.Plain, "中文 👩🏽‍💻\n\n无末尾换行")
-        val b = store.create("记事", Workspace.INBOX, DocumentKind.Plain, "独立内容")
+        val a = store.create("记事", Workspace.ROOT, DocumentKind.Plain, "中文 👩🏽‍💻\n\n无末尾换行")
+        val b = store.create("记事", Workspace.ROOT, DocumentKind.Plain, "独立内容")
         assertNotEquals(a, b)
         assertEquals("记事（副本）", store.refresh().entry(b)?.name)
         store.save(a, "")
@@ -74,7 +114,7 @@ class WorkspaceStoreTest {
         val dir = temp.newFolder(); val store = store(dir)
         val folder = store.create("目录", Workspace.ROOT, DocumentKind.Folder)
         val doc = store.create("稿", folder, DocumentKind.Plain, "待删除")
-        val peer = store.create("稿", Workspace.INBOX, DocumentKind.Plain, "应保留")
+        val peer = store.create("稿", Workspace.ROOT, DocumentKind.Plain, "应保留")
         store.delete(folder)
         val next = store(dir)
         assertNull(next.refresh().entry(folder)); assertNull(next.refresh().entry(doc))
@@ -90,7 +130,7 @@ class WorkspaceStoreTest {
             }
         }
         val store = store(disk = disk)
-        val id = store.create("测试", Workspace.INBOX, DocumentKind.Plain, "完整基线")
+        val id = store.create("测试", Workspace.ROOT, DocumentKind.Plain, "完整基线")
         fail = true
         try { store.save(id, "失败的新稿"); fail() } catch (_: IOException) { /* injected */ }
         assertEquals("完整基线", store.read(id))
@@ -106,7 +146,7 @@ class WorkspaceStoreTest {
             }
         }
         val store = store(dir, disk)
-        val id = store.create("测试", Workspace.INBOX, DocumentKind.Plain, "旧的完整正文")
+        val id = store.create("测试", Workspace.ROOT, DocumentKind.Plain, "旧的完整正文")
         fail = true
         try { store.save(id, "新的完整正文"); fail() } catch (_: IOException) { /* injected */ }
         assertEquals("旧的完整正文", store(dir).read(id))
@@ -120,7 +160,7 @@ class WorkspaceStoreTest {
             }
         }
         val store = store(dir, disk)
-        val id = store.create("文稿", Workspace.INBOX, DocumentKind.Plain, "原稿")
+        val id = store.create("文稿", Workspace.ROOT, DocumentKind.Plain, "原稿")
         val snapshot = store.capture(id); fail = true
         try { store.paste(snapshot, Workspace.ROOT); fail() } catch (_: IOException) { /* injected */ }
         expect(Failure.Corrupt) { store.read(id) }
@@ -131,7 +171,7 @@ class WorkspaceStoreTest {
     }
     @Test fun corruptBodyCannotBeReplacedWithEmptyAndPreviousCanBeRecovered() {
         val dir = temp.newFolder(); val store = store(dir)
-        val id = store.create("文稿", Workspace.INBOX, DocumentKind.Plain, "初始正文")
+        val id = store.create("文稿", Workspace.ROOT, DocumentKind.Plain, "初始正文")
         store.save(id, "第二版本")
         File(dir, "documents/$id/body.txt").writeBytes(byteArrayOf(0xFF.toByte()))
         val reopened = store(dir)
@@ -144,7 +184,7 @@ class WorkspaceStoreTest {
     }
     @Test fun corruptCatalogStopsInitializationWithoutOverwritingEvidence() {
         val dir = temp.newFolder(); val store = store(dir)
-        store.create("文稿", Workspace.INBOX, DocumentKind.Plain, "应保留")
+        store.create("文稿", Workspace.ROOT, DocumentKind.Plain, "应保留")
         val file = File(dir, "catalog.properties")
         file.writeText("schema=99\n")
         expect(Failure.Corrupt) { store(dir) }
@@ -174,18 +214,18 @@ class WorkspaceStoreTest {
         val store = store()
         val folder = store.create("目录", Workspace.ROOT, DocumentKind.Folder)
         store.create("稿10", folder, DocumentKind.Plain); store.create("稿2", folder, DocumentKind.Plain)
-        store.create("稿1", Workspace.INBOX, DocumentKind.Plain)
+        store.create("稿1", Workspace.ROOT, DocumentKind.Plain)
         val w = store.refresh()
         assertEquals(listOf("稿2", "稿10"), w.sorted(w.entries.filter { it.parent == folder }).map { it.name })
         assertEquals(listOf("稿10", "稿2"), w.copy(descending = true).sorted(w.entries.filter { it.parent == folder }).map { it.name })
-        assertEquals(1, w.entries.count { it.parent == Workspace.INBOX })
+        assertEquals(1, w.entries.count { !it.folder && it.parent == Workspace.ROOT })
     }
     @Test fun replayedImportRequestSurvivesRestartButNewRequestCreatesIndependentCopy() {
         val dir = temp.newFolder(); val original = store(dir)
-        val id = original.create("导入", Workspace.INBOX, DocumentKind.Markdown, "正文", "request-a")
+        val id = original.create("导入", Workspace.ROOT, DocumentKind.Markdown, "正文", "request-a")
         val next = store(dir)
-        assertEquals(id, next.create("导入", Workspace.INBOX, DocumentKind.Markdown, "不能覆盖", "request-a"))
-        val second = next.create("导入", Workspace.INBOX, DocumentKind.Markdown, "另一次", "request-b")
+        assertEquals(id, next.create("导入", Workspace.ROOT, DocumentKind.Markdown, "不能覆盖", "request-a"))
+        val second = next.create("导入", Workspace.ROOT, DocumentKind.Markdown, "另一次", "request-b")
         assertNotEquals(id, second); assertEquals("正文", next.read(id)); assertEquals("另一次", next.read(second))
     }
     @Test fun mixedSiblingSortIsTransitiveWithFoldersFirstDisabled() {
@@ -203,16 +243,16 @@ class WorkspaceStoreTest {
     }
     @Test fun deletedLastExternalImportCannotBeResurrectedByActivityTaskReplay() {
         val dir = temp.newFolder(); val store = store(dir)
-        val id = store.create("导入", Workspace.INBOX, DocumentKind.Plain, "正文", "last-request")
+        val id = store.create("导入", Workspace.ROOT, DocumentKind.Plain, "正文", "last-request")
         store.delete(id)
         val next = store(dir)
-        expect(Failure.Missing) { next.create("导入", Workspace.INBOX, DocumentKind.Plain, "旧请求", "last-request") }
-        val fresh = next.create("导入", Workspace.INBOX, DocumentKind.Plain, "主动再次打开", "fresh-request")
+        expect(Failure.Missing) { next.create("导入", Workspace.ROOT, DocumentKind.Plain, "旧请求", "last-request") }
+        val fresh = next.create("导入", Workspace.ROOT, DocumentKind.Plain, "主动再次打开", "fresh-request")
         assertEquals("主动再次打开", next.read(fresh))
     }
     @Test fun failedReloadInvalidatesStaleCatalogAndCannotAuthorizeFurtherWrites() {
         val dir = temp.newFolder(); val store = store(dir)
-        val id = store.create("原稿", Workspace.INBOX, DocumentKind.Plain, "应保留")
+        val id = store.create("原稿", Workspace.ROOT, DocumentKind.Plain, "应保留")
         File(dir, "catalog.properties").writeText("schema=99\n")
         expect(Failure.Corrupt) { store.load() }
         expect(Failure.Corrupt) { store.save(id, "不能写入") }

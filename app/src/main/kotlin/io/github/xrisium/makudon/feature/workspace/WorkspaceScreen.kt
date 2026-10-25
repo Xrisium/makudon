@@ -52,6 +52,23 @@ fun Tool(icon: Int, label: String, enabled: Boolean = true, active: Boolean = fa
 }
 
 @Composable
+internal fun WorkspaceNotice(model: WorkspaceViewModel) {
+    val ui = model.ui
+    if (ui.error != null || ui.message != null) {
+        var appeared by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { appeared = true }
+        val opacity by animateFloatAsState(if (appeared) 1f else 0f, tween(180), label = "notice")
+        Surface(color = if (ui.error != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(12.dp).alpha(opacity)) {
+            Row(Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(ui.error?.let { stringResource(errorLabel(it)) } ?: stringResource(ui.message ?: R.string.error_storage), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
+                if (ui.error != null && ui.page != Page.Editor) TextButton(onClick = model::reload, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }
+                Tool(R.drawable.ic_x, stringResource(R.string.close), onClick = model::dismissError)
+            }
+        }
+    }
+}
+
+@Composable
 fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
     val ui = model.ui
     val workspace = ui.workspace
@@ -71,18 +88,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
     BackHandler(ui.page !in MainPages || ui.transitioning) { model.back() }
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-            if (ui.error != null || ui.message != null) {
-                var appeared by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { appeared = true }
-                val opacity by animateFloatAsState(if (appeared) 1f else 0f, tween(180), label = "notice")
-                Surface(color = if (ui.error != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(12.dp).alpha(opacity)) {
-                    Row(Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(ui.error?.let { stringResource(errorLabel(it)) } ?: stringResource(ui.message ?: R.string.error_storage), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
-                        if (ui.error != null && ui.page != Page.Editor) TextButton(onClick = model::reload, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }
-                        Tool(R.drawable.ic_x, stringResource(R.string.close), onClick = model::dismissError)
-                    }
-                }
-            }
+            if (ui.page != Page.Directory || workspace == null) WorkspaceNotice(model)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (workspace == null) {
                     Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {

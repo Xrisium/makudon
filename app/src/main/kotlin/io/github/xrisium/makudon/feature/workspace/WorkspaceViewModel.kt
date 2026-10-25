@@ -29,7 +29,7 @@ data class WorkspaceUi(
     val error: Failure? = null,
     val message: Int? = null,
     val selected: String = Workspace.ROOT,
-    val newParent: String = Workspace.INBOX,
+    val newParent: String = Workspace.ROOT,
     val origin: Page = Page.Recent,
     val activeId: String? = null,
     val typeset: Boolean = true,
@@ -64,7 +64,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     var clipboard by mutableStateOf<Clipboard?>(null)
         private set
     private val ioLock = Mutex()
-    private val store = WorkspaceStore(File(application.filesDir, "workspace"), initialNames = application.getString(R.string.library) to application.getString(R.string.inbox))
+    private val store = WorkspaceStore(File(application.filesDir, "workspace"), rootName = application.getString(R.string.library))
     private var observer: Job? = null
     private var sessionId = 0L
     private var departingSession: Long? = null
@@ -158,7 +158,8 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun newDocument(from: Page = ui.page, parent: String? = null) {
         if (ui.busy || ui.transitioning || ui.tabTransitioning) return
         val state = ui.workspace ?: return
-        val target = parent ?: if (from == Page.Recent) { if (state.entry(Workspace.INBOX) != null) Workspace.INBOX else Workspace.ROOT } else ui.selected
+        val requested = parent ?: if (from == Page.Recent) Workspace.ROOT else ui.selected
+        val target = requested.takeIf { state.entry(it)?.folder == true } ?: Workspace.ROOT
         ui = ui.copy(newParent = target, origin = from, error = null)
         navigate(Page.New)
     }
@@ -324,7 +325,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             val existing = ui.workspace?.entries?.firstOrNull { requestId != null && it.importRequestId == requestId }
             if (existing != null) { launchWork { openInternal(existing.id, Page.Recent) }; return@launch }
             if (requestId != null && ui.workspace?.lastImportRequestId == requestId) return@launch
-            val target = if (ui.page == Page.New) ui.newParent else if (ui.workspace?.entry(Workspace.INBOX) != null) Workspace.INBOX else Workspace.ROOT
+            val target = if (ui.page == Page.New) ui.newParent else Workspace.ROOT
             launchWork {
                 if (!barrier()) { if (requestId != null) externalRequests.remove(requestId); return@launchWork }
                 val imported = disk {

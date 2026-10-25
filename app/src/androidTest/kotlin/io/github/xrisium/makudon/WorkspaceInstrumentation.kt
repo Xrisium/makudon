@@ -590,10 +590,10 @@ class WorkspaceInstrumentation : Instrumentation() {
 
     private fun exercise() {
         verify(main { model.ui.page == Page.Recent }, "Launch defaults to Recent")
-        val defaultLocation = main { if (model.ui.workspace?.entry(Workspace.INBOX) != null) Workspace.INBOX else Workspace.ROOT }
+        val defaultLocation = main { Workspace.ROOT }
         click("新建文稿"); click("Markdown"); ready()
         val id = main { checkNotNull(model.ui.activeId) }
-        verify(main { model.ui.workspace?.entry(id)?.parent == defaultLocation }, "Recent new draft targets Inbox or explicit root fallback")
+        verify(main { model.ui.workspace?.entry(id)?.parent == defaultLocation }, "Recent new draft targets root")
         click("源码")
         val original = "# 模拟器写作\n\n第一段中文与 emoji 😀。\n\n## 明天\n\n保留段落  \n行尾\n\n- [ ] 未支持的语法\n\n"
         setText("编辑正文", original); saved()

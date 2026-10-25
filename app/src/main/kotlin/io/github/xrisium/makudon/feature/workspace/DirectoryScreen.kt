@@ -48,7 +48,7 @@ fun DirectoryPage(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit, 
     val workspace = ui.workspace ?: return
     val busy = ui.busy
     val focus = LocalFocusManager.current
-    var expanded by rememberSaveable { mutableStateOf(listOf(Workspace.ROOT, Workspace.INBOX)) }
+    var expanded by rememberSaveable { mutableStateOf(listOf(Workspace.ROOT)) }
     var search by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var sortOpen by remember { mutableStateOf(false) }
@@ -106,6 +106,7 @@ fun DirectoryPage(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit, 
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), placeholder = { Text(stringResource(R.string.search_hint)) }, leadingIcon = { Glyph(R.drawable.ic_search) }, trailingIcon = { Tool(R.drawable.ic_x, stringResource(R.string.close), onClick = { search = false; query = "" }) }, shape = RoundedCornerShape(16.dp), singleLine = true, enabled = !busy)
         }
         Text(stringResource(R.string.directory_hint), Modifier.padding(start = 20.dp, end = 16.dp, top = 5.dp, bottom = 13.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (ui.page == Page.Directory) WorkspaceNotice(model)
         val rows = buildList<Pair<Entry, Int>> {
             fun append(item: Entry, depth: Int) {
                 add(item to depth)
@@ -123,7 +124,12 @@ fun DirectoryPage(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit, 
                     EntryRow(entry, depth, expanded.contains(entry.id), entry.folder && ui.selected == entry.id, busy, model.clipboard?.let { it.cut && it.id == entry.id } == true,
                         path = if (query.isNotBlank()) workspace.path(entry.parent ?: Workspace.ROOT) else null,
                         pasteLocation = workspace.path(if (entry.folder) entry.id else entry.parent ?: Workspace.ROOT),
-                        onClick = { if (entry.folder) model.select(entry.id) else model.open(entry.id) },
+                        onClick = {
+                            if (entry.folder) {
+                                model.select(entry.id)
+                                expanded = if (entry.id in expanded) expanded - entry.id else expanded + entry.id
+                            } else model.open(entry.id)
+                        },
                         onToggle = { expanded = if (entry.id in expanded) expanded - entry.id else expanded + entry.id },
                         clipboard = model.clipboard,
                         onAction = { action -> if (entry.folder) model.select(entry.id); onAction(entry, action) },
@@ -166,7 +172,7 @@ private fun EntryRow(entry: Entry, depth: Int, expanded: Boolean, selected: Bool
             }
             actions.forEach { (action, label, icon) ->
                 if (action == "delete") HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
-                val disabled = busy || (entry.id == Workspace.ROOT && action in listOf("rename", "delete", "copy", "cut")) || (entry.id == Workspace.INBOX && action == "cut") || (action == "paste" && clipboard == null)
+                val disabled = busy || (entry.id == Workspace.ROOT && action in listOf("rename", "delete", "copy", "cut")) || (action == "paste" && clipboard == null)
                 DropdownMenuItem(text = { Text(stringResource(label), color = if (action == "delete" && !disabled) colors.error else Color.Unspecified) }, leadingIcon = { Glyph(icon, tint = if (action == "delete" && !disabled) colors.error else colors.onSurfaceVariant) }, enabled = !disabled, onClick = { menu = false; onAction(action) })
             }
             Text(if (clipboard == null) stringResource(R.string.clipboard_empty) else stringResource(R.string.paste_location, pasteLocation), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)

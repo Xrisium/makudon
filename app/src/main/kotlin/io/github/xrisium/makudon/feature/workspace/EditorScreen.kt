@@ -83,7 +83,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit) {
                     }
                     Row {
                         listOf(false to R.string.source_view, true to R.string.typeset_view).forEach { (typeset, label) ->
-                            TextButton(onClick = { model.typeset(typeset) }, enabled = editable) { Text(stringResource(label), style = MaterialTheme.typography.labelMedium) }
+                            TextButton(onClick = { model.typeset(typeset) }, enabled = editable, shape = RoundedCornerShape(11.dp)) { Text(stringResource(label), style = MaterialTheme.typography.labelMedium) }
                         }
                     }
                 }
