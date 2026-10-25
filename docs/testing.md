@@ -64,6 +64,10 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
 
 该 runner 输出逐项 PASS 和最终汇总，任一 FAILED / Process crashed 都视为失败，不能只看 adb 退出码。它会创建合成文稿、验证长按 / 自动保存 / 目录操作并保留部分测试资料供用户试用，不清数据或修改已有文稿。`-e case long` 只执行长文边界，不能代替完整流程。模拟器序列号每次需重新确认。
 
+离散页签回归使用 `-e case tabs`，覆盖 19 项长按 / 拖动文字像素稳定、松手识别、取消、边界、跨标签、重复操作与旧回执、重建及零动画倍率；见 [离散页签验收](testing/2026-10-25-discrete-tabs.md)。按用户明确授权，频繁自动化在模拟器执行，最终真机仅集中安装应用 APK，交由用户本人验收。
+
+动效回归提供 `-e case motion`（26 项横滑、状态恢复、保存失败、生命周期、主题和零动画倍率）与 `-e case motion-visual`（8 项退场会话、主题像素、中间帧、系统深浅、许可页及实际 200% 字体检查）。不指定 case 或指定 `workspace` 执行原有 29 项完整流程。画面用例会临时修改动画倍率、字号和夜间模式，在 `finally` 恢复；截图只保存于应用测试缓存，取出后放 `.local/`。详见[动效验收](testing/2026-10-25-motion.md)。
+
 首个编辑切片的 [详细验收规范](testing/plain-text-editor-acceptance.md) 已形成草案，覆盖保存竞争、失败注入、真实进程中断、恢复、中文输入与长文性能；目前全部待执行，原基础工程验收不能替代这些结果。
 
 ## 常见问题

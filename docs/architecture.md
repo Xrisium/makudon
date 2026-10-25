@@ -18,6 +18,8 @@ app/src/main/kotlin/io/github/xrisium/makudon/
 
 每篇私有文稿使用独立 ID，同时只编辑一篇；进程内单一 ViewModel / Mutex 协调保存和目录操作。外部 VIEW 与应用内导入共用只读副本链路，正文不写回源 URI。保存、恢复、导入与导出已接入；完整故障 / 进程中断矩阵及真机体验仍须验收，见 [当前状态](status.md)。
 
+主标签将手势识别与过渡分离：有效 pointer-up 或底栏点击向 ViewModel 发布一次离散切换，Compose AnimatedContent 只挂载来源与目标，固定移动一屏；不使用 Pager 跟手偏移，也不经过中间标签或触发磁盘刷新。切换有独立递增 ID 与完成回执，旧回执不能解锁新切换；过渡期间独立拦截输入 / 隐藏不可交互语义，不改变控件 enabled 颜色。每个标签通过稳定 key 的 SaveableStateProvider 保留查询、展开与列表滚动状态。二级页导航由 ViewModel 发布方向与递增导航 ID，UI 在动画结束后回执；退出编辑器先通过保存屏障，保留原会话作只读退场，收到匹配的回执后释放。后台 / 重建同样能收尾，旧导航回执不能清理新会话。
+
 ## 按需增长的依赖方向
 
 ```text
