@@ -40,6 +40,8 @@ data class WorkspaceUi(
     val transitioning: Boolean = false,
     val tabTransitioning: Boolean = false,
     val tabTransitionId: Long = 0,
+    val revealFolder: String? = null,
+    val directoryRevision: Long = 0,
 )
 
 class WorkspaceViewModel(application: Application) : AndroidViewModel(application) {
@@ -60,9 +62,20 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     private var history = EditHistory()
     private var historySource = ""
     private val paragraphFields = mutableMapOf<Int, TextFieldState>()
-    data class Clipboard(val id: String, val cut: Boolean, val copy: WorkspaceStore.Copy? = null)
+    data class ClipboardItem(val entry: Entry, val location: String)
+    data class Clipboard(val items: List<ClipboardItem>, val cut: Boolean, val copies: List<WorkspaceStore.Copy>, val token: Long) {
+        val ids: List<String> get() = items.map { it.entry.id }
+    }
+    data class PasteRequest(val clipboard: Clipboard, val targets: PasteTargets)
     var clipboard by mutableStateOf<Clipboard?>(null)
         private set
+    var selection by mutableStateOf<Set<String>?>(null)
+        private set
+    var pasteRequest by mutableStateOf<PasteRequest?>(null)
+        private set
+    var deleteRequest by mutableStateOf<List<String>?>(null)
+        private set
+    private var clipboardToken = 0L
     private val ioLock = Mutex()
     private val store = WorkspaceStore(File(application.filesDir, "workspace"), rootName = application.getString(R.string.library))
     private var observer: Job? = null
@@ -92,7 +105,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (loading?.isActive == true) return
         ui = ui.copy(busy = true, error = null)
         loading = viewModelScope.launch {
-            try { ui = ui.copy(workspace = disk { store.load() }) }
+            try { acceptWorkspace(disk { store.load() }) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { ui = ui.copy(error = failure(e)) }
             finally { ui = ui.copy(busy = false) }
@@ -119,6 +132,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun select(id: String) { if (ui.workspace?.entry(id)?.folder == true) ui = ui.copy(selected = id) }
     private fun navigate(page: Page, backwards: Boolean = false) {
         if (page == ui.page) return
+        if (page != Page.Directory) { selection = null; pasteRequest = null; deleteRequest = null }
         ui = ui.copy(page = page, mainTab = if (page in MainPages) page else ui.mainTab,
             backwards = backwards, navigationId = ui.navigationId + 1, transitioning = true)
     }
@@ -128,7 +142,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun selectTab(page: Page) {
-        if (page !in MainPages || ui.page !in MainPages || ui.busy || ui.transitioning || ui.tabTransitioning || page == ui.mainTab) return
+        if (page !in MainPages || ui.page !in MainPages || ui.busy || ui.transitioning || ui.tabTransitioning || selection != null || page == ui.mainTab) return
         ui = ui.copy(page = page, mainTab = page, tabTransitioning = true, tabTransitionId = ui.tabTransitionId + 1)
     }
 
@@ -252,31 +266,88 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(workspace = disk { store.refresh() })
         onSuccess()
     } }
-    fun copy(id: String, cut: Boolean) { launchWork {
+    private fun acceptWorkspace(next: Workspace) {
+        selection = selection?.let { ids -> next.selectionRoots(ids).map { it.id }.toSet() }
+        clipboard?.takeIf { it.cut }?.let { clip ->
+            val items = clip.items.filter { next.entry(it.entry.id) != null }
+            if (items.size != clip.items.size) clipboard = if (items.isEmpty()) null else clip.copy(items = items, token = ++clipboardToken)
+        }
+        ui = ui.copy(workspace = next,
+            selected = ui.selected.takeIf { next.entry(it)?.folder == true } ?: Workspace.ROOT,
+            newParent = ui.newParent.takeIf { next.entry(it)?.folder == true } ?: Workspace.ROOT)
+    }
+    fun startSelection(id: String) {
+        if (ui.busy || ui.transitioning || ui.tabTransitioning || ui.page != Page.Directory) return
+        val state = ui.workspace ?: return
+        if (state.entry(id) == null) return
+        selection = if (id == Workspace.ROOT) emptySet() else setOf(id)
+        ui = ui.copy(error = null, message = null)
+    }
+    fun toggleChecked(id: String) {
+        if (ui.busy || ui.transitioning) return
+        val ids = selection ?: return
+        selection = ui.workspace?.toggleSelection(ids, id) ?: ids
+    }
+    fun clearSelection() { if (!ui.busy && selection != null) selection = emptySet() }
+    fun exitSelection() { if (!ui.busy) { selection = null; ui = ui.copy(error = null, message = null) } }
+    fun revealHandled(revision: Long) { if (revision == ui.directoryRevision) ui = ui.copy(revealFolder = null) }
+    fun copy(id: String, cut: Boolean) = copyAll(listOf(id), cut)
+    fun copySelection(cut: Boolean) = copyAll(selection.orEmpty(), cut)
+    private fun copyAll(ids: Collection<String>, cut: Boolean) { if (ids.isEmpty()) return; launchWork {
         if (!barrier()) return@launchWork
-        val snapshot = if (cut) null else disk { store.capture(id) }
-        clipboard = Clipboard(id, cut, snapshot)
+        val state = ui.workspace ?: throw WorkspaceException(Failure.Missing)
+        if (Workspace.ROOT in ids) throw WorkspaceException(Failure.Cycle)
+        if (ids.any { state.entry(it) == null }) throw WorkspaceException(Failure.Missing)
+        val roots = state.selectionRoots(ids)
+        val snapshots = if (cut) emptyList() else disk { store.captureAll(roots.map { it.id }) }
+        clipboard = Clipboard(roots.map { ClipboardItem(it, state.path(it.parent ?: Workspace.ROOT)) }, cut, snapshots, ++clipboardToken)
         ui = ui.copy(message = if (cut) R.string.cut_ready else R.string.copy_ready)
     } }
-    fun paste(destination: String) { val clip = clipboard ?: return; launchWork {
+    fun requestPaste(context: String? = null) {
+        if (ui.busy || ui.transitioning || ui.tabTransitioning) return
+        val clip = clipboard ?: return
+        val state = ui.workspace ?: return
+        if (context != null && state.entry(context) == null) { ui = ui.copy(error = Failure.Missing); return }
+        val ids = context?.let(::listOf) ?: selection.orEmpty()
+        pasteRequest = PasteRequest(clip, state.pasteTargets(ids, ui.selected))
+    }
+    fun dismissPaste() { if (!ui.busy) pasteRequest = null }
+    fun confirmPaste(destination: String) { val request = pasteRequest ?: return; paste(destination, request.clipboard.token) }
+    fun paste(destination: String, expectedToken: Long? = null) { val clip = clipboard ?: return; launchWork {
+        if (expectedToken != null && expectedToken != clip.token) throw WorkspaceException(Failure.Missing)
         if (!barrier()) return@launchWork
-        disk { if (clip.cut) store.move(clip.id, destination) else store.paste(clip.copy ?: throw WorkspaceException(Failure.Missing), destination) }
+        disk { if (clip.cut) store.moveAll(clip.ids, destination) else store.pasteAll(clip.copies, destination) }
         if (clip.cut) clipboard = null
-        ui = ui.copy(workspace = disk { store.refresh() }, selected = destination, message = R.string.paste_done)
+        acceptWorkspace(disk { store.refresh() })
+        pasteRequest = null
+        ui = ui.copy(selected = if (selection == null) destination else ui.selected, message = R.string.paste_done,
+            revealFolder = destination, directoryRevision = ui.directoryRevision + 1)
     } }
-    fun delete(id: String) { launchWork {
+    fun requestDelete() {
+        if (!ui.busy) deleteRequest = ui.workspace?.selectionRoots(selection.orEmpty())?.map { it.id }?.takeIf { it.isNotEmpty() }
+    }
+    fun dismissDelete() { if (!ui.busy) deleteRequest = null }
+    fun confirmDelete() { deleteRequest?.let(::deleteAll) }
+    fun delete(id: String) = deleteAll(listOf(id))
+    private fun deleteAll(ids: Collection<String>) { launchWork {
         if (!barrier()) return@launchWork
         val state = ui.workspace ?: return@launchWork
-        val removed = state.descendants(id)
-        val parent = state.entry(id)?.parent ?: return@launchWork
-        try { disk { store.delete(id) } } finally {
-            val next = disk { store.refresh() }
-            if (next.entry(id) == null) {
-                if (clipboard?.let { it.cut && it.id in removed } == true) clipboard = null
-                if (ui.activeId in removed) { observer?.cancel(); observer = null; save = null; textState = null }
-                ui = ui.copy(workspace = next, selected = if (ui.selected in removed) parent else ui.selected, newParent = if (ui.newParent in removed) parent else ui.newParent, activeId = if (ui.activeId in removed) null else ui.activeId)
-            }
+        val roots = state.selectionRoots(ids)
+        val removed = roots.flatMap { state.descendants(it.id) }.toSet()
+        val selectedParent = state.entry(ui.selected)?.parent ?: Workspace.ROOT
+        val newParent = state.entry(ui.newParent)?.parent ?: Workspace.ROOT
+        var cleanupFailure = false
+        try { disk { store.deleteAll(ids) } }
+        catch (e: WorkspaceException) { if (e.reason == Failure.Cleanup) cleanupFailure = true else throw e }
+        if (ui.activeId in removed) {
+            observer?.cancel(); observer = null; save = null; textState = null; paragraphFields.clear()
         }
+        ui = ui.copy(selected = if (ui.selected in removed) selectedParent else ui.selected,
+            newParent = if (ui.newParent in removed) newParent else ui.newParent,
+            activeId = if (ui.activeId in removed) null else ui.activeId)
+        acceptWorkspace(disk { store.refresh() })
+        deleteRequest = null
+        if (cleanupFailure) throw WorkspaceException(Failure.Cleanup)
     } }
     fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null) {
         val w = ui.workspace ?: return

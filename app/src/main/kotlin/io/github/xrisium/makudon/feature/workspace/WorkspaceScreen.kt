@@ -100,10 +100,12 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                     onAction = { item, action ->
                         target = item
                         when (action) {
-                            "info", "rename", "delete" -> dialog = action
-                            "copy" -> model.copy(item.id, false)
-                            "cut" -> model.copy(item.id, true)
-                            "paste" -> model.paste(if (item.folder) item.id else item.parent ?: Workspace.ROOT)
+                            "select" -> model.startSelection(item.id)
+                            "info", "rename" -> dialog = action
+                            "delete" -> if (model.selection != null) model.requestDelete() else dialog = action
+                            "copy" -> if (model.selection != null) model.copySelection(false) else model.copy(item.id, false)
+                            "cut" -> if (model.selection != null) model.copySelection(true) else model.copy(item.id, true)
+                            "paste" -> model.requestPaste(if (model.selection != null) null else item.id)
                             "folder" -> dialog = "folder"
                             "document" -> model.newDocument(Page.Directory, item.id)
                         }
@@ -129,6 +131,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
             }
         }
     }
+    ClipboardDialogs(model)
     val entry = target?.id?.let { workspace?.entry(it) }
     when (dialog) {
         "folder", "rename" -> if (entry != null && workspace != null) NameDialog(
@@ -163,7 +166,7 @@ internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) ->
             Box(Modifier.weight(1f).heightIn(min = 48.dp).padding(end = 8.dp), contentAlignment = Alignment.CenterStart) {
                 Icon(painterResource(R.drawable.makudon_lockup), stringResource(R.string.brand_name), Modifier.widthIn(max = 158.dp).fillMaxWidth().aspectRatio(340.524f / 50f), tint = MaterialTheme.colorScheme.onBackground)
             }
-            TextButton(onNew, enabled = !busy, contentPadding = PaddingValues(horizontal = 8.dp)) { Glyph(R.drawable.ic_file_plus_2, Modifier.size(14.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.new_document), style = MaterialTheme.typography.labelSmall) }
+            Tool(R.drawable.ic_plus, stringResource(R.string.new_document), enabled = !busy, onClick = onNew)
         }
         val recent = workspace.entries.filter { !it.folder && it.opened > 0 }.sortedByDescending { it.opened }
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -192,6 +195,9 @@ fun PageBar(title: String, back: () -> Unit, trailing: @Composable RowScope.() -
 
 fun kindLabel(kind: DocumentKind) = when (kind) { DocumentKind.Folder -> R.string.folder; DocumentKind.Plain -> R.string.plain_text; DocumentKind.Markdown -> R.string.markdown }
 fun errorLabel(failure: Failure) = when (failure) {
+    Failure.NoChange -> R.string.paste_already_here
+    Failure.ClipboardTooLarge -> R.string.clipboard_too_large
+    Failure.CatalogFull -> R.string.catalog_full
     Failure.InvalidName -> R.string.error_invalid_name; Failure.Conflict -> R.string.error_conflict; Failure.Cycle -> R.string.error_cycle
     Failure.Missing -> R.string.error_missing; Failure.InvalidText -> R.string.error_invalid_text; Failure.TooLarge -> R.string.error_too_large
     Failure.Storage -> R.string.error_storage; Failure.Corrupt -> R.string.error_corrupt; Failure.NoPrevious -> R.string.error_no_previous; Failure.Cleanup -> R.string.error_cleanup

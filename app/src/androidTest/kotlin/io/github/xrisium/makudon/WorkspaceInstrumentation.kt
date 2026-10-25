@@ -15,6 +15,11 @@ import io.github.xrisium.makudon.domain.*
 import io.github.xrisium.makudon.feature.workspace.*
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
+import io.github.xrisium.makudon.data.WorkspaceStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 
 /** Small platform-only runner: real accessibility actions and private synthetic data, no product debug controls. */
 class WorkspaceInstrumentation : Instrumentation() {
@@ -25,6 +30,8 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyVisual = false
     private var onlyTabs = false
     private var onlyAppearance = false
+    private var onlySelection = false
+    private var onlySelectionVisual = false
     private var currentActivity: Activity? = null
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
     override fun onCreate(arguments: Bundle?) {
@@ -34,6 +41,8 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyVisual = arguments?.getString("case") == "motion-visual"
         onlyTabs = arguments?.getString("case") == "tabs"
         onlyAppearance = arguments?.getString("case") == "appearance"
+        onlySelection = arguments?.getString("case") == "selection"
+        onlySelectionVisual = arguments?.getString("case") == "selection-visual"
         start()
     }
     override fun onStart() {
@@ -41,7 +50,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            when { onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
@@ -585,6 +594,191 @@ class WorkspaceInstrumentation : Instrumentation() {
             if (oldNight in listOf("yes", "no", "auto")) shell("cmd uimode night $oldNight")
             SystemClock.sleep(700); ready()
             main { model.preferences(theme = oldTheme) }; ready()
+        }
+    }
+
+    private fun selectionTest() {
+        val oldPreferences = main { checkNotNull(model.ui.workspace) }
+        val oldTheme = oldPreferences.theme
+        main { model.go(Page.Recent) }; ready()
+        screenshot("recent-plus-icon")
+        verify(nodes().any { it.contentDescription?.toString() == "新建文稿" }, "Recent plus icon retains an accessible new-draft label")
+        main { model.go(Page.Directory) }; ready()
+        main { model.preferences(theme = ColorTheme.Paper, sort = SortKey.Name, descending = false, foldersFirst = true) }; ready()
+        val store = WorkspaceViewModel::class.java.getDeclaredField("store").apply { isAccessible = true }.get(model) as WorkspaceStore
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        val suffix = (SystemClock.uptimeMillis() % 100000).toString()
+        val rootName = "000-复选-$suffix"
+        val names = listOf("甲-$suffix", "乙-$suffix", "深-$suffix", "源-$suffix", "路线-$suffix", "雨夜-$suffix", "章节-$suffix", "人物-$suffix")
+        val ids = runBlocking { withContext(Dispatchers.IO) { lock.withLock {
+            val root = store.create(rootName, Workspace.ROOT, DocumentKind.Folder)
+            val a = store.create(names[0], root, DocumentKind.Folder)
+            val b = store.create(names[1], root, DocumentKind.Folder)
+            val deep = store.create(names[2], a, DocumentKind.Folder)
+            val source = store.create(names[3], root, DocumentKind.Plain, "独立剪贴板快照 👩🏽‍💻")
+            val one = store.create(names[4], a, DocumentKind.Plain, "路线原文")
+            val two = store.create(names[5], deep, DocumentKind.Plain, "雨夜原文")
+            val three = store.create(names[6], b, DocumentKind.Plain, "章节原文")
+            val four = store.create(names[7], b, DocumentKind.Plain, "人物原文")
+            listOf(root, a, b, deep, source, one, two, three, four)
+        } } }
+        val root = ids[0]; val a = ids[1]; val b = ids[2]; val deep = ids[3]; val source = ids[4]
+        val one = ids[5]; val two = ids[6]; val three = ids[7]; val four = ids[8]
+        fun label(id: String) = main { checkNotNull(model.ui.workspace?.entry(id)).filename }
+        fun shown(text: String) = nodes().any { it.text?.toString() == text || it.contentDescription?.toString() == text }
+        fun show(text: String) {
+            fun match() = nodes().firstOrNull { it.isVisibleToUser && (it.text?.toString() == text || it.contentDescription?.toString() == text) }
+            if (match() != null) return
+            for (direction in listOf(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+                repeat(16) {
+                    val scroller = nodes().firstOrNull { it.isScrollable } ?: return@repeat
+                    val bounds = Rect(); scroller.getBoundsInScreen(bounds)
+                    val x = bounds.centerX().toFloat()
+                    val low = bounds.top + bounds.height() * .25f
+                    val high = bounds.top + bounds.height() * .75f
+                    val from = if (direction == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) low else high
+                    val to = if (direction == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) high else low
+                    val down = SystemClock.uptimeMillis()
+                    for (step in 0..9) {
+                        val action = when (step) { 0 -> MotionEvent.ACTION_DOWN; 9 -> MotionEvent.ACTION_UP; else -> MotionEvent.ACTION_MOVE }
+                        val y = from + (to - from) * step / 9
+                        val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0).apply { this.source = InputDevice.SOURCE_TOUCHSCREEN }
+                        uiAutomation.injectInputEvent(event, true); event.recycle(); SystemClock.sleep(30)
+                    }
+                    SystemClock.sleep(220); waitForIdleSync()
+                    if (match() != null) return
+                }
+            }
+            error("Unable to scroll to synthetic selection item: $text")
+        }
+        fun tap(text: String) {
+            show(text)
+            val bounds = Rect(); find(text).getBoundsInScreen(bounds)
+            check(!bounds.isEmpty) { "No touch bounds for $text" }
+            val down = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, bounds.centerX().toFloat(), bounds.centerY().toFloat(), 0).apply { this.source = InputDevice.SOURCE_TOUCHSCREEN }
+                uiAutomation.injectInputEvent(event, true); event.recycle(); SystemClock.sleep(35)
+            }
+            SystemClock.sleep(350); waitForIdleSync()
+        }
+        fun hold(text: String, physical: Boolean = false) { show(text); longPress(text, physical) }
+        fun chooseFolder(id: String) {
+            val location = main { checkNotNull(model.ui.workspace).path(id) }
+            val node = find(location)
+            node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+            tap(location)
+        }
+        try {
+            main { model.reload() }; ready()
+            if (shown("展开 文稿库")) tap("展开 文稿库")
+            if (shown("收起全部文件夹")) tap("收起全部文件夹")
+            for (name in listOf(rootName, names[0], names[2], names[1])) {
+                show(name)
+                if (shown("展开 $name")) tap("展开 $name")
+            }
+            main { model.select(root) }
+            hold(label(source), physical = true); tap("复制"); ready()
+            verify(main { model.clipboard?.ids == listOf(source) && model.clipboard?.cut == false }, "Single context copy populates the shared private clipboard")
+            hold(label(one), physical = true); tap("复选"); ready()
+            verify(main { model.selection == setOf(one) && model.ui.selected == root }, "Context menu enters selection without changing the new draft location")
+            verify(!shown("搜索文稿") && !shown("选择文件夹可更改新建位置，长按显示更多") && !shown("最近") && shown("清空选择") && shown("退出复选"), "Selection removes toolbar hint and main navigation, keeping X and clear")
+            tap(label(two)); tap(label(three))
+            verify(main { model.selection == setOf(one, two, three) }, "Row clicks select files across directories and depths without opening the editor")
+            tap("粘贴"); find("选择一个粘贴位置")
+            verify(main { model.pasteRequest?.targets?.suggested == null && model.pasteRequest?.targets?.related?.toSet() == setOf(a, deep, b) }, "Dispersed selection resolves distinct suggested destinations without an implicit target")
+            var pasteButton: AccessibilityNodeInfo? = find("粘贴到这里")
+            var disabled = false
+            while (pasteButton != null) { if (!pasteButton.isEnabled) disabled = true; pasteButton = pasteButton.parent }
+            verify(disabled, "Ambiguous paste confirm remains disabled before a destination is selected")
+            screenshot("selection-paste-targets")
+            tap("取消")
+            verify(main { model.selection?.size == 3 && model.clipboard?.ids == listOf(source) }, "Cancel preserves selected destination hints and copied source")
+            tap("粘贴"); chooseFolder(b); tap("粘贴到这里"); ready()
+            val copied = main { checkNotNull(model.ui.workspace).entries.single { it.parent == b && it.name == names[3] }.id }
+            verify(main { model.ui.workspace?.entries?.count { it.name == names[3] } == 2 && model.selection?.size == 3 && model.clipboard?.ids == listOf(source) }, "One copied source is pasted once to the chosen folder, not once per selected file")
+            verify(source(copied, DocumentKind.Plain) == "独立剪贴板快照 👩🏽‍💻", "Copied body is complete and independent")
+            tap("清空选择")
+            verify(main { model.selection?.isEmpty() == true && model.clipboard != null }, "Clear preserves selection mode and shared clipboard")
+            tap(label(three)); tap(label(four)); tap("粘贴"); find("确认粘贴位置")
+            verify(main { model.pasteRequest?.targets?.suggested == b }, "Multiple files in one folder resolve one destination")
+            tap("取消"); screenshot("selection-light")
+            main { currentActivity?.recreate() }; ready()
+            verify(main { model.selection == setOf(three, four) && model.clipboard?.ids == listOf(source) }, "Activity recreation retains selection IDs and shared clipboard without repeating an action")
+            tap("清空选择"); tap(label(a))
+            verify(main { model.selection == setOf(a) }, "Selecting an ancestor normalizes the entire subtree")
+            tap(label(one))
+            verify(main { model.selection == setOf(a) }, "Inherited descendants cannot be excluded while their folder is selected")
+            tap("收起 " + names[0])
+            verify(main { model.selection == setOf(a) }, "Collapsing a folder preserves the recursive selection")
+            tap("展开 " + names[0]); tap("清空选择"); tap(label(one))
+            verify(main { model.ui.workspace?.selectionOf(model.selection.orEmpty(), a) == ItemSelection.Partial }, "Selecting a child gives its ancestor a partial check state")
+            tap("退出复选")
+            verify(main { model.selection == null && model.clipboard?.ids == listOf(source) } && shown("搜索文稿") && shown("最近"), "X exits selection and restores the normal controls without clearing clipboard")
+            hold(label(one)); tap("剪切"); ready()
+            hold(label(deep)); tap("复选"); tap("粘贴"); find("确认粘贴位置"); tap("取消")
+            verify(main { model.clipboard?.cut == true && model.clipboard?.ids == listOf(one) && model.ui.workspace?.entry(one)?.parent == a }, "Canceling a cut paste leaves source and clipboard unchanged")
+            tap("粘贴"); tap("粘贴到这里"); ready()
+            verify(main { model.clipboard == null && model.ui.workspace?.entry(one)?.parent == deep }, "Cut paste moves a stable ID and clears clipboard only after successful publication")
+            tap("清空选择"); main { model.toggleChecked(one); model.toggleChecked(three) }
+            tap("复制"); ready()
+            verify(main { model.clipboard?.items?.size == 2 && model.clipboard?.cut == false }, "Batch copy uses the same clipboard as single-item menus")
+            tap("退出复选"); hold(label(root)); tap("粘贴"); find("剪贴板 · 复制 2 项"); tap("粘贴到这里"); ready()
+            verify(main { model.ui.workspace?.entries?.count { it.parent == root && it.name in setOf(names[4], names[6]) } == 2 }, "Single folder paste consumes a multi-item copied snapshot")
+            main { model.startSelection(one) }; tap("删除"); find("删除 1 项？"); tap("取消")
+            verify(main { model.ui.workspace?.entry(one) != null }, "Cancel batch delete preserves the original")
+            tap("删除"); tap("删除"); ready()
+            verify(main { model.ui.workspace?.entry(one) == null && model.selection?.isEmpty() == true && model.clipboard?.items?.size == 2 }, "Batch delete cleans selection while preserving independent copy snapshots")
+            tap("粘贴"); find("剪贴板 · 复制 2 项"); tap("取消")
+            main { model.exitSelection(); model.preferences(theme = ColorTheme.Ink) }; ready()
+            main { model.startSelection(b) }; ready(); screenshot("selection-dark")
+        } catch (e: Exception) {
+            screenshot("selection-fixture-state")
+            sendStatus(0, Bundle().apply { putString("stream", "Selection fixture nodes: " + nodes().mapNotNull { it.text?.toString() ?: it.contentDescription?.toString() }.filter { suffix in it }.joinToString(" | ") + "\n") })
+            throw e
+        } finally {
+            main { model.dismissPaste(); model.dismissDelete(); model.exitSelection() }; ready()
+            if (main { model.ui.workspace?.entry(root) != null }) { main { model.delete(root) }; ready() }
+            main { model.preferences(theme = oldTheme, sort = oldPreferences.sort, descending = oldPreferences.descending, foldersFirst = oldPreferences.foldersFirst) }; ready()
+        }
+    }
+
+    private fun selectionVisualTest() {
+        val oldTheme = main { checkNotNull(model.ui.workspace).theme }
+        val oldFont = shell("settings get system font_scale")
+        val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val store = WorkspaceViewModel::class.java.getDeclaredField("store").apply { isAccessible = true }.get(model) as WorkspaceStore
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        val ids = runBlocking { withContext(Dispatchers.IO) { lock.withLock {
+            val root = store.create("窄屏复选-" + SystemClock.uptimeMillis(), Workspace.ROOT, DocumentKind.Folder)
+            val a = store.create("较长的第一个目标文件夹", root, DocumentKind.Folder)
+            val b = store.create("第二个目标文件夹", root, DocumentKind.Folder)
+            val source = store.create("剪贴板来源", root, DocumentKind.Plain, "合成内容")
+            val one = store.create("第一篇", a, DocumentKind.Plain)
+            val two = store.create("第二篇", b, DocumentKind.Plain)
+            listOf(root, source, one, two)
+        } } }
+        try {
+            main { model.reload() }; ready(); main { model.go(Page.Directory) }; ready()
+            main { model.preferences(theme = ColorTheme.Ink) }; ready()
+            main { model.startSelection(ids[2]); model.toggleChecked(ids[3]); model.copy(ids[1], false) }; ready()
+            shell("wm size 840x1890"); shell("settings put system font_scale 2.0")
+            waitFor("actual narrow width and font scaling") { main { currentActivity?.resources?.configuration?.let { it.screenWidthDp <= 320 && it.fontScale >= 1.99f } == true } }
+            ready(); SystemClock.sleep(1500); waitForIdleSync(); screenshot("selection-font-200-narrow")
+            val bitmap = checkNotNull(uiAutomation.takeScreenshot()); val width = bitmap.width; val height = bitmap.height; bitmap.recycle()
+            fun inside(label: String): Boolean {
+                val node = find(label); val bounds = Rect(); node.getBoundsInScreen(bounds)
+                return !bounds.isEmpty && bounds.left >= 0 && bounds.top >= 0 && bounds.right <= width && bounds.bottom <= height
+            }
+            verify(listOf("退出复选", "清空选择", "复制", "剪切", "粘贴", "删除").all(::inside), "320dp with actual 200% fonts keeps header and all four actions inside the display")
+            main { model.requestPaste() }; waitForIdleSync(); SystemClock.sleep(500)
+            screenshot("selection-font-200-targets")
+            verify(inside("取消") && inside("粘贴到这里") && main { model.pasteRequest?.targets?.suggested == null }, "Narrow 200% destination dialog keeps cancel/confirm visible and ambiguity unselected")
+        } finally {
+            main { model.dismissPaste(); model.exitSelection() }
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+            ready(); main { model.delete(ids[0]) }; ready(); main { model.preferences(theme = oldTheme) }; ready()
         }
     }
 

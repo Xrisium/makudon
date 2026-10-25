@@ -11,7 +11,12 @@ import java.util.Properties
 import java.util.UUID
 
 /** The caller serializes all access on its IO dispatcher. Paths come exclusively from validated IDs. */
-class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk = AtomicDisk(), private val rootName: String = "Library") {
+class WorkspaceStore(
+    private val directory: File,
+    private val atomic: AtomicDisk = AtomicDisk(),
+    private val rootName: String = "Library",
+    private val cleanup: (File) -> Boolean = { it.deleteRecursively() },
+) {
     private val catalog = File(directory, "catalog.properties")
     private var workspace: Workspace? = null
     private var baselineId: String? = null
@@ -48,6 +53,7 @@ class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk
     }
 
     private fun validate(state: Workspace) {
+        if (state.entries.size > 10_000) throw WorkspaceException(Failure.CatalogFull)
         if (state.entries.map { it.id }.distinct().size != state.entries.size) throw WorkspaceException(Failure.Corrupt)
         if (state.entries.count { it.parent == null } != 1 || state.entry(Workspace.ROOT)?.let { !it.folder || it.parent != null } != false) throw WorkspaceException(Failure.Corrupt)
         state.entries.forEach { node ->
@@ -77,7 +83,9 @@ class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk
             entry.importRequestId?.let { p["$n.importRequest"] = it }
         }
         val writer = StringWriter(); p.store(writer, "Makudon workspace v1")
-        try { atomic.write(catalog, writer.toString().toByteArray(Charsets.UTF_8)) }
+        val encoded = writer.toString().toByteArray(Charsets.UTF_8)
+        if (encoded.size > 4_194_304) throw WorkspaceException(Failure.CatalogFull)
+        try { atomic.write(catalog, encoded) }
         catch (e: Exception) { workspace = null; throw e }
         workspace = next
     }
@@ -155,42 +163,68 @@ class WorkspaceStore(private val directory: File, private val atomic: AtomicDisk
         if (TextRules.conflicts(state().entries, name, parent, entry.kind, id)) throw WorkspaceException(Failure.Conflict)
         publish(state().copy(entries = state().entries.map { if (it.id == id) it.copy(name = name) else it }))
     }
-    fun move(id: String, destination: String) {
-        parent(destination)
-        val entry = find(id)
-        if (id == Workspace.ROOT) throw WorkspaceException(Failure.Cycle)
-        if (entry.folder && destination in state().descendants(id)) throw WorkspaceException(Failure.Cycle)
-        if (TextRules.conflicts(state().entries, entry.name, destination, entry.kind, id)) throw WorkspaceException(Failure.Conflict)
-        publish(state().copy(entries = state().entries.map { if (it.id == id) it.copy(parent = destination) else it }))
+    private fun operationRoots(ids: Collection<String>): List<Entry> {
+        if (ids.isEmpty()) throw WorkspaceException(Failure.Missing)
+        ids.forEach { find(it) }
+        if (Workspace.ROOT in ids) throw WorkspaceException(Failure.Cycle)
+        return state().selectionRoots(ids)
+    }
+    fun move(id: String, destination: String) = moveAll(listOf(id), destination)
+    fun moveAll(ids: Collection<String>, destination: String) {
+        val roots = operationRoots(ids).map { it.id }.toSet()
+        state().pasteFailure(roots, true, destination)?.let { throw WorkspaceException(it) }
+        publish(state().copy(entries = state().entries.map { if (it.id in roots) it.copy(parent = destination) else it }))
     }
     data class Copy(val entry: Entry, val text: String?, val children: List<Copy>)
-    fun capture(id: String): Copy {
-        val item = find(id)
-        if (id == Workspace.ROOT) throw WorkspaceException(Failure.Cycle)
-        return Copy(item, if (item.folder) null else read(id), state().entries.filter { it.parent == id }.map { capture(it.id) })
+    fun capture(id: String): Copy = captureAll(listOf(id)).single()
+    fun captureAll(ids: Collection<String>, maxBytes: Int = 8_388_608): List<Copy> {
+        val roots = operationRoots(ids)
+        val children = state().entries.groupBy { it.parent }
+        var bytes = 0L
+        fun captureNode(item: Entry): Copy {
+            val text = if (item.folder) null else read(item.id)
+            bytes += text?.let { TextRules.bytes(it).size } ?: 0
+            if (bytes > maxBytes) throw WorkspaceException(Failure.ClipboardTooLarge)
+            return Copy(item, text, children[item.id].orEmpty().map(::captureNode))
+        }
+        return roots.map(::captureNode)
     }
-    fun paste(snapshot: Copy, destination: String) {
+    fun paste(snapshot: Copy, destination: String) = pasteAll(listOf(snapshot), destination)
+    fun pasteAll(snapshots: List<Copy>, destination: String) {
         parent(destination)
-        if (snapshot.entry.folder && destination in state().descendants(snapshot.entry.id)) throw WorkspaceException(Failure.Cycle)
+        if (snapshots.isEmpty()) throw WorkspaceException(Failure.Missing)
+        state().pasteFailure(snapshots.map { it.entry.id }, false, destination)?.let { throw WorkspaceException(it) }
         val additions = mutableListOf<Entry>()
+        val bodies = mutableListOf<Pair<Entry, ByteArray>>()
         fun clone(copy: Copy, target: String, name: String) {
             val id = UUID.randomUUID().toString()
             val entry = copy.entry.copy(id = id, name = name, parent = target, created = System.currentTimeMillis(), opened = System.currentTimeMillis(), importRequestId = null)
-            if (!entry.folder) atomic.write(body(entry), TextRules.bytes(copy.text ?: throw WorkspaceException(Failure.Corrupt)))
+            if (!entry.folder) bodies += entry to TextRules.bytes(copy.text ?: throw WorkspaceException(Failure.Corrupt))
             additions += entry
             copy.children.forEach { clone(it, id, it.entry.name) }
         }
-        clone(snapshot, destination, availableName(snapshot.entry.name, destination, snapshot.entry.kind))
-        publish(state().copy(entries = state().entries + additions))
+        snapshots.forEach { snapshot ->
+            clone(snapshot, destination, availableName(snapshot.entry.name, destination, snapshot.entry.kind, state().entries + additions))
+        }
+        val next = state().copy(entries = state().entries + additions)
+        validate(next)
+        bodies.forEach { (entry, bytes) -> atomic.write(body(entry), bytes) }
+        publish(next)
     }
-    fun delete(id: String) {
-        if (id == Workspace.ROOT) throw WorkspaceException(Failure.Missing)
-        find(id)
-        val removed = state().descendants(id)
+    fun delete(id: String) = deleteAll(listOf(id))
+    fun deleteAll(ids: Collection<String>) {
+        val roots = operationRoots(ids)
+        val removed = roots.flatMap { state().descendants(it.id) }.toSet()
         val documents = state().entries.filter { it.id in removed && !it.folder }
         publish(state().copy(entries = state().entries.filter { it.id !in removed }))
         // Publication happens before cleanup. An interrupted cleanup can never resurrect a deleted entry.
-        if (documents.any { !nodeDirectory(it.id).deleteRecursively() }) throw WorkspaceException(Failure.Cleanup)
+        var incomplete = false
+        documents.forEach {
+            try { if (!cleanup(nodeDirectory(it.id))) incomplete = true }
+            catch (_: java.io.IOException) { incomplete = true }
+            catch (_: SecurityException) { incomplete = true }
+        }
+        if (incomplete) throw WorkspaceException(Failure.Cleanup)
     }
     fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean) {
         publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst))
