@@ -1,4 +1,3 @@
 # Domain 边界
 
-未来在确实需要时加入纯 Kotlin 文档规则、模型或仓库契约。不得依赖 Android / Compose。
-当前无业务实现，不为占位生成空接口。细节见根目录 docs/architecture.md。
+Workspace.kt 提供节点、同级自然排序、名称冲突、Unicode / UTF-8 边界和有限 Markdown 段落范围规则。不得依赖 Android / Compose；不为未来功能生成空接口。细节见根目录 docs/architecture.md。

@@ -7,3 +7,4 @@
 *.ttf binary
 # Preserve upstream license text, including its original trailing spaces and final separators.
 app/src/main/res/raw/third_party_notices.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/licenses/androidx-LICENSE.txt whitespace=-blank-at-eof

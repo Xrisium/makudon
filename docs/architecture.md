@@ -7,16 +7,16 @@
 ```text
 app/src/main/kotlin/io/github/xrisium/makudon/
   MainActivity.kt          Android 生命周期与 Compose 接入
-  app/MakudonApp.kt        应用装配；未来放少量手动依赖组装
-  feature/workspace/      当前品牌占位页；未来文档工作区
+  app/                    进程 ViewModel 所有者、主题与应用装配
+  feature/workspace/      三标签、目录、新建、编辑、保存协调、撤销差量
   ui/theme/               主题
-  domain/README.md         未来纯 Kotlin 规则的边界说明
-  data/README.md           未来 Android 文件适配的边界说明
+  domain/Workspace.kt      节点、排序、UTF-8 / 名称规则、有限 Markdown 范围解析
+  data/WorkspaceStore.kt   私有目录、原子索引发布、正文 / 上一版本与恢复
 ```
 
-`domain` / `data` 当前没有可运行实现。编辑器、导航、ViewModel、Repository、数据格式都还未实现。
+现已实现上述职责；[ADR 0003](adr/0003-workspace-catalog.md)记录原生工作区的数据格式、索引事务边界和有限排版编辑。没有 DI、数据库、导航运行库或 WebView。
 
-首片的产品方向已确定，见 [职责与持久化设计](specs/0001-plain-text-editor.md)、[已接受存储 ADR](adr/0002-document-storage.md) 和 [导入 / 关联协议](specs/0002-import-and-file-association.md)。每篇私有文稿使用独立 ID，同时只编辑一篇；最小列表保留旧导入副本的可达性。单写者、恢复、导入、关联和导出均尚未落地，不把设计结构当作现有代码。
+每篇私有文稿使用独立 ID，同时只编辑一篇；进程内单一 ViewModel / Mutex 协调保存和目录操作。外部 VIEW 与应用内导入共用只读副本链路，正文不写回源 URI。保存、恢复、导入与导出已接入；完整故障 / 进程中断矩阵及真机体验仍须验收，见 [当前状态](status.md)。
 
 ## 按需增长的依赖方向
 

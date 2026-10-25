@@ -9,7 +9,7 @@
 
 1. 阅读 `docs/status.md`、`docs/product.md`，检查 `git status --short --branch`，保留用户已有改动。
 2. 按 `docs/README.md` 的任务索引读取相关规范；只有涉及的文档需要加载。
-3. 遵守当前用户范围。路线图是候选工作，不代表允许自动推进。当前仅完成基础工程，未开始 MVP。
+3. 遵守当前用户范围。路线图是候选工作，不代表允许自动推进。当前已有原生工作区开发版，完整 MVP 验收未完成，以 `docs/status.md` 为准。
 4. 涉及多步骤功能或数据迁移时，使用 `docs/templates/task.md` 在 `docs/tasks/` 建立短计划；小修直接实施。
 
 ## 技术与命令

@@ -1,6 +1,6 @@
 {
   "date": "2026-10-24",
-  "status": "design draft; not integrated into Android",
+  "status": "outlined sources retained; lockup integrated as Android VectorDrawable on 2026-10-25; Fredoka font not bundled",
   "sources": [
     {
       "name": "fredoka",
@@ -25,7 +25,7 @@
       "revision": "7faf87628a1ad6175975bc595344337ce14a7db4",
       "license_source": "https://raw.githubusercontent.com/lucide-icons/lucide/7faf87628a1ad6175975bc595344337ce14a7db4/LICENSE",
       "license_sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
-      "usage": "host-provided preview icons only; Android icon files not vendored"
+      "usage": "host-provided preview icons; 39 fixed-revision Android vectors recorded in assets/android/provenance.json"
     }
   ],
   "wordmark": {

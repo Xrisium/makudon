@@ -52,7 +52,7 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Setup -SdkPath 'D:\Android\Sdk
 - 打开 `MainActivity.kt` 激活现有 JetBrains Kotlin 扩展。首次工作区信任、扩展条款等由用户在界面确认。
 - 从生成工作区启动的集成终端自带 `JAVA_HOME` / `ANDROID_HOME`。如果语言服务导入不正确，先 `Check` 判断是否为真实编译问题，然后重载窗口/工作区并检查 Kotlin 输出。
 - 官方 Kotlin LSP 对 Android Gradle 工程仍属实验性支持；可手动编辑、跳转和检查代码，但不能承诺 Android Studio 同等的调试器、Compose 预览或布局检查器。当前不配置无效的 F5 调试入口。
-- 使用系统默认字体及基础主题；后续产品 UI 按设备约定在目标设备观察，有真机时仅用真机。
+- 使用本地 Noto Sans SC，UI 500 / 正文 450、独立字体角色与多主题；按设备约定观察，有真机时仅用真机，用户指定模拟器时例外。
 
 普通终端直接运行 Wrapper 时，需要先设置本进程的 `JAVA_HOME`：
 
@@ -64,6 +64,10 @@ $env:JAVA_HOME = "$env:USERPROFILE\DevTools\Android\Jdk\17.0.18+8"
 macOS/Linux 用户可用 JDK 17 + SDK 36 + `bash ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug`；Windows 测试脚本不跨平台。SDK 路径可通过本机 `local.properties` 或 `ANDROID_HOME` 指定。
 
 ## 缓存、网络与权限
+
+工作区显式增加 lifecycle-viewmodel-android 2.9.0（进程内单编辑所有者）与 kotlinx-coroutines-android 1.8.1（后台 I/O、单写者和生命周期保存），继续使用本机缓存的稳定版本；虚拟时钟 coroutines-test 仅进入测试。替代方案是 Activity 自持状态及手写线程 / 队列，但会增加重建、调度和故障测试成本，因此未采用。未引入 DI、数据库、导航或 Markdown 运行库。
+
+依赖独立净增量尚未剥离测量；当前 debug APK 约 20.9 MiB，其中完整字体压缩约 10.75 MiB 是主要素材体积。字体选择与来源见 [Android 集成](../assets/android/README.md)。工具链没有升级；`lint.xml` 只在固定版本声明文件忽略“有新版本”的提示，兼容性与代码检查仍全部启用。
 
 - 继续使用用户现有 `.gradle` 缓存和代理配置。本机共享配置此前使用 `127.0.0.1:7890`，仓库不写代理地址或凭据。
 - 下载失败先检查网络/现有代理，不改用不明 Maven 镜像，不删除全部缓存。

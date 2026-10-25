@@ -2,7 +2,7 @@
 
 轻量、本地优先的 Android Markdown / 纯文本编辑器，用于笔记、日记和长篇写作。
 
-**当前阶段：工程基础。** 只有能启动的品牌占位页，没有文档列表、编辑器、保存、预览或导出功能。产品方向见 [产品约定](docs/product.md)。
+**当前阶段：原生工作区开发版。** 已接入目录 / 最近 / 设置、私有文稿、全自动保存、文件导入导出、目录整理与有限 Markdown 排版编辑。完整富文本、独立备份和真机体验仍待后续验证。实际结果见 [当前状态](docs/status.md)。
 
 ## 在这台 Windows 电脑上使用
 
@@ -28,8 +28,9 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Check
 
 - `MainActivity.kt`：Android 入口。
 - `app/MakudonApp.kt`：主题和应用装配入口。
-- `feature/workspace/WorkspaceScreen.kt`：目前唯一页面。
-- `ui/theme/Theme.kt`：浅色、深色主题。
+- `feature/workspace/`：工作区、目录、新建、编辑器、ViewModel 与保存协调。
+- `domain/Workspace.kt`、`data/WorkspaceStore.kt`：规则、私有目录与正文存储。
+- `ui/theme/Theme.kt`：主题、UI 与正文字体角色。
 - `gradle/libs.versions.toml`：依赖版本。
 
 代码位于 `app/src/main/kotlin/io/github/xrisium/makudon/`。工程采用一个 Gradle 模块，后续按功能扩展；详见 [架构](docs/architecture.md)。

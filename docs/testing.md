@@ -10,7 +10,7 @@
 
 指定目标后每次先增量构建，再 `adb install -r`、重启开发应用并检查进程。无真机使用模拟器时，正常退出保存的 Quick Boot 快照通常可加快下次启动。
 
-当前看到 Makudon 图标和标题即是预期，尚无可编辑内容。
+当前应进入“最近”，可新建、编辑、自动保存和重新打开；目录长按提供整理动作。开发版详细范围与限制见 [工作区验收记录](testing/2026-10-25-workspace.md)。运行前等待“已保存到本机”，尤其是保留数据覆盖安装会重启进程。
 
 **覆盖安装保留已持久化数据，重启进程不会保留仅在内存中的未保存内容。未来编辑器接入前后都应先保存再运行测试入口。**
 
@@ -49,7 +49,19 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Logcat -Serial YOUR_SERIAL
 3. 存储功能：杀进程后恢复、保存竞争、磁盘/权限失败、导入导出往返、覆盖冲突。
 4. 真机：输入法、性能、后台回收与不同厂商行为；模拟器结果不可替代。
 
-新增业务规则时增加有意义的 JVM 测试；平台边界需要时再增加 instrumentation / Compose UI 测试依赖。当前不把静态占位页包装为已有业务测试覆盖。
+业务规则已有 JVM 测试；平台交互使用单独测试 APK 的原生 Instrumentation / UiAutomation，未新增 UI 测试运行库。测试 provider 只存在测试 APK，提供合成只读源文件及导出目标；不向正式应用加入测试入口。
+
+```powershell
+# 先按设备策略识别目标；下面仅示意本次明确要求的模拟器
+$env:JAVA_HOME = "$env:USERPROFILE\DevTools\Android\Jdk\17.0.18+8"
+.\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest
+# Run 会构建并保留数据重启应用；先等正文已保存
+pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
+& "$env:USERPROFILE\DevTools\Android\Sdk\platform-tools\adb.exe" -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+& "$env:USERPROFILE\DevTools\Android\Sdk\platform-tools\adb.exe" -s emulator-5554 shell am instrument -w io.github.xrisium.makudon.debug.test/io.github.xrisium.makudon.WorkspaceInstrumentation
+```
+
+该 runner 输出逐项 PASS 和最终汇总，任一 FAILED / Process crashed 都视为失败，不能只看 adb 退出码。它会创建合成文稿、验证长按 / 自动保存 / 目录操作并保留部分测试资料供用户试用，不清数据或修改已有文稿。`-e case long` 只执行长文边界，不能代替完整流程。模拟器序列号每次需重新确认。
 
 首个编辑切片的 [详细验收规范](testing/plain-text-editor-acceptance.md) 已形成草案，覆盖保存竞争、失败注入、真实进程中断、恢复、中文输入与长文性能；目前全部待执行，原基础工程验收不能替代这些结果。
 

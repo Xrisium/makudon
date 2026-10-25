@@ -1,6 +1,6 @@
 # Makudon 品牌字标草案
 
-日期：2026-10-24。状态：讨论草案，未集成 Android，尚待用户视觉确认。
+日期：2026-10-24；2026-10-25 集成。状态：用户采用方案，已转换为 Android 矢量组合，原始 SVG 保留。实际资源见 [Android 集成记录](../android/README.md)。
 
 - [makudon-wordmark.svg](makudon-wordmark.svg)：仅文字轮廓，透明背景，`currentColor`。
 - [makudon-lockup.svg](makudon-lockup.svg)：原始图标几何 + 字标横向组合，透明背景，`currentColor`。
