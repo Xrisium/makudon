@@ -178,6 +178,11 @@ class WorkspaceInstrumentation : Instrumentation() {
         val exportUri = android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/export")
         main { model.export(exportUri) }; ready()
         verify(targetContext.contentResolver.openInputStream(exportUri)?.bufferedReader()?.use { it.readText() } == exported, "Export writes captured snapshot and does not switch to later editor contents")
+        val protectedBody = source(id, DocumentKind.Markdown)
+        val privateUri = android.net.Uri.fromFile(File(targetContext.filesDir, "workspace/documents/$id/body.md"))
+        main { model.prepareExport(); model.export(privateUri) }; ready()
+        verify(main { model.ui.error == Failure.Missing } && source(id, DocumentKind.Markdown) == protectedBody, "Export rejects file URI and cannot overwrite a private draft")
+        main { model.dismissError() }
         val beforeInvalid = main { model.ui.workspace?.entries?.size }
         main { model.import(android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/invalid")) }
         waitFor("invalid import error") { main { !model.ui.busy && model.ui.error != null } }

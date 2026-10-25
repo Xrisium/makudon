@@ -236,6 +236,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         launchWork {
             if (text == null) throw WorkspaceException(Failure.Missing)
             disk {
+                if (uri.scheme != "content") throw WorkspaceException(Failure.Missing)
                 val resolver = getApplication<Application>().contentResolver
                 val bytes = TextRules.bytes(text)
                 val stream = resolver.openOutputStream(uri, "w") ?: throw WorkspaceException(Failure.Storage)
