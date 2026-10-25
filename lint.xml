@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- ADR 0001 deliberately pins the existing SDK/JDK/AGP/Compose combination.
+         Ignore update advertisements only in the version declarations, not compatibility or code checks. -->
+    <issue id="AndroidGradlePluginVersion">
+        <ignore path="gradle/libs.versions.toml" />
+        <ignore path="gradle/wrapper/gradle-wrapper.properties" />
+    </issue>
+    <issue id="GradleDependency,NewerVersionAvailable">
+        <ignore path="gradle/libs.versions.toml" />
+    </issue>
+</lint>

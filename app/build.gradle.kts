@@ -14,6 +14,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.0.1"
+        testInstrumentationRunner = "io.github.xrisium.makudon.WorkspaceInstrumentation"
     }
 
     buildTypes {
@@ -32,6 +33,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     lint {
+        lintConfig = rootProject.file("lint.xml")
         abortOnError = true
         warningsAsErrors = true
     }
@@ -48,5 +50,8 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.lifecycle.viewmodel)
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
