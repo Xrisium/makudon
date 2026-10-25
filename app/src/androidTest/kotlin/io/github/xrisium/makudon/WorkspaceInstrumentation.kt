@@ -21,19 +21,33 @@ class WorkspaceInstrumentation : Instrumentation() {
     private lateinit var model: WorkspaceViewModel
     private val checks = mutableListOf<String>()
     private var onlyLong = false
+    private var onlyMotion = false
+    private var onlyVisual = false
+    private var onlyTabs = false
     private var currentActivity: Activity? = null
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); onlyLong = arguments?.getString("case") == "long"; start() }
+    override fun onCreate(arguments: Bundle?) {
+        super.onCreate(arguments)
+        onlyLong = arguments?.getString("case") == "long"
+        onlyMotion = arguments?.getString("case") == "motion"
+        onlyVisual = arguments?.getString("case") == "motion-visual"
+        onlyTabs = arguments?.getString("case") == "tabs"
+        start()
+    }
     override fun onStart() {
         try {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            if (onlyLong) longDocumentTest() else exercise()
+            when { onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
-            if (::model.isInitialized) sendStatus(0, Bundle().apply { putString("stream", main { "Diagnostics: phase=${model.save?.status?.value}, revision=${model.save?.revision}, saved=${model.save?.savedRevision}, bufferLength=${model.textState?.text?.length}, latestLength=${model.save?.latest?.length}, error=${model.ui.error}\n" }) })
+            if (::model.isInitialized) sendStatus(0, Bundle().apply { putString("stream", main { "Diagnostics: page=${model.ui.page}, busy=${model.ui.busy}, transitioning=${model.ui.transitioning}, tabTransitioning=${model.ui.tabTransitioning}, phase=${model.save?.status?.value}, revision=${model.save?.revision}, saved=${model.save?.savedRevision}, bufferLength=${model.textState?.text?.length}, latestLength=${model.save?.latest?.length}, error=${model.ui.error}\n" }) })
+            val tabs = nodes().filter { it.text?.toString() in listOf("目录", "最近", "设置") }
+            sendStatus(0, Bundle().apply { putString("stream", "Tab semantics: " + tabs.joinToString { "${it.text}: enabled=${it.isEnabled}, clickable=${it.isClickable}, parentClickable=${it.parent?.isClickable}" } + "\n") })
+            val tools = nodes().filter { it.contentDescription?.toString() in listOf("搜索文稿", "新建文稿", "创建目录", "新建文件夹") }
+            sendStatus(0, Bundle().apply { putString("stream", "Tool semantics: " + tools.joinToString { "${it.contentDescription}: enabled=${it.isEnabled}, clickable=${it.isClickable}, parentEnabled=${it.parent?.isEnabled}, parentClickable=${it.parent?.isClickable}" } + "\n") })
             finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "\nFAILED after ${checks.size} checks: ${e.javaClass.simpleName}: ${e.message}\n" + e.stackTrace.take(5).joinToString("\n")); putString("failure", e.message) })
         }
     }
@@ -43,7 +57,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         while (!condition()) { if (SystemClock.uptimeMillis() - start > timeoutMs) error("Timed out: $label"); SystemClock.sleep(40) }
         waitForIdleSync()
     }
-    private fun ready() { waitFor("workspace ready") { main { !model.ui.busy } }; SystemClock.sleep(350); waitForIdleSync() }
+    private fun ready() { waitFor("workspace ready") { main { !model.ui.busy && !model.ui.transitioning && !model.ui.tabTransitioning } }; SystemClock.sleep(350); waitForIdleSync() }
     private fun verify(value: Boolean, label: String) { check(value) { label }; checks += label; sendStatus(0, Bundle().apply { putString("stream", "PASS ${checks.size}: $label\n") }) }
     private fun nodes(): List<AccessibilityNodeInfo> {
         val root = uiAutomation.rootInActiveWindow ?: return emptyList()
@@ -88,8 +102,13 @@ class WorkspaceInstrumentation : Instrumentation() {
         var node = find(label); node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
         SystemClock.sleep(250); node = find(label); node.refresh()
         if (!physical) {
-            while (!node.isLongClickable) node = node.parent ?: error("Missing long press action")
-            check(node.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK))
+            waitFor("stable long press action $label") {
+                nodes().filter { it.text?.toString() == label || it.contentDescription?.toString() == label }.any { candidate ->
+                    var current: AccessibilityNodeInfo? = candidate
+                    while (current != null && !current.isLongClickable) current = current.parent
+                    current?.let { it.refresh(); it.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK) } == true
+                }
+            }
             waitFor("context menu") { nodes().any { it.text?.toString() == "重命名" } }
             find(label)
             return
@@ -107,11 +126,340 @@ class WorkspaceInstrumentation : Instrumentation() {
     private fun saved(timeoutMs: Long = 12_000) = waitFor("current revision saved", timeoutMs) { main { model.save?.status?.value?.phase == SavePhase.Saved && model.save?.latest == model.textState?.text?.toString() } }
     private fun source(id: String, kind: DocumentKind) = File(targetContext.filesDir, "workspace/documents/$id/body.${kind.extension}").readText(Charsets.UTF_8)
 
+    private fun shell(command: String): String = uiAutomation.executeShellCommand(command).use {
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(it).bufferedReader().use { input -> input.readText().trim() }
+    }
+
+    private fun swipe(fromX: Float, fromY: Float, toX: Float, toY: Float) {
+        val display = targetContext.resources.displayMetrics
+        val time = SystemClock.uptimeMillis()
+        fun send(action: Int, fraction: Float) {
+            MotionEvent.obtain(time, SystemClock.uptimeMillis(), action,
+                (fromX + (toX - fromX) * fraction) * display.widthPixels,
+                (fromY + (toY - fromY) * fraction) * display.heightPixels, 0).let {
+                it.source = InputDevice.SOURCE_TOUCHSCREEN
+                check(uiAutomation.injectInputEvent(it, true)); it.recycle()
+            }
+        }
+        send(MotionEvent.ACTION_DOWN, 0f)
+        for (step in 1..12) { SystemClock.sleep(20); send(MotionEvent.ACTION_MOVE, step / 12f) }
+        send(MotionEvent.ACTION_UP, 1f)
+        ready()
+    }
+
+    private fun tap(label: String) {
+        val bounds = Rect(); find(label).getBoundsInScreen(bounds)
+        val time = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, bounds.centerX().toFloat(), bounds.centerY().toFloat(), 0).let {
+                it.source = InputDevice.SOURCE_TOUCHSCREEN
+                check(uiAutomation.injectInputEvent(it, true)); it.recycle()
+            }
+        }
+        ready()
+    }
+
+    private fun motionTest() {
+        val oldTheme = main { checkNotNull(model.ui.workspace).theme }
+        val oldScale = shell("settings get global animator_duration_scale")
+        val catalog = File(targetContext.filesDir, "workspace/catalog.properties")
+        val catalogBefore = catalog.readBytes()
+        try {
+            shell("settings put global animator_duration_scale 1")
+            // Android intentionally omits the accessibility click action on a selected tab.
+            tap("最近"); ready()
+            verify(main { model.ui.page == Page.Recent && !model.ui.tabTransitioning }, "Clicking current tab does not leave navigation locked")
+            swipe(.82f, .55f, .18f, .55f)
+            verify(main { model.ui.page == Page.Settings }, "Horizontal drag settles on Settings")
+            swipe(.82f, .55f, .18f, .55f)
+            verify(main { model.ui.page == Page.Settings }, "Right boundary does not wrap")
+            swipe(.18f, .55f, .82f, .55f)
+            verify(main { model.ui.page == Page.Recent }, "Reverse drag returns to Recent")
+            swipe(.18f, .55f, .82f, .55f)
+            verify(main { model.ui.page == Page.Directory }, "Reverse drag reaches Directory")
+            swipe(.18f, .55f, .82f, .55f)
+            verify(main { model.ui.page == Page.Directory }, "Left boundary does not wrap")
+            click("搜索文稿"); setText("搜索文稿名称", "动效搜索保留")
+            swipe(.82f, .55f, .18f, .55f)
+            click("目录"); ready()
+            var restoredSearch: AccessibilityNodeInfo? = null
+            waitFor("restored search accessibility node") {
+                restoredSearch = nodes().firstOrNull { it.className?.toString() == "android.widget.EditText" }
+                restoredSearch != null
+            }
+            val searchField = checkNotNull(restoredSearch)
+            verify(searchField.text?.toString()?.contains("动效搜索保留") == true, "Search query survives swipe and bottom tab navigation")
+            check(searchField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "动效搜索更新") }))
+            waitFor("updated restored search") { nodes().any { it.text?.toString()?.contains("动效搜索更新") == true } }
+            verify(true, "Restored search field remains editable")
+            click("关闭"); ready()
+            click("设置"); ready()
+            swipe(.5f, .72f, .5f, .38f)
+            verify(main { model.ui.page == Page.Settings }, "Vertical scrolling does not switch tabs")
+            click("最近"); ready()
+            verify(catalog.readBytes().contentEquals(catalogBefore), "Tab gestures and clicks do not rewrite catalog preferences or document metadata")
+
+            click("新建文稿"); click("纯文本"); ready()
+            val id = main { checkNotNull(model.ui.activeId) }
+            val field = main { checkNotNull(model.textState) }
+            val first = "动效合成资料：立即返回仍应保存中文与 emoji 😀。"
+            main {
+                field.edit { replace(0, length, first) }
+                model.back(); model.back()
+            }
+            ready()
+            verify(source(id, DocumentKind.Plain) == first && main { model.ui.page == Page.Recent && model.textState == null }, "Immediate edit plus repeated back saves complete body and releases departing editor")
+            main { model.open(id) }; ready()
+            val sessionField = main { model.textState }
+            val obsoleteNavigation = main { model.ui.navigationId - 1 }
+            main { model.finishTransition(obsoleteNavigation) }
+            verify(main { model.textState === sessionField && model.ui.activeId == id }, "Obsolete transition completion cannot clear the current editor")
+
+            // Deliberately block only this run's synthetic body's atomic temporary file.
+            val pending = File(targetContext.filesDir, "workspace/documents/$id/body.txt.new")
+            check(pending.mkdir())
+            val failed = first + "保存失败时保留此句。"
+            try {
+                setText("编辑正文", failed)
+                main { model.back() }; ready()
+                verify(main { model.ui.page == Page.Editor && model.save?.status?.value?.phase == SavePhase.Failed && model.textState?.text?.toString() == failed && !model.ui.transitioning }, "Failed save cancels back transition and preserves latest editable buffer")
+                screenshot("motion-save-failed")
+            } finally { check(pending.delete()) }
+            setText("编辑正文", failed + "仍可继续输入。")
+            main { model.retrySave() }; ready(); saved()
+            verify(source(id, DocumentKind.Plain).endsWith("仍可继续输入。"), "Failed navigation unlocks editing and retry saves the newest text")
+
+            main { model.previous() }; ready()
+            verify(main { model.ui.page == Page.Previous }, "Previous version uses secondary navigation")
+            click("返回"); ready()
+            verify(main { model.ui.page == Page.Editor && model.textState === sessionField }, "Reverse previous-version transition retains the original editor field")
+            main { model.back() }
+            // Recreate while the IO barrier or reverse animation is pending.
+            main { currentActivity?.recreate() }
+            SystemClock.sleep(600); ready()
+            verify(main { model.ui.page == Page.Recent && model.textState == null && !model.ui.transitioning }, "Activity recreation during exit cannot strand the editor or navigation lock")
+
+            main { model.open(id) }; ready()
+            main { model.back(); model.backgroundSave() }; ready()
+            verify(main { model.ui.page == Page.Recent && model.textState == null }, "Background completion does not strand a departing session")
+
+            click("设置"); ready()
+            for (theme in ColorTheme.entries) {
+                main { model.preferences(theme = theme) }; ready()
+                verify(main { model.ui.workspace?.theme == theme }, "Theme ${theme.name} settles without rebuilding navigation")
+            }
+            main { model.preferences(theme = ColorTheme.Paper) }; ready()
+            main { model.preferences(theme = ColorTheme.Ink) }
+            SystemClock.sleep(100); screenshot("motion-theme-mid")
+            ready(); screenshot("motion-theme-ink")
+            main { model.preferences(theme = ColorTheme.Cream) }; ready()
+            main { model.preferences(theme = ColorTheme.Sage) }; ready()
+            verify(main { model.ui.workspace?.theme == ColorTheme.Sage }, "Sequential theme retargeting reaches the latest palette")
+
+            shell("settings put global animator_duration_scale 0")
+            SystemClock.sleep(150)
+            click("最近"); ready(); main { model.open(id) }; ready()
+            click("返回"); ready()
+            verify(main { model.ui.page == Page.Recent && !model.ui.transitioning && !model.ui.tabTransitioning && model.textState == null }, "Zero animation scale completes tab transition and reverse navigation without locks")
+            main { model.preferences(theme = ColorTheme.Paper) }; ready()
+            screenshot("motion-zero-scale")
+        } finally {
+            shell(if (oldScale == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $oldScale")
+            ready()
+            main { model.preferences(theme = oldTheme) }; ready()
+        }
+    }
+
+    private fun tabTest() {
+        val oldScale = shell("settings get global animator_duration_scale")
+        val display = targetContext.resources.displayMetrics
+        val density = display.density
+        val licenses = targetContext.getString(R.string.licenses)
+        val paper = targetContext.getString(R.string.theme_paper)
+        fun enabled(label: String): Boolean {
+            var node: AccessibilityNodeInfo? = find(label)
+            while (node != null) {
+                if (!node.isEnabled) return false
+                node = node.parent
+            }
+            return true
+        }
+        fun pixels(rect: Rect): android.graphics.Bitmap {
+            val full = checkNotNull(uiAutomation.takeScreenshot())
+            return android.graphics.Bitmap.createBitmap(full, rect.left, rect.top, rect.width(), rect.height()).also { full.recycle() }
+        }
+        fun hold(offsetDp: Float, release: Boolean, inspect: () -> Unit) {
+            val bounds = Rect(); find(licenses).getBoundsInScreen(bounds)
+            val time = SystemClock.uptimeMillis()
+            fun send(action: Int, offset: Float = 0f) {
+                MotionEvent.obtain(time, SystemClock.uptimeMillis(), action,
+                    display.widthPixels * .6f + offset * density, bounds.centerY().toFloat(), 0).let {
+                    it.source = InputDevice.SOURCE_TOUCHSCREEN
+                    check(uiAutomation.injectInputEvent(it, true)); it.recycle()
+                }
+            }
+            send(MotionEvent.ACTION_DOWN)
+            try {
+                SystemClock.sleep(80)
+                if (offsetDp != 0f) send(MotionEvent.ACTION_MOVE, offsetDp)
+                SystemClock.sleep(750)
+                inspect()
+            } finally { send(if (release) MotionEvent.ACTION_UP else MotionEvent.ACTION_CANCEL, offsetDp) }
+            ready()
+        }
+        try {
+            shell("settings put global animator_duration_scale 1")
+            click("设置"); ready()
+            val chipBounds = Rect(); find(paper).getBoundsInScreen(chipBounds)
+            val before = pixels(chipBounds)
+            try {
+                hold(0f, false) {
+                    verify(main { model.ui.page == Page.Settings && !model.ui.tabTransitioning }, "Stationary long press does not start navigation")
+                    verify(enabled(licenses) && enabled(paper), "Long press keeps license and theme controls enabled")
+                    val during = pixels(chipBounds)
+                    try { verify(before.sameAs(during), "Long press elsewhere does not recolor theme text pixels") } finally { during.recycle() }
+                }
+                hold(16f, true) {
+                    verify(main { !model.ui.tabTransitioning }, "Small horizontal jitter does not drive an animation")
+                }
+                verify(main { model.ui.page == Page.Settings }, "Subthreshold release does not switch tabs")
+                hold(72f, false) {
+                    verify(main { !model.ui.tabTransitioning && model.ui.page == Page.Settings }, "Threshold drag stays on source until pointer up")
+                    verify(enabled(licenses) && enabled(paper), "Recognized horizontal gesture does not disable settings text")
+                    val during = pixels(chipBounds)
+                    try { verify(before.sameAs(during), "Threshold drag does not move or gray theme text before release") } finally { during.recycle() }
+                    screenshot("tabs-held")
+                }
+                verify(main { model.ui.page == Page.Settings }, "Cancelled horizontal gesture does not navigate")
+            } finally { before.recycle() }
+            hold(72f, true) { }
+            verify(main { model.ui.page == Page.Recent }, "Accepted pointer up advances exactly one neighboring tab")
+            swipe(.18f, .55f, .82f, .55f)
+            verify(main { model.ui.page == Page.Directory }, "Second discrete swipe reaches Directory")
+            swipe(.18f, .55f, .82f, .55f)
+            verify(main { model.ui.page == Page.Directory }, "Discrete swipe does not wrap beyond the first tab")
+
+            // Slow the animation only for observing the direct jump and its input gate.
+            shell("settings put global animator_duration_scale 5")
+            SystemClock.sleep(200)
+            main { model.selectTab(Page.Settings) }
+            val id = main { model.ui.tabTransitionId }
+            SystemClock.sleep(250); screenshot("tabs-direct-mid")
+            verify(main { model.ui.page == Page.Settings && model.ui.tabTransitioning }, "Nonadjacent navigation targets Settings directly during animation")
+            main { model.selectTab(Page.Recent); model.newDocument(); model.finishTabTransition(id - 1) }
+            verify(main { model.ui.page == Page.Settings && model.ui.tabTransitioning && model.ui.tabTransitionId == id }, "Repeated navigation and stale completion cannot interrupt an active tab transition")
+            ready()
+            verify(enabled(licenses) && enabled(paper), "Settings controls remain enabled after direct transition")
+            swipe(.82f, .55f, .18f, .55f)
+            verify(main { model.ui.page == Page.Settings }, "Discrete swipe does not wrap beyond the last tab")
+            swipe(.5f, .72f, .5f, .38f)
+            verify(main { model.ui.page == Page.Settings }, "Vertical scrolling remains independent of horizontal navigation")
+            main { model.selectTab(Page.Directory); currentActivity?.recreate() }
+            ready()
+            verify(main { model.ui.page == Page.Directory && !model.ui.tabTransitioning }, "Activity recreation during a tab transition releases its input gate")
+            shell("settings put global animator_duration_scale 0")
+            SystemClock.sleep(200)
+            click("设置"); ready()
+            verify(main { model.ui.page == Page.Settings && !model.ui.tabTransitioning }, "Zero animation scale completes a nonadjacent tab switch without a lock")
+            screenshot("tabs-settled")
+        } finally {
+            shell(if (oldScale == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $oldScale")
+        }
+    }
+
+    private fun motionVisualTest() {
+        val oldTheme = main { checkNotNull(model.ui.workspace).theme }
+        val oldScale = shell("settings get global animator_duration_scale")
+        val oldFont = shell("settings get system font_scale")
+        val oldNight = shell("cmd uimode night").substringAfter(": ").trim()
+        try {
+            shell("settings put global animator_duration_scale 3")
+            main { model.go(Page.Directory) }; ready()
+            main { model.createFolder("动效验收-" + SystemClock.uptimeMillis(), Workspace.ROOT) }; ready()
+            val folder = main { model.ui.selected }
+            main { model.newDocument(Page.Directory, folder) }; ready()
+            main { model.create(DocumentKind.Markdown) }; ready()
+            val id = main { checkNotNull(model.ui.activeId) }
+            main { model.typeset(false) }
+            setText("编辑正文", "# 动效验收\n\n中文与 emoji 😀，只用于测试过渡。\n\n第二段应稳定显示。")
+            saved()
+            val retained = main { model.textState }
+            main { model.back() }
+            val start = SystemClock.uptimeMillis()
+            while (main { model.ui.page != Page.Directory }) {
+                check(SystemClock.uptimeMillis() - start < 12_000); SystemClock.sleep(5)
+            }
+            verify(main { model.ui.transitioning && model.textState === retained && model.ui.backwards }, "Reverse exit retains the exact editor session until the final frame")
+            SystemClock.sleep(220); screenshot("motion-editor-exit-mid")
+            ready()
+            verify(main { model.textState == null }, "Reverse exit releases the retained session on completion")
+            screenshot("motion-directory")
+            // Folder and child are synthetic; exercise real arrow and list animations.
+            val name = main { checkNotNull(model.ui.workspace?.entry(folder)).name }
+            tap("展开 $name"); ready(); screenshot("motion-directory-expanded")
+            tap("收起 $name"); ready(); screenshot("motion-directory-collapsed")
+            main { model.newDocument(Page.Directory, folder) }
+            SystemClock.sleep(100); screenshot("motion-new-mid")
+            ready(); click("返回"); ready()
+            verify(main { model.ui.page == Page.Directory && model.ui.selected == folder }, "New-page reverse transition restores Directory and selection")
+
+            main { model.go(Page.Settings) }; ready()
+            main { model.preferences(theme = ColorTheme.Paper) }; ready()
+            SystemClock.sleep(900)
+            main { model.preferences(theme = ColorTheme.Ink) }
+            while (main { model.ui.busy }) SystemClock.sleep(5)
+            val paletteSamples = mutableSetOf<Int>()
+            var capturedMiddle = false
+            repeat(16) {
+                uiAutomation.takeScreenshot()?.let { bitmap ->
+                    val pixel = bitmap.getPixel(2, bitmap.height / 3)
+                    paletteSamples += pixel
+                    if (!capturedMiddle && pixel != 0xFFF7F7F5.toInt() && pixel != 0xFF1E201F.toInt()) {
+                        File(targetContext.cacheDir, "workspace-test-motion-theme-slow-mid.png").outputStream().use { output -> bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output) }
+                        capturedMiddle = true
+                    }
+                    bitmap.recycle()
+                }
+                SystemClock.sleep(45)
+            }
+            sendStatus(0, Bundle().apply { putString("stream", "Theme background sample colors=${paletteSamples.joinToString { Integer.toHexString(it) }}\n") })
+            verify(paletteSamples.size > 2 && capturedMiddle, "Theme paints intermediate colors rather than jumping between endpoint palettes")
+            ready(); screenshot("motion-theme-slow-final")
+            if (oldNight in listOf("yes", "no", "auto")) {
+                main { model.preferences(theme = ColorTheme.System) }; ready()
+                shell("cmd uimode night yes"); SystemClock.sleep(900); ready()
+                screenshot("motion-system-dark")
+                shell("cmd uimode night no"); SystemClock.sleep(900); ready()
+                screenshot("motion-system-light")
+                verify(main { model.ui.workspace?.theme == ColorTheme.System && !model.ui.transitioning }, "System night changes preserve follow-system preference and navigation")
+            }
+            main { model.licenses() }; ready(); screenshot("motion-licenses")
+            click("返回"); ready()
+            verify(main { model.ui.page == Page.Settings }, "License page reverse transition returns to Settings")
+            shell("settings put system font_scale 2.0")
+            waitFor("200 percent font applied to Activity") { main { currentActivity?.resources?.configuration?.fontScale == 2f } }
+            ready()
+            screenshot("motion-font-200")
+            verify(main { model.ui.page == Page.Settings && !model.ui.transitioning }, "200 percent font configuration does not strand navigation")
+            main { model.go(Page.Directory) }; ready(); screenshot("motion-directory-font-200")
+            // Remove only the synthetic subtree made by this visual test.
+            main { model.delete(folder) }; ready()
+            verify(main { model.ui.workspace?.entry(folder) == null && model.ui.workspace?.entry(id) == null }, "Animated deletion removes only the synthetic test subtree")
+        } finally {
+            shell(if (oldScale == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $oldScale")
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            if (oldNight in listOf("yes", "no", "auto")) shell("cmd uimode night $oldNight")
+            SystemClock.sleep(700); ready()
+            main { model.preferences(theme = oldTheme) }; ready()
+        }
+    }
+
     private fun exercise() {
         verify(main { model.ui.page == Page.Recent }, "Launch defaults to Recent")
+        val defaultLocation = main { if (model.ui.workspace?.entry(Workspace.INBOX) != null) Workspace.INBOX else Workspace.ROOT }
         click("新建文稿"); click("Markdown"); ready()
         val id = main { checkNotNull(model.ui.activeId) }
-        verify(main { model.ui.workspace?.entry(id)?.parent == Workspace.INBOX }, "Recent new draft targets Inbox")
+        verify(main { model.ui.workspace?.entry(id)?.parent == defaultLocation }, "Recent new draft targets Inbox or explicit root fallback")
         click("源码")
         val original = "# 模拟器写作\n\n第一段中文与 emoji 😀。\n\n## 明天\n\n保留段落  \n行尾\n\n- [ ] 未支持的语法\n\n"
         setText("编辑正文", original); saved()
@@ -157,8 +505,8 @@ class WorkspaceInstrumentation : Instrumentation() {
         main { model.open(copied) }; ready(); setText("编辑正文", "只修改副本"); saved(); click("返回"); ready()
         verify(source(plain, DocumentKind.Plain) != source(copied, DocumentKind.Plain), "Editing copy preserves original body")
         main { model.rename(copied, prefix + "-移动稿") }; ready()
-        main { model.copy(copied, true) }; ready(); main { model.paste(Workspace.INBOX) }; ready()
-        verify(main { model.ui.workspace?.entry(copied)?.parent == Workspace.INBOX && model.clipboard == null }, "Cut moves stable ID only after successful paste")
+        main { model.copy(copied, true) }; ready(); main { model.paste(defaultLocation) }; ready()
+        verify(main { model.ui.workspace?.entry(copied)?.parent == defaultLocation && model.clipboard == null }, "Cut moves stable ID only after successful paste")
         // Only synthetic items created by this run are removed.
         longPress(prefix + "-改名"); click("删除"); find("删除文件夹？"); verify(nodes().any { it.text?.toString()?.contains("1 篇文稿") == true }, "Recursive delete confirms actual descendant document count")
         click("删除"); ready()
@@ -204,7 +552,8 @@ class WorkspaceInstrumentation : Instrumentation() {
         longDocumentTest()
     }
     private fun longDocumentTest() {
-        main { model.newDocument(Page.Recent); model.create(DocumentKind.Plain) }; ready()
+        main { model.newDocument(Page.Recent) }; ready()
+        main { model.create(DocumentKind.Plain) }; ready()
         val single = "中".repeat(100_000)
         val start = SystemClock.uptimeMillis()
         setText("编辑正文", single); saved(60_000)
