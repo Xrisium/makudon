@@ -24,6 +24,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyMotion = false
     private var onlyVisual = false
     private var onlyTabs = false
+    private var onlyAppearance = false
     private var currentActivity: Activity? = null
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
     override fun onCreate(arguments: Bundle?) {
@@ -32,6 +33,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyMotion = arguments?.getString("case") == "motion"
         onlyVisual = arguments?.getString("case") == "motion-visual"
         onlyTabs = arguments?.getString("case") == "tabs"
+        onlyAppearance = arguments?.getString("case") == "appearance"
         start()
     }
     override fun onStart() {
@@ -39,7 +41,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            when { onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
@@ -364,6 +366,138 @@ class WorkspaceInstrumentation : Instrumentation() {
             screenshot("tabs-settled")
         } finally {
             shell(if (oldScale == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $oldScale")
+        }
+    }
+
+    private fun appearanceTest() {
+        val oldTheme = main { checkNotNull(model.ui.workspace).theme }
+        val oldScale = shell("settings get global animator_duration_scale")
+        val density = targetContext.resources.displayMetrics.density
+        val paper = targetContext.getString(R.string.theme_paper)
+        val cream = targetContext.getString(R.string.theme_cream)
+        val licenses = targetContext.getString(R.string.licenses)
+        val catalog = File(targetContext.filesDir, "workspace/catalog.properties")
+        // Hold the real disk gate to make even a slow preferences write observable.
+        // This reproduces the disabled-color flash independently of device speed.
+        val ioLock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        fun crop(rect: Rect): android.graphics.Bitmap {
+            val full = checkNotNull(uiAutomation.takeScreenshot())
+            return android.graphics.Bitmap.createBitmap(full, rect.left, rect.top, rect.width(), rect.height()).also { full.recycle() }
+        }
+        fun enabled(label: String): Boolean {
+            var node: AccessibilityNodeInfo? = find(label)
+            while (node != null) { if (!node.isEnabled) return false; node = node.parent }
+            return true
+        }
+        fun darkest(bitmap: android.graphics.Bitmap, rect: Rect): Int {
+            var value = 765
+            for (y in rect.top until rect.bottom) for (x in rect.left until rect.right) {
+                val pixel = bitmap.getPixel(x, y)
+                value = minOf(value, android.graphics.Color.red(pixel) + android.graphics.Color.green(pixel) + android.graphics.Color.blue(pixel))
+            }
+            return value
+        }
+        try {
+            shell("settings put global animator_duration_scale 1")
+            click("设置"); ready()
+            main { model.preferences(theme = ColorTheme.Paper) }; ready()
+            val chip = Rect(); find(paper).getBoundsInScreen(chip)
+            val before = crop(chip)
+            val catalogBefore = catalog.readBytes()
+            val stateBefore = main { model.ui }
+            try {
+                repeat(5) { click(paper) }
+                verify(main { model.ui === stateBefore }, "Repeated selected theme clicks leave state and busy flags untouched")
+                verify(catalogBefore.contentEquals(catalog.readBytes()), "Repeated selected theme clicks do not rewrite preferences")
+                val after = crop(chip)
+                try { verify(before.sameAs(after), "Repeated selected theme clicks preserve exact text pixels") } finally { after.recycle() }
+            } finally { before.recycle() }
+            val licenseBounds = Rect(); find(licenses).getBoundsInScreen(licenseBounds)
+            val licenseBefore = crop(licenseBounds)
+            kotlinx.coroutines.runBlocking { ioLock.lock() }
+            try {
+                click(cream)
+                verify(main { model.ui.busy && model.ui.savingPreferences && model.ui.workspace?.theme == ColorTheme.Paper }, "Theme persistence remains serialized while disk is delayed")
+                verify(enabled(paper) && enabled(licenses), "Pending theme persistence does not disable theme or license text")
+                val during = crop(licenseBounds)
+                try { verify(licenseBefore.sameAs(during), "Pending theme persistence keeps unrelated text pixels unchanged") } finally { during.recycle() }
+                main { model.selectTab(Page.Recent) }
+                verify(main { model.ui.page == Page.Settings }, "Navigation remains gated while preferences are being persisted")
+            } finally { ioLock.unlock(); licenseBefore.recycle() }
+            ready()
+            verify(main { model.ui.workspace?.theme == ColorTheme.Cream && !model.ui.savingPreferences }, "Theme persistence releases its gate after success")
+
+            shell("settings put global animator_duration_scale 3")
+            SystemClock.sleep(200)
+            data class PaletteCase(val from: ColorTheme, val to: ColorTheme, val start: Int, val end: Int, val textBrightness: Int)
+            for ((from, to, startColor, endColor, textBrightness) in listOf(
+                PaletteCase(ColorTheme.Paper, ColorTheme.Cream, 0xFFF7F7F5.toInt(), 0xFFF5F1E8.toInt(), 52 + 49 + 45),
+                PaletteCase(ColorTheme.Mist, ColorTheme.Sage, 0xFFF1F4F6.toInt(), 0xFFF1F4EF.toInt(), 48 + 55 + 47),
+            )) {
+                main { model.preferences(theme = from) }; ready(); SystemClock.sleep(500)
+                val bitmap = checkNotNull(uiAutomation.takeScreenshot())
+                val minimumText = darkest(bitmap, licenseBounds); bitmap.recycle()
+                main { model.preferences(theme = to) }
+                while (main { model.ui.busy }) SystemClock.sleep(5)
+                val samples = mutableSetOf<Int>()
+                var bounded = true
+                var stableText = true
+                repeat(10) {
+                    val frame = checkNotNull(uiAutomation.takeScreenshot())
+                    try {
+                        val pixel = frame.getPixel(2, frame.height / 3)
+                        samples += pixel
+                        for (shift in listOf(0, 8, 16)) {
+                            val first = (startColor ushr shift) and 255
+                            val last = (endColor ushr shift) and 255
+                            bounded = bounded && ((pixel ushr shift) and 255) in (minOf(first, last) - 2)..(maxOf(first, last) + 2)
+                        }
+                        // Both endpoints have different foreground luminance; permit
+                        // that intentional change, but never a disabled-color excursion.
+                        stableText = stableText && darkest(frame, licenseBounds) <= maxOf(minimumText, textBrightness) + 6
+                        if (it == 2) File(targetContext.cacheDir, "workspace-test-appearance-$from-$to-mid.png").outputStream().use { output -> frame.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output) }
+                    } finally { frame.recycle() }
+                    SystemClock.sleep(45)
+                }
+                verify(samples.size > 2 && bounded, "Nearby palettes $from to $to interpolate through bounded intermediate background pixels")
+                verify(stableText, "Nearby palettes $from to $to never flash disabled text")
+                ready()
+            }
+
+            main { model.preferences(theme = ColorTheme.Paper) }; ready(); SystemClock.sleep(500)
+            click("目录"); ready()
+            val first = Rect(); find("目录").getBoundsInScreen(first)
+            val last = Rect(); find("设置").getBoundsInScreen(last)
+            val sampleY = first.centerY()
+            fun indicatorCenter(): Float {
+                val frame = checkNotNull(uiAutomation.takeScreenshot())
+                try {
+                    val xs = (0 until frame.width).filter { frame.getPixel(it, sampleY) == 0xFFEEEFEA.toInt() }
+                    check(xs.isNotEmpty()) { "Missing solid tab highlight at y=$sampleY" }
+                    return (xs.first() + xs.last()) / 2f
+                } finally { frame.recycle() }
+            }
+            val initialCenter = indicatorCenter()
+            verify(kotlin.math.abs(initialCenter - first.exactCenterX()) < 2 * density, "Single highlight initially aligns with Directory")
+            main { model.selectTab(Page.Settings) }
+            val positions = mutableListOf<Float>()
+            repeat(9) {
+                positions += indicatorCenter()
+                if (it == 2) screenshot("appearance-tab-mid")
+                SystemClock.sleep(45)
+            }
+            verify(positions.any { it > first.centerX() + 20 * density && it < last.centerX() - 20 * density }, "Cross-tab highlight has real horizontal intermediate positions")
+            verify(positions.zipWithNext().all { (a, b) -> b >= a - 1 }, "Highlight moves monotonically without fading out or jumping backwards")
+            ready()
+            verify(kotlin.math.abs(indicatorCenter() - last.exactCenterX()) < 2 * density, "Highlight settles exactly on Settings")
+            val settled = indicatorCenter()
+            click("设置"); ready()
+            verify(indicatorCenter() == settled, "Repeated selected tab click does not restart or move its highlight")
+            screenshot("appearance-settled")
+        } finally {
+            shell(if (oldScale == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $oldScale")
+            ready()
+            main { model.preferences(theme = oldTheme) }; ready()
         }
     }
 
