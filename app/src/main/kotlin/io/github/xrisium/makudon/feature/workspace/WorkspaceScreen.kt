@@ -4,6 +4,9 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -39,9 +44,10 @@ fun Glyph(icon: Int, modifier: Modifier = Modifier, description: String? = null,
 }
 
 @Composable
-fun Tool(icon: Int, label: String, enabled: Boolean = true, active: Boolean = false, onClick: () -> Unit) {
-    IconButton(onClick, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).then(if (active) Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(15.dp)) else Modifier), enabled = enabled) {
-        Glyph(icon, description = label)
+fun Tool(icon: Int, label: String, enabled: Boolean = true, active: Boolean = false, rotation: Float = 0f, onClick: () -> Unit) {
+    val background by animateColorAsState(if (active) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent, tween(160), label = "tool-selection")
+    IconButton(onClick, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).background(background, RoundedCornerShape(15.dp)), enabled = enabled) {
+        Glyph(icon, Modifier.rotate(rotation), description = label)
     }
 }
 
@@ -62,11 +68,14 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
             putExtra(Intent.EXTRA_LOCAL_ONLY, true); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         })
     }
-    BackHandler(ui.page !in listOf(Page.Recent, Page.Directory, Page.Settings)) { if (!ui.busy) model.back() }
+    BackHandler(ui.page !in MainPages || ui.transitioning) { model.back() }
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
             if (ui.error != null || ui.message != null) {
-                Surface(color = if (ui.error != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(12.dp)) {
+                var appeared by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { appeared = true }
+                val opacity by animateFloatAsState(if (appeared) 1f else 0f, tween(180), label = "notice")
+                Surface(color = if (ui.error != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(12.dp).alpha(opacity)) {
                     Row(Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(ui.error?.let { stringResource(errorLabel(it)) } ?: stringResource(ui.message ?: R.string.error_storage), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
                         if (ui.error != null && ui.page != Page.Editor) TextButton(onClick = model::reload, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }
@@ -75,51 +84,42 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                screens.SaveableStateProvider(ui.page.name) {
-                when {
-                    workspace == null -> Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (workspace == null) {
+                    Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (ui.busy) CircularProgressIndicator(Modifier.size(28.dp))
                         Text(stringResource(if (ui.busy) R.string.loading else R.string.error_corrupt), Modifier.padding(16.dp))
                         if (!ui.busy) TextButton(onClick = model::reload) { Text(stringResource(R.string.retry)) }
                     }
-                    else -> when (ui.page) {
-                        Page.Recent -> RecentPage(workspace, ui.busy, model::open, { model.newDocument(Page.Recent) })
-                        Page.Directory -> DirectoryPage(model, onAction = { entry, action ->
-                            target = entry
-                            when (action) {
-                                "info", "rename", "delete" -> { dialog = action }
-                                "copy" -> model.copy(entry.id, false)
-                                "cut" -> model.copy(entry.id, true)
-                                "paste" -> model.paste(if (entry.folder) entry.id else entry.parent ?: Workspace.ROOT)
-                                "folder" -> { dialog = "folder" }
-                                "document" -> model.newDocument(Page.Directory, entry.id)
-                            }
-                        }, onNewFolder = { target = workspace.entry(ui.selected); dialog = "folder" })
-                        Page.Settings -> SettingsPage(model)
+                } else WorkspacePages(model, screens,
+                    onAction = { item, action ->
+                        target = item
+                        when (action) {
+                            "info", "rename", "delete" -> dialog = action
+                            "copy" -> model.copy(item.id, false)
+                            "cut" -> model.copy(item.id, true)
+                            "paste" -> model.paste(if (item.folder) item.id else item.parent ?: Workspace.ROOT)
+                            "folder" -> dialog = "folder"
+                            "document" -> model.newDocument(Page.Directory, item.id)
+                        }
+                    },
+                    onNewFolder = { target = workspace.entry(ui.selected); dialog = "folder" },
+                ) { page ->
+                    when (page) {
                         Page.New -> NewPage(model, ::importDocument)
                         Page.Editor -> EditorScreen(model, onExport = ::export)
-                        Page.Licenses -> Column { PageBar(stringResource(R.string.licenses), model::back); Text(model.licenseText, Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), style = MaterialTheme.typography.bodySmall) }
+                        Page.Licenses -> Column {
+                            PageBar(stringResource(R.string.licenses), model::back)
+                            Text(model.licenseText, Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), style = MaterialTheme.typography.bodySmall)
+                        }
                         Page.Previous -> Column {
                             PageBar(stringResource(R.string.previous_version), model::back)
                             TextButton(onClick = { dialog = "restore" }, enabled = !ui.busy, modifier = Modifier.padding(horizontal = 12.dp)) { Text(stringResource(R.string.restore_previous)) }
                             Text(ui.previous.orEmpty(), Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), style = EditorStyle)
                         }
+                        else -> Unit
                     }
-                }
                 }
                 if (ui.busy && workspace != null) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
-            }
-            if (ui.page in listOf(Page.Recent, Page.Directory, Page.Settings) && workspace != null) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(Triple(Page.Directory, R.string.directory, R.drawable.ic_folder_tree), Triple(Page.Recent, R.string.recent, R.drawable.ic_clock_3), Triple(Page.Settings, R.string.settings, R.drawable.ic_settings_2)).forEach { (page, label, icon) ->
-                        val selected = page == ui.page
-                        Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent).selectable(selected, enabled = !ui.busy, role = Role.Tab, onClick = { model.go(page) }).padding(vertical = 11.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Glyph(icon, tint = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(stringResource(label), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
             }
         }
     }
@@ -151,7 +151,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) -> Unit, onNew: () -> Unit) {
+internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) -> Unit, onNew: () -> Unit) {
     Column {
         Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 12.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Box(Modifier.weight(1f).heightIn(min = 48.dp).padding(end = 8.dp), contentAlignment = Alignment.CenterStart) {
@@ -163,7 +163,7 @@ private fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) -> 
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (recent.isEmpty()) item { Text(stringResource(R.string.empty_recent), Modifier.padding(vertical = 32.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(recent, key = { it.id }) { item ->
-                Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { onOpen(item.id) }) {
+                Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.animateItem(fadeInSpec = tween(180), placementSpec = tween(180), fadeOutSpec = tween(180)).fillMaxWidth().clickable(enabled = !busy) { onOpen(item.id) }) {
                     Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(item.name, style = MaterialTheme.typography.titleMedium)
                         Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)

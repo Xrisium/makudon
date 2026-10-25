@@ -32,11 +32,11 @@ fun NewPage(model: WorkspaceViewModel, import: () -> Unit) {
                 }
             }
             listOf(Triple(R.string.plain_text, R.drawable.ic_file_text, DocumentKind.Plain), Triple(R.string.markdown, R.drawable.ic_markdown, DocumentKind.Markdown)).forEach { (title, icon, kind) ->
-                Surface(Modifier.fillMaxWidth().clickable(enabled = !ui.busy) { model.create(kind) }, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Surface(Modifier.fillMaxWidth().clickable(enabled = !(ui.busy || ui.transitioning)) { model.create(kind) }, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
                     Row(Modifier.padding(24.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) { Glyph(icon, Modifier.size(26.dp)); Spacer(Modifier.width(18.dp)); Text(stringResource(title), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Glyph(R.drawable.ic_chevron_right) }
                 }
             }
-            Surface(Modifier.fillMaxWidth().clickable(enabled = !ui.busy, onClick = import), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Surface(Modifier.fillMaxWidth().clickable(enabled = !(ui.busy || ui.transitioning), onClick = import), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
                 Row(Modifier.padding(24.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) { Glyph(R.drawable.ic_import, Modifier.size(26.dp)); Spacer(Modifier.width(18.dp)); Text(stringResource(R.string.import_document), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Glyph(R.drawable.ic_chevron_right) }
             }
             Text(stringResource(R.string.import_hint), Modifier.padding(horizontal = 4.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

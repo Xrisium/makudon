@@ -1,5 +1,8 @@
 package io.github.xrisium.makudon.feature.workspace
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,8 +16,12 @@ import androidx.compose.foundation.text.input.TextFieldDecorator
 import androidx.compose.foundation.text.input.delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -37,9 +44,14 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit) {
     val entry = ui.workspace?.entry(ui.activeId.orEmpty()) ?: return
     val status by session.status.collectAsState()
     val colors = MaterialTheme.colorScheme
+    val editable = !ui.busy && !ui.transitioning && ui.page == Page.Editor
     var more by remember { mutableStateOf(false) }
     val source = field.text.toString()
     val input = remember(model) { InputTransformation {
+        if (model.ui.busy || model.ui.transitioning || model.ui.page != Page.Editor) {
+            revertAllChanges()
+            return@InputTransformation
+        }
         val raw = asCharSequence().toString()
         val normalized = TextRules.normalize(raw)
         try {
@@ -51,8 +63,8 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit) {
     } }
     Column(Modifier.fillMaxSize()) {
         PageBar(entry.name, model::back) {
-            Tool(R.drawable.ic_undo_2, stringResource(R.string.undo), enabled = !ui.busy && model.canUndo, onClick = { model.undo() })
-            Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = !ui.busy && model.canRedo, onClick = { model.undo(true) })
+            Tool(R.drawable.ic_undo_2, stringResource(R.string.undo), enabled = editable && model.canUndo, onClick = { model.undo() })
+            Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = editable && model.canRedo, onClick = { model.undo(true) })
             Box {
                 Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), onClick = { more = !more })
                 DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = colors.surface) {
@@ -63,9 +75,16 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit) {
         }
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             if (entry.kind == DocumentKind.Markdown) {
-                Row(Modifier.background(colors.surfaceVariant, RoundedCornerShape(14.dp)).padding(4.dp)) {
-                    listOf(false to R.string.source_view, true to R.string.typeset_view).forEach { (typeset, label) ->
-                        TextButton(onClick = { model.typeset(typeset) }, enabled = !ui.busy, modifier = Modifier.background(if (typeset == ui.typeset) colors.surface else colors.surfaceVariant, RoundedCornerShape(11.dp))) { Text(stringResource(label), style = MaterialTheme.typography.labelMedium) }
+                val position by animateFloatAsState(if (ui.typeset) 1f else 0f, tween(160, easing = FastOutSlowInEasing), label = "editor-view-selection")
+                Box(Modifier.background(colors.surfaceVariant, RoundedCornerShape(14.dp)).padding(4.dp)) {
+                    Canvas(Modifier.matchParentSize()) {
+                        drawRoundRect(colors.surface, topLeft = Offset(size.width / 2 * position, 0f),
+                            size = Size(size.width / 2, size.height), cornerRadius = CornerRadius(11.dp.toPx()))
+                    }
+                    Row {
+                        listOf(false to R.string.source_view, true to R.string.typeset_view).forEach { (typeset, label) ->
+                            TextButton(onClick = { model.typeset(typeset) }, enabled = editable) { Text(stringResource(label), style = MaterialTheme.typography.labelMedium) }
+                        }
                     }
                 }
             } else Text(stringResource(R.string.plain_text), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
@@ -74,16 +93,21 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit) {
             }), Modifier.padding(start = 8.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }, style = MaterialTheme.typography.labelSmall, color = if (status.phase == SavePhase.Failed) colors.error else colors.onSurfaceVariant)
         }
         HorizontalDivider(color = colors.outlineVariant)
-        if (status.phase == SavePhase.Failed) Surface(color = colors.errorContainer, shape = RoundedCornerShape(18.dp), modifier = Modifier.padding(16.dp)) {
-            Column(Modifier.padding(14.dp)) {
-                Text(stringResource(R.string.save_failure_help), color = colors.onErrorContainer, style = MaterialTheme.typography.bodySmall)
-                Row { TextButton(onClick = model::retrySave, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }; TextButton(onClick = onExport) { Text(stringResource(R.string.export_copy)) } }
+        if (status.phase == SavePhase.Failed) {
+            var appeared by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { appeared = true }
+            val opacity by animateFloatAsState(if (appeared) 1f else 0f, tween(180), label = "save-error")
+            Surface(color = colors.errorContainer, shape = RoundedCornerShape(18.dp), modifier = Modifier.padding(16.dp).alpha(opacity)) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(stringResource(R.string.save_failure_help), color = colors.onErrorContainer, style = MaterialTheme.typography.bodySmall)
+                    Row { TextButton(onClick = model::retrySave, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }; TextButton(onClick = onExport) { Text(stringResource(R.string.export_copy)) } }
+                }
             }
         }
         val description = stringResource(R.string.edit_body)
         if (entry.kind != DocumentKind.Markdown || !ui.typeset) {
             BasicTextField(state = field, modifier = Modifier.weight(1f).fillMaxWidth().padding(24.dp).testTag("source-editor").semantics { contentDescription = description },
-                readOnly = ui.busy, textStyle = EditorStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
+                readOnly = !editable, textStyle = EditorStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
                 decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = EditorStyle, color = colors.onSurfaceVariant); inner() } },
             )
         } else {
@@ -114,7 +138,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit) {
                         }
                         // Each paragraph owns its IME buffer. Exact source ranges shift after edits; separators stay untouched.
                         BasicTextField(state = local, modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp).semantics { contentDescription = label },
-                            readOnly = ui.busy, textStyle = style.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
+                            readOnly = !editable, textStyle = style.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
                         )
                     }
                 }

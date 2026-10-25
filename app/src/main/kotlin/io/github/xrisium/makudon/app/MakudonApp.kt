@@ -8,7 +8,7 @@ import io.github.xrisium.makudon.domain.ColorTheme
 
 @Composable
 fun MakudonApp(model: WorkspaceViewModel) {
-    MakudonTheme(model.ui.workspace?.theme ?: ColorTheme.System) {
+    MakudonTheme(model.ui.workspace?.theme ?: ColorTheme.System, ready = model.ui.workspace != null) {
         WorkspaceScreen(model)
     }
 }
