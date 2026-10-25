@@ -8,7 +8,7 @@
 
 现有无参数双击、`Ctrl+Shift+B` 和无 `-Serial` 的 Run / Screenshot / Logcat 仍走配置 AVD，**尚无自动设备分流**。仅确认无真机或用户要求模拟器时才用它们；脚本会复用 / 启动 AVD，不会每次创建、clean、卸载、清数据或 wipe。
 
-指定目标后每次先增量构建，再 `adb install -r`、重启开发应用并检查进程。无真机使用模拟器时，正常退出保存的 Quick Boot 快照通常可加快下次启动。
+日常迭代先集中完成本地修改、增量构建与 `Check`，禁止在真机上频繁、反复覆盖安装，测试 APK 同样适用。必要的最终验收才合并安排安装并检查进程；额外安装须说明原因和影响并获得用户明确授权。用户叫停后本轮不再安装，也不改用模拟器绕过，具体见 [安装频率约定](device-policy.md#安装频率与用户使用)。无真机使用模拟器时，正常退出保存的 Quick Boot 快照通常可加快下次启动。
 
 当前应进入“最近”，可新建、编辑、自动保存和重新打开；目录长按提供整理动作。开发版详细范围与限制见 [工作区验收记录](testing/2026-10-25-workspace.md)。运行前等待“已保存到本机”，尤其是保留数据覆盖安装会重启进程。
 
@@ -44,7 +44,7 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Logcat -Serial YOUR_SERIAL
 
 ## 分层验证
 
-1. 基础工程：编译 / Lint、打开应用、重复安装、前后台、深浅主题和系统栏。
+1. 基础工程：编译 / Lint、打开应用、前后台、深浅主题和系统栏；确需验证覆盖安装行为时单独安排，不作为每轮迭代的默认操作。
 2. 文本编辑功能：中文组合输入、emoji、选区、撤销、长按菜单、软键盘遮挡、字体缩放、旋转、长文滚动。
 3. 存储功能：杀进程后恢复、保存竞争、磁盘/权限失败、导入导出往返、覆盖冲突。
 4. 真机：输入法、性能、后台回收与不同厂商行为；模拟器结果不可替代。
@@ -52,7 +52,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Logcat -Serial YOUR_SERIAL
 业务规则已有 JVM 测试；平台交互使用单独测试 APK 的原生 Instrumentation / UiAutomation，未新增 UI 测试运行库。测试 provider 只存在测试 APK，提供合成只读源文件及导出目标；不向正式应用加入测试入口。
 
 ```powershell
-# 先按设备策略识别目标；下面仅示意本次明确要求的模拟器
+# 以下为一次集中验收的命令示例，不应在每次修改后重复执行安装
+# 先按设备策略识别目标；下面仅示意用户明确要求的模拟器
 $env:JAVA_HOME = "$env:USERPROFILE\DevTools\Android\Jdk\17.0.18+8"
 .\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest
 # Run 会构建并保留数据重启应用；先等正文已保存
