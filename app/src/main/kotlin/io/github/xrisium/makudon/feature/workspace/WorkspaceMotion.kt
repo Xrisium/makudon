@@ -128,7 +128,7 @@ private fun MainWorkspace(
                             Page.Directory -> DirectoryPage(model, onAction, onNewFolder)
                             Page.Settings -> SettingsPage(model)
                             else -> RecentPage(workspace, ui.busy,
-                                { model.open(it) }, { model.newDocument(Page.Recent) })
+                                { model.open(it) }, { model.newDocument(Page.Recent) }, onAction)
                         }
                     }
                 }

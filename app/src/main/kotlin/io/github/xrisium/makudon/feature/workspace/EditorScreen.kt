@@ -37,7 +37,7 @@ import io.github.xrisium.makudon.ui.theme.EditorStyle
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit) {
+fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onRename: () -> Unit) {
     val ui = model.ui
     val field = model.textState ?: return
     val session = model.save ?: return
@@ -62,7 +62,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit) {
         } catch (e: WorkspaceException) { revertAllChanges(); model.inputRejected(e.reason) }
     } }
     Column(Modifier.fillMaxSize()) {
-        PageBar(entry.name, model::back) {
+        PageBar(entry.name, model::back, onTitleClick = onRename, titleEnabled = editable) {
             Tool(R.drawable.ic_undo_2, stringResource(R.string.undo), enabled = editable && model.canUndo, onClick = { model.undo() })
             Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = editable && model.canRedo, onClick = { model.undo(true) })
             Box {

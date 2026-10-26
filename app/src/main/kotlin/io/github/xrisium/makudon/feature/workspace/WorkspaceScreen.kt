@@ -114,7 +114,10 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                 ) { page ->
                     when (page) {
                         Page.New -> NewPage(model, ::importDocument)
-                        Page.Editor -> EditorScreen(model, onExport = ::export)
+                        Page.Editor -> EditorScreen(model, onExport = ::export, onRename = {
+                            target = workspace.entry(ui.activeId.orEmpty())
+                            dialog = "rename"
+                        })
                         Page.Licenses -> Column {
                             PageBar(stringResource(R.string.licenses), model::back)
                             Text(model.licenseText, Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), style = MaterialTheme.typography.bodySmall)
@@ -159,8 +162,11 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) -> Unit, onNew: () -> Unit) {
+internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) -> Unit, onNew: () -> Unit, onAction: (Entry, String) -> Unit) {
+    val actionLabel = stringResource(R.string.item_actions)
+    val colors = MaterialTheme.colorScheme
     Column {
         Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 12.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Box(Modifier.weight(1f).heightIn(min = 48.dp).padding(end = 8.dp), contentAlignment = Alignment.CenterStart) {
@@ -172,11 +178,26 @@ internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) ->
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (recent.isEmpty()) item { Text(stringResource(R.string.empty_recent), Modifier.padding(vertical = 32.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(recent, key = { it.id }) { item ->
-                Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.animateItem(fadeInSpec = tween(180), placementSpec = tween(180), fadeOutSpec = tween(180)).fillMaxWidth().clickable(enabled = !busy) { onOpen(item.id) }) {
-                    Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(item.name, style = MaterialTheme.typography.titleMedium)
-                        Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(workspace.path(item.parent ?: Workspace.ROOT) + "  ·  " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(item.modified)) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                var menu by remember(item.id) { mutableStateOf(false) }
+                Box(Modifier.animateItem(fadeInSpec = tween(180), placementSpec = tween(180), fadeOutSpec = tween(180))) {
+                    Surface(shape = RoundedCornerShape(20.dp), color = colors.surface, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                        .combinedClickable(enabled = !busy, onLongClickLabel = actionLabel, onLongClick = { menu = true }, onClick = { onOpen(item.id) })
+                        .semantics { customActions = listOf(CustomAccessibilityAction(actionLabel) { if (!busy) menu = true; !busy }) }) {
+                        Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(item.name, style = MaterialTheme.typography.titleMedium)
+                            Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(workspace.path(item.parent ?: Workspace.ROOT) + "  ·  " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(item.modified)) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(20.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 240.dp, max = 290.dp)) {
+                        Text(item.name, Modifier.padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.titleSmall)
+                        HorizontalDivider(Modifier.padding(horizontal = 12.dp))
+                        listOf(Triple("info", R.string.more_info, R.drawable.ic_info), Triple("rename", R.string.rename, R.drawable.ic_pencil_line), Triple("delete", R.string.delete, R.drawable.ic_trash_2)).forEach { (action, label, icon) ->
+                            if (action == "delete") HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
+                            DropdownMenuItem(text = { Text(stringResource(label), color = if (action == "delete" && !busy) colors.error else Color.Unspecified) },
+                                leadingIcon = { Glyph(icon, tint = if (action == "delete" && !busy) colors.error else colors.onSurfaceVariant) }, enabled = !busy,
+                                onClick = { menu = false; onAction(item, action) })
+                        }
                     }
                 }
             }
@@ -185,10 +206,13 @@ internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) ->
 }
 
 @Composable
-fun PageBar(title: String, back: () -> Unit, trailing: @Composable RowScope.() -> Unit = {}) {
+fun PageBar(title: String, back: () -> Unit, onTitleClick: (() -> Unit)? = null, titleEnabled: Boolean = true, trailing: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Tool(R.drawable.ic_arrow_left, stringResource(R.string.back), onClick = back)
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, Modifier.weight(1f).then(if (onTitleClick != null) Modifier.clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = titleEnabled, onClickLabel = stringResource(R.string.rename), role = Role.Button, onClick = onTitleClick)
+            .heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically) else Modifier),
+            style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         trailing()
     }
 }
