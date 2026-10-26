@@ -33,6 +33,8 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlySelection = false
     private var onlySelectionVisual = false
     private var onlyRecent = false
+    private var onlyBackup = false
+    private var onlyBackupVisual = false
     private var currentActivity: Activity? = null
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
     override fun onCreate(arguments: Bundle?) {
@@ -45,6 +47,8 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlySelection = arguments?.getString("case") == "selection"
         onlySelectionVisual = arguments?.getString("case") == "selection-visual"
         onlyRecent = arguments?.getString("case") == "recent"
+        onlyBackup = arguments?.getString("case") == "backup"
+        onlyBackupVisual = arguments?.getString("case") == "backup-visual"
         start()
     }
     override fun onStart() {
@@ -52,7 +56,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            when { onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
@@ -73,6 +77,8 @@ class WorkspaceInstrumentation : Instrumentation() {
     private fun ready() { waitFor("workspace ready") { main { !model.ui.busy && !model.ui.transitioning && !model.ui.tabTransitioning } }; SystemClock.sleep(350); waitForIdleSync() }
     private fun verify(value: Boolean, label: String) { check(value) { label }; checks += label; sendStatus(0, Bundle().apply { putString("stream", "PASS ${checks.size}: $label\n") }) }
     private fun nodes(): List<AccessibilityNodeInfo> {
+        // Restore steps replace large semantic subtrees without changing Activity/window IDs.
+        if (android.os.Build.VERSION.SDK_INT >= 33) uiAutomation.clearCache()
         val root = uiAutomation.rootInActiveWindow ?: return emptyList()
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
@@ -137,7 +143,206 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     private fun screenshot(name: String) { uiAutomation.takeScreenshot()?.let { bitmap -> File(targetContext.cacheDir, "workspace-test-$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle() } }
     private fun saved(timeoutMs: Long = 12_000) = waitFor("current revision saved", timeoutMs) { main { model.save?.status?.value?.phase == SavePhase.Saved && model.save?.latest == model.textState?.text?.toString() } }
-    private fun source(id: String, kind: DocumentKind) = File(targetContext.filesDir, "workspace/documents/$id/body.${kind.extension}").readText(Charsets.UTF_8)
+    private fun workspaceDirectory(): File {
+        val pointer = File(targetContext.filesDir, "library-state.properties")
+        if (!pointer.exists()) return File(targetContext.filesDir, "workspace")
+        val active = java.util.Properties().apply { pointer.reader().use { load(it) } }.getProperty("active")
+        return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
+    }
+    private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+    private fun source(id: String, kind: DocumentKind) = File(workspaceDirectory(), "documents/$id/body.${kind.extension}").readText(Charsets.UTF_8)
+
+    private fun backupTest() {
+        val sourceUri = android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/archive")
+        val exportUri = android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/archive-export")
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        fun <T> disk(block: () -> T): T = runBlocking { withContext(Dispatchers.IO) { lock.withLock { block() } } }
+        fun readyBackup() { waitFor("backup operation", 60_000) { main { !model.backup.ui.busy } }; ready(); main { model.backup.ui.error }?.let { error("Backup failed: $it") } }
+        fun enter() { main { model.go(Page.Settings) }; ready(); main { model.backups() }; readyBackup() }
+        fun reveal(label: String) {
+            repeat(8) {
+                if (nodes().any { it.text?.toString() == label || it.contentDescription?.toString() == label }) return@repeat
+                nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                SystemClock.sleep(100)
+            }
+            repeat(18) {
+                if (nodes().any { it.text?.toString() == label || it.contentDescription?.toString() == label }) {
+                    find(label).performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+                    SystemClock.sleep(200); return
+                }
+                nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                SystemClock.sleep(150)
+            }
+            screenshot("backup-scroll-failure")
+            error("Could not reveal $label")
+        }
+        fun selectArchive(mode: RestoreMode) {
+            main { model.backup.read(sourceUri) }; readyBackup()
+            verify(main { model.backup.ui.mode == RestoreMode.Separate }, "Separate is the default restore mode")
+            if (mode != RestoreMode.Separate) {
+                val label = targetContext.getString(restoreModeLabel(mode)); reveal(label); click(label)
+            }
+            reveal("预览恢复结果"); click("预览恢复结果"); readyBackup()
+        }
+        fun submit() { reveal("确认恢复方式"); click("确认恢复方式"); find("确认恢复"); click("确认"); readyBackup() }
+        val synthetic = disk {
+            val store = currentStore()
+            val folder = store.create("电脑目录", Workspace.ROOT, DocumentKind.Folder)
+            val doc = store.create("笔记", folder, DocumentKind.Markdown, "上一保存版")
+            store.save(doc, "本地冲突正文")
+            val localOnly = store.create("ZIP验收独有", folder, DocumentKind.Plain, "只在本地")
+            listOf(folder, doc, localOnly)
+        }
+        main { model.reload() }; ready()
+        try {
+            enter()
+            find("备份与恢复")
+            verify(true, "Settings opens the native backup page")
+            val expectedSource = targetContext.contentResolver.openInputStream(sourceUri).use { checkNotNull(it).readBytes() }
+            main { model.backup.read(sourceUri) }; readyBackup()
+            val radioLabels = nodes().filter { it.text?.toString() in listOf("单独保存", "增量更新", "完全覆盖") }.map { it.text.toString() }
+            verify(radioLabels.take(2) == listOf("单独保存", "增量更新"), "Restore modes start with Separate then Incremental")
+            verify(main { model.backup.ui.inventory?.documents == 2 && model.backup.ui.inventory?.skipped == listOf("附件.png") }, "Computer ZIP without manifest validates and lists unsupported files")
+            find(targetContext.getString(R.string.backup_separate_description))
+            currentActivity?.let { activity -> main { activity.recreate() } }; ready()
+            verify(main { model.backup.ui.inventory != null && model.backup.ui.mode == RestoreMode.Separate }, "Activity recreation preserves the disk-backed restore preview")
+            reveal("预览恢复结果"); click("预览恢复结果"); readyBackup()
+            screenshot("backup-preview")
+            submit()
+            verify(main { model.ui.page == Page.Directory && model.ui.workspace?.entry(synthetic[1]) != null }, "Separate restore returns to Directory and preserves existing IDs")
+            val separate = main { checkNotNull(model.ui.workspace).entries.single { it.name.startsWith("恢复 ") } }
+            verify(main { checkNotNull(model.ui.workspace).entries.any { it.name == "电脑目录" && it.parent == separate.id } }, "Separate restore retains the ZIP outer folder under a new root folder")
+            enter(); main { model.backup.undo() }; readyBackup()
+            verify(main { model.ui.workspace?.entry(separate.id) == null }, "Undo removes the restored wrapper and reinstates the original library")
+
+            enter(); selectArchive(RestoreMode.Incremental)
+            verify(main { model.backup.ui.plan?.conflicts?.size == 1 && model.backup.ui.plan?.resolved == false }, "Incremental preview requires explicit conflict confirmation")
+            reveal("确认此项选择"); screenshot("backup-conflict"); click("确认此项选择"); readyBackup()
+            verify(main { model.backup.ui.plan?.decisions?.values?.single() == ConflictChoice.Both }, "Conflict suggestion is Keep Both and is confirmed individually")
+            submit()
+            verify(source(synthetic[1], DocumentKind.Markdown) == "本地冲突正文" && source(synthetic[2], DocumentKind.Plain) == "只在本地", "Incremental Keep Both preserves local conflicting and local-only bodies")
+            val copy = main { checkNotNull(model.ui.workspace).entries.single { it.name == "笔记（恢复副本）" } }
+            verify(source(copy.id, DocumentKind.Markdown).contains("ZIP 验收"), "Conflict copy has independent imported content")
+            enter(); main { model.backup.undo() }; readyBackup()
+            verify(disk { currentStore().previous(synthetic[1]) } == "上一保存版", "Undo restores the local previous-save version as well as the body")
+
+            main { model.open(synthetic[1]) }; ready()
+            val oldSession = main { checkNotNull(model.save) }
+            main { model.go(Page.Settings) }; ready()
+            main { model.backups() }; readyBackup()
+            selectArchive(RestoreMode.Replace)
+            reveal("确认恢复方式"); click("确认恢复方式")
+            find(targetContext.getString(R.string.backup_replace_description))
+            verify(nodes().any { it.text?.toString()?.startsWith("本次将移除并替换") == true }, "Full replacement repeats the destructive warning and local document count")
+            click("取消")
+            verify(main { model.ui.workspace?.entry(synthetic[1]) != null }, "Cancel replacement confirmation leaves the current library intact")
+            submit()
+            verify(main { checkNotNull(model.ui.workspace).entries.count { !it.folder } == 2 && model.ui.workspace?.entry(synthetic[1]) == null }, "Full replacement publishes exactly the ZIP document set")
+            main { oldSession.changed("迟到的旧保存") }
+            runBlocking { oldSession.flush() }
+            verify(oldSession.status.value.failure == Failure.StaleRestore, "Old editor session cannot write through after the library switch")
+            enter(); main { model.backup.undo() }; readyBackup()
+            verify(source(synthetic[1], DocumentKind.Markdown) == "本地冲突正文", "Undo restores the full original body after replacement")
+            main { model.open(synthetic[1]) }; ready()
+            main { model.textState?.edit { replace(0, length, "撤回后编辑 😀") } }; saved()
+            enter(); main { model.backup.undo() }; readyBackup()
+            enter(); main { model.backup.undo() }; readyBackup()
+            verify(source(synthetic[1], DocumentKind.Markdown) == "撤回后编辑 😀", "Repeated undo swaps independent libraries and preserves edits made after undo")
+
+            enter(); main { model.backup.prepareExport() }; readyBackup()
+            verify(main { model.backup.ui.exportReady }, "Whole-library export is generated and verified before choosing a destination")
+            main { model.backup.export(exportUri) }; readyBackup()
+            val exported = File(targetContext.cacheDir, "backup-test-export.zip")
+            targetContext.contentResolver.openInputStream(exportUri).use { input -> exported.outputStream().use { checkNotNull(input).copyTo(it) } }
+            val parsed = io.github.xrisium.makudon.data.LibraryArchive.read(exported, File(targetContext.cacheDir, "backup-test-parse-${System.nanoTime()}"))
+            verify(parsed.inventory.documents == main { checkNotNull(model.ui.workspace).entries.count { !it.folder } }, "SAF output is a complete readable ZIP with matching document count")
+            verify(targetContext.contentResolver.openInputStream(sourceUri).use { checkNotNull(it).readBytes() }.contentEquals(expectedSource), "Source ZIP bytes remain unchanged")
+            main { model.backup.clearSnapshot() }; readyBackup()
+            verify(main { model.backup.ui.snapshot == null }, "Manual snapshot cleanup preserves the current library")
+
+            main { model.backup.read(sourceUri) }; readyBackup()
+            val countBefore = main { model.ui.workspace?.entries?.size }
+            main { model.backup.cancel() }; waitFor("cancelled preview") { main { !model.backup.locked } }
+            verify(main { model.ui.workspace?.entries?.size == countBefore && model.backup.ui.inventory == null }, "Cancelling a validated ZIP discards staging without changing the library")
+            main { model.open(synthetic[1]) }; ready()
+            main { model.reload() }; ready()
+            main { model.textState?.edit { replace(0, length, "普通重读后仍可保存") } }; saved()
+            verify(source(synthetic[1], DocumentKind.Markdown) == "普通重读后仍可保存", "Reloading the same library preserves the existing editor save session")
+            val pending = File(workspaceDirectory(), "documents/${synthetic[1]}/body.md.new")
+            check(pending.mkdir())
+            try {
+                main { model.textState?.edit { replace(0, length, "保存失败时的最新输入") } }
+                waitFor("injected failed save") { main { model.save?.status?.value?.phase == SavePhase.Failed } }
+                main { model.backup.prepareExport() }
+                waitFor("failed-save export barrier") { main { !model.backup.ui.busy } }
+                verify(main { model.backup.ui.error == Failure.Storage && !model.backup.ui.exportReady && model.ui.page == Page.Editor && model.textState?.text?.toString() == "保存失败时的最新输入" }, "Failed save blocks whole-library export and preserves the current editor buffer")
+            } finally {
+                check(pending.delete())
+                main { model.backup.cancel() }; waitFor("failed export reset") { main { !model.backup.locked } }
+                main { model.retrySave() }; saved()
+                main { model.go(Page.Settings) }; ready()
+            }
+        } finally {
+            main { model.backup.cancel() }
+            waitFor("backup cleanup") { main { !model.backup.locked } }
+            disk { val store = currentStore(); if (store.refresh().entry(synthetic[0]) != null) store.delete(synthetic[0]) }
+            main { model.reload() }; ready()
+        }
+    }
+
+    private fun backupVisualTest() {
+        val oldFont = shell("settings get system font_scale")
+        val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        val root = runBlocking { withContext(Dispatchers.IO) { lock.withLock {
+            val store = currentStore()
+            val folder = store.create("电脑目录", Workspace.ROOT, DocumentKind.Folder)
+            store.create("笔记", folder, DocumentKind.Markdown, "视觉冲突本地正文")
+            folder
+        } } }
+        fun show(label: String) {
+            repeat(25) {
+                val node = nodes().firstOrNull { it.text?.toString() == label }
+                if (node != null) { node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id); SystemClock.sleep(250); return }
+                nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                SystemClock.sleep(150)
+            }
+            error("Missing visual control: $label")
+        }
+        fun inside(label: String): Boolean {
+            val bounds = Rect(); find(label).getBoundsInScreen(bounds)
+            val bitmap = checkNotNull(uiAutomation.takeScreenshot())
+            val fits = !bounds.isEmpty && bounds.left >= 0 && bounds.top >= 0 && bounds.right <= bitmap.width && bounds.bottom <= bitmap.height
+            bitmap.recycle(); return fits
+        }
+        fun backupReady() { waitFor("visual backup ready", 60_000) { main { !model.backup.ui.busy } }; ready(); check(main { model.backup.ui.error == null }) }
+        try {
+            main { model.reload() }; ready(); main { model.go(Page.Settings) }; ready()
+            main { model.backups() }; backupReady()
+            main { model.backup.read(android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/archive")) }; backupReady()
+            shell("wm size 840x1890"); shell("settings put system font_scale 2.0")
+            waitFor("actual backup narrow configuration") { main { currentActivity?.resources?.configuration?.let { it.screenWidthDp <= 320 && it.fontScale >= 1.99f } == true } }
+            ready(); SystemClock.sleep(600)
+            screenshot("backup-200-modes")
+            show("完全覆盖"); click("完全覆盖")
+            show("预览恢复结果"); click("预览恢复结果"); backupReady()
+            show("确认恢复方式"); click("确认恢复方式")
+            screenshot("backup-200-confirm")
+            verify(inside("确认") && inside("取消"), "320dp and 200% fonts keep destructive confirmation buttons visible with scrollable explanation")
+            click("取消")
+            main { model.backup.chooseMode(RestoreMode.Incremental); model.backup.preview() }; backupReady()
+            show("确认此项选择")
+            screenshot("backup-200-conflict")
+            verify(inside("确认此项选择"), "320dp and 200% fonts keep the individual conflict confirmation reachable")
+        } finally {
+            main { model.backup.cancel() }; waitFor("visual stage cancelled") { main { !model.backup.locked } }
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+            ready()
+            runBlocking { withContext(Dispatchers.IO) { lock.withLock { currentStore().delete(root) } } }
+            main { model.reload() }; ready()
+        }
+    }
 
     private fun shell(command: String): String = uiAutomation.executeShellCommand(command).use {
         android.os.ParcelFileDescriptor.AutoCloseInputStream(it).bufferedReader().use { input -> input.readText().trim() }
@@ -174,14 +379,14 @@ class WorkspaceInstrumentation : Instrumentation() {
 
     private fun recentTest() {
         main { model.go(Page.Recent) }; ready()
-        val store = WorkspaceViewModel::class.java.getDeclaredField("store").apply { isAccessible = true }.get(model) as WorkspaceStore
+        val store = currentStore()
         val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
         val calendar = RecentCalendar.current()
         val suffix = SystemClock.uptimeMillis().toString()
         val names = listOf("日期今天-$suffix", "日期前天-$suffix", "日期本周-$suffix", "日期往年-$suffix")
         val openedDays = listOf(0L, 2L, 5L, 400L)
         val modifiedDays = listOf(0L, 1L, 2L, 400L)
-        val catalog = File(targetContext.filesDir, "workspace/catalog.properties")
+        val catalog = File(workspaceDirectory(), "catalog.properties")
         val originalOpened = mutableMapOf<String, String>()
         fun day(days: Long) = calendar.today.minusDays(days).atTime(12, 0).atZone(calendar.zone).toInstant().toEpochMilli()
         val ids = runBlocking { withContext(Dispatchers.IO) { lock.withLock {
@@ -197,7 +402,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             created.forEachIndexed { index, id ->
                 val n = (0 until properties.getProperty("count").toInt()).first { properties.getProperty("$it.id") == id }
                 properties.setProperty("$n.opened", day(openedDays[index]).toString())
-                check(File(targetContext.filesDir, "workspace/documents/$id/body.txt").setLastModified(day(modifiedDays[index])))
+                check(File(workspaceDirectory(), "documents/$id/body.txt").setLastModified(day(modifiedDays[index])))
             }
             catalog.writer(Charsets.UTF_8).use { properties.store(it, null) }
             store.load()
@@ -276,7 +481,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.ui.page == Page.Editor }, "Title rename shortcut remains available")
             click("条目操作"); click("删除"); click("取消")
             verify(main { model.ui.activeId == ids[0] && model.ui.workspace?.entry(ids[0]) != null }, "Cancel editor deletion preserves document and editor")
-            val pending = File(targetContext.filesDir, "workspace/documents/${ids[0]}/body.txt.new")
+            val pending = File(workspaceDirectory(), "documents/${ids[0]}/body.txt.new")
             check(pending.mkdir())
             try {
                 setText("编辑正文", "删除前保存屏障保留的最新输入")
@@ -287,7 +492,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("条目操作"); click("删除"); click("删除"); ready()
             verify(main { model.ui.page == Page.Recent && model.ui.activeId == null && model.save == null && model.textState == null }, "Deleting active document returns to recent and releases editor")
             SystemClock.sleep(2200)
-            verify(main { model.ui.workspace?.entry(ids[0]) == null } && !File(targetContext.filesDir, "workspace/documents/${ids[0]}").exists(), "No delayed autosave resurrects the deleted draft")
+            verify(main { model.ui.workspace?.entry(ids[0]) == null } && !File(workspaceDirectory(), "documents/${ids[0]}").exists(), "No delayed autosave resurrects the deleted draft")
             main { model.go(Page.Directory) }; ready(); main { model.open(ids[1]) }; ready()
             click("条目操作"); click("删除"); click("删除"); ready()
             verify(main { model.ui.page == Page.Directory && model.ui.activeId == null }, "Deleting an editor opened from directory returns to directory")
@@ -309,7 +514,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private fun motionTest() {
         val oldTheme = main { checkNotNull(model.ui.workspace).theme }
         val oldScale = shell("settings get global animator_duration_scale")
-        val catalog = File(targetContext.filesDir, "workspace/catalog.properties")
+        val catalog = File(workspaceDirectory(), "catalog.properties")
         val catalogBefore = catalog.readBytes()
         try {
             shell("settings put global animator_duration_scale 1")
@@ -363,7 +568,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.textState === sessionField && model.ui.activeId == id }, "Obsolete transition completion cannot clear the current editor")
 
             // Deliberately block only this run's synthetic body's atomic temporary file.
-            val pending = File(targetContext.filesDir, "workspace/documents/$id/body.txt.new")
+            val pending = File(workspaceDirectory(), "documents/$id/body.txt.new")
             check(pending.mkdir())
             val failed = first + "保存失败时保留此句。"
             try {
@@ -521,7 +726,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val paper = targetContext.getString(R.string.theme_paper)
         val cream = targetContext.getString(R.string.theme_cream)
         val licenses = targetContext.getString(R.string.licenses)
-        val catalog = File(targetContext.filesDir, "workspace/catalog.properties")
+        val catalog = File(workspaceDirectory(), "catalog.properties")
         // Hold the real disk gate to make even a slow preferences write observable.
         // This reproduces the disabled-color flash independently of device speed.
         val ioLock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
@@ -741,7 +946,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         verify(nodes().any { it.contentDescription?.toString() == "新建文稿" }, "Recent plus icon retains an accessible new-draft label")
         main { model.go(Page.Directory) }; ready()
         main { model.preferences(theme = ColorTheme.Paper, sort = SortKey.Name, descending = false, foldersFirst = true) }; ready()
-        val store = WorkspaceViewModel::class.java.getDeclaredField("store").apply { isAccessible = true }.get(model) as WorkspaceStore
+        val store = currentStore()
         val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
         val suffix = (SystemClock.uptimeMillis() % 100000).toString()
         val rootName = "000-复选-$suffix"
@@ -883,7 +1088,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val oldTheme = main { checkNotNull(model.ui.workspace).theme }
         val oldFont = shell("settings get system font_scale")
         val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
-        val store = WorkspaceViewModel::class.java.getDeclaredField("store").apply { isAccessible = true }.get(model) as WorkspaceStore
+        val store = currentStore()
         val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
         val ids = runBlocking { withContext(Dispatchers.IO) { lock.withLock {
             val root = store.create("窄屏复选-" + SystemClock.uptimeMillis(), Workspace.ROOT, DocumentKind.Folder)
@@ -991,7 +1196,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         main { model.export(exportUri) }; ready()
         verify(targetContext.contentResolver.openInputStream(exportUri)?.bufferedReader()?.use { it.readText() } == exported, "Export writes captured snapshot and does not switch to later editor contents")
         val protectedBody = source(id, DocumentKind.Markdown)
-        val privateUri = android.net.Uri.fromFile(File(targetContext.filesDir, "workspace/documents/$id/body.md"))
+        val privateUri = android.net.Uri.fromFile(File(workspaceDirectory(), "documents/$id/body.md"))
         main { model.prepareExport(); model.export(privateUri) }; ready()
         verify(main { model.ui.error == Failure.Missing } && source(id, DocumentKind.Markdown) == protectedBody, "Export rejects file URI and cannot overwrite a private draft")
         main { model.dismissError() }

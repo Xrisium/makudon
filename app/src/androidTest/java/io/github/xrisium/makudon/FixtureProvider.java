@@ -17,10 +17,20 @@ import java.nio.charset.StandardCharsets;
 public class FixtureProvider extends ContentProvider {
     @Override public boolean onCreate() { return true; }
     private byte[] data(Uri uri) {
+        if ("archive".equals(uri.getLastPathSegment())) {
+            try {
+                java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+                try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(buffer)) {
+                    String[][] items = {{"电脑目录/", ""}, {"电脑目录/笔记.md", "# ZIP 验收\n\n中文 😀\n"}, {"电脑目录/空.txt", ""}, {"空目录/", ""}, {"附件.png", "unsupported"}};
+                    for (String[] item : items) { zip.putNextEntry(new java.util.zip.ZipEntry(item[0])); zip.write(item[1].getBytes(StandardCharsets.UTF_8)); zip.closeEntry(); }
+                }
+                return buffer.toByteArray();
+            } catch (IOException e) { throw new IllegalStateException("Fixture ZIP generation failed", e); }
+        }
         if ("invalid".equals(uri.getLastPathSegment())) return new byte[] {(byte) 0xff, (byte) 0xfe, 0};
         return "\uFEFF# 模拟器导入\r\n\r\n独立副本 😀\r\n  保留空格\r\n".getBytes(StandardCharsets.UTF_8);
     }
-    @Override public String getType(Uri uri) { return "markdown".equals(uri.getLastPathSegment()) ? "text/markdown" : "text/plain"; }
+    @Override public String getType(Uri uri) { return "archive".equals(uri.getLastPathSegment()) || "archive-export".equals(uri.getLastPathSegment()) ? "application/zip" : "markdown".equals(uri.getLastPathSegment()) ? "text/markdown" : "text/plain"; }
     @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
         String[] columns = projection == null ? new String[] {OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE} : projection;
         MatrixCursor cursor = new MatrixCursor(columns);
@@ -30,9 +40,10 @@ public class FixtureProvider extends ContentProvider {
     }
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         String path = uri.getLastPathSegment();
-        if (!"markdown".equals(path) && !"invalid".equals(path) && !"export".equals(path)) throw new FileNotFoundException();
+        if (!"markdown".equals(path) && !"invalid".equals(path) && !"export".equals(path) && !"archive".equals(path) && !"archive-export".equals(path)) throw new FileNotFoundException();
         if (getContext() == null) throw new FileNotFoundException();
         File directory = getContext().getCacheDir();
+        if ("archive-export".equals(path)) return ParcelFileDescriptor.open(new File(directory, "library-fixture-export.zip"), "r".equals(mode) ? ParcelFileDescriptor.MODE_READ_ONLY : ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE | ParcelFileDescriptor.MODE_READ_WRITE);
         if ("export".equals(uri.getLastPathSegment())) return ParcelFileDescriptor.open(new File(directory, "workspace-fixture-export.txt"), "r".equals(mode) ? ParcelFileDescriptor.MODE_READ_ONLY : ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE | ParcelFileDescriptor.MODE_READ_WRITE);
         if (!"r".equals(mode)) throw new FileNotFoundException("Read-only source");
         File file = new File(directory, "workspace-fixture-" + uri.getLastPathSegment() + ".txt");
