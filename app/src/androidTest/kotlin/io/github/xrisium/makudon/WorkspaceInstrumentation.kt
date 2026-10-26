@@ -32,6 +32,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyAppearance = false
     private var onlySelection = false
     private var onlySelectionVisual = false
+    private var onlyRecent = false
     private var currentActivity: Activity? = null
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
     override fun onCreate(arguments: Bundle?) {
@@ -43,6 +44,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyAppearance = arguments?.getString("case") == "appearance"
         onlySelection = arguments?.getString("case") == "selection"
         onlySelectionVisual = arguments?.getString("case") == "selection-visual"
+        onlyRecent = arguments?.getString("case") == "recent"
         start()
     }
     override fun onStart() {
@@ -50,7 +52,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            when { onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
@@ -168,6 +170,140 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
         }
         ready()
+    }
+
+    private fun recentTest() {
+        main { model.go(Page.Recent) }; ready()
+        val store = WorkspaceViewModel::class.java.getDeclaredField("store").apply { isAccessible = true }.get(model) as WorkspaceStore
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        val calendar = RecentCalendar.current()
+        val suffix = SystemClock.uptimeMillis().toString()
+        val names = listOf("日期今天-$suffix", "日期前天-$suffix", "日期本周-$suffix", "日期往年-$suffix")
+        val openedDays = listOf(0L, 2L, 5L, 400L)
+        val modifiedDays = listOf(0L, 1L, 2L, 400L)
+        val catalog = File(targetContext.filesDir, "workspace/catalog.properties")
+        val originalOpened = mutableMapOf<String, String>()
+        fun day(days: Long) = calendar.today.minusDays(days).atTime(12, 0).atZone(calendar.zone).toInstant().toEpochMilli()
+        val ids = runBlocking { withContext(Dispatchers.IO) { lock.withLock {
+            val created = names.map { store.create(it, Workspace.ROOT, DocumentKind.Plain, "日期与菜单验收") }
+            val properties = java.util.Properties().apply { catalog.reader(Charsets.UTF_8).use { load(it) } }
+            for (n in 0 until properties.getProperty("count").toInt()) {
+                val id = properties.getProperty("$n.id")
+                if (id !in created) {
+                    originalOpened[id] = properties.getProperty("$n.opened")
+                    properties.setProperty("$n.opened", "0")
+                }
+            }
+            created.forEachIndexed { index, id ->
+                val n = (0 until properties.getProperty("count").toInt()).first { properties.getProperty("$it.id") == id }
+                properties.setProperty("$n.opened", day(openedDays[index]).toString())
+                check(File(targetContext.filesDir, "workspace/documents/$id/body.txt").setLastModified(day(modifiedDays[index])))
+            }
+            catalog.writer(Charsets.UTF_8).use { properties.store(it, null) }
+            store.load()
+            created
+        } } }
+        fun shown(text: String) = nodes().any { it.isVisibleToUser && it.text?.toString() == text }
+        fun scrollTo(text: String) {
+            for (direction in listOf(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+                repeat(16) {
+                    if (shown(text)) {
+                        val bounds = Rect(); find(text).getBoundsInScreen(bounds)
+                        if (bounds.bottom > targetContext.resources.displayMetrics.heightPixels * .65f) swipe(.5f, .7f, .5f, .45f)
+                        return
+                    }
+                    if (direction == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) swipe(.5f, .3f, .5f, .8f)
+                    else swipe(.5f, .8f, .5f, .3f)
+                }
+            }
+            error("Missing recent item: $text")
+        }
+        try {
+            main { model.reload() }; ready()
+            val groups = main { checkNotNull(model.ui.workspace).recentGroups(calendar) }
+            verify(RecentPeriod.entries.all { it in groups }, "Recent documents occupy all four calendar groups")
+            for (label in listOf("今天", "3天内", "7天内", "更早以前")) {
+                scrollTo(label)
+                verify(shown(label), "Recent renders section $label")
+            }
+            for ((index, label) in listOf("今天", "昨天", "前天").withIndex()) {
+                scrollTo(names[index])
+                verify(nodes().any { it.text?.toString()?.contains("·  $label ") == true }, "Card modification date renders $label")
+            }
+            scrollTo(names[3])
+            verify(nodes().any { it.text?.toString()?.contains(calendar.today.minusDays(400).year.toString()) == true }, "Other-year card retains its year")
+            screenshot("recent-earlier")
+            scrollTo(names[0]); screenshot("recent-groups")
+            val originalTime = System.currentTimeMillis()
+            val elapsed = SystemClock.elapsedRealtime()
+            val originalAutoTime = shell("settings get global auto_time")
+            val originalZone = shell("getprop persist.sys.timezone")
+            try {
+                shell("settings put global auto_time 0")
+                val tomorrow = calendar.today.plusDays(1).atTime(13, 0).atZone(calendar.zone).toInstant().toEpochMilli()
+                shell("cmd alarm set-time $tomorrow")
+                waitFor("date-change refresh") { nodes().any { it.text?.toString()?.contains("·  昨天 ") == true } }
+                verify(shown(names[0]) && nodes().any { it.text?.toString()?.contains("·  昨天 ") == true }, "System date change refreshes relative card dates without navigation")
+                val alternateZone = if (calendar.zone.id == "Pacific/Kiritimati") "America/Los_Angeles" else "Pacific/Kiritimati"
+                shell("cmd alarm set-timezone $alternateZone")
+                val expectedTime = android.text.format.DateFormat.getTimeFormat(targetContext).apply {
+                    timeZone = java.util.TimeZone.getTimeZone(alternateZone)
+                }.format(java.util.Date(day(0)))
+                waitFor("timezone refresh") { nodes().any { it.text?.toString()?.contains("$expectedTime  ·") == true } }
+                verify(nodes().any { it.text?.toString()?.contains("$expectedTime  ·") == true }, "System timezone broadcast refreshes visible card time without navigation")
+            } finally {
+                shell("cmd alarm set-timezone $originalZone")
+                shell("cmd alarm set-time ${originalTime + SystemClock.elapsedRealtime() - elapsed}")
+                shell("settings put global auto_time $originalAutoTime")
+            }
+            waitFor("restored card date") { nodes().any { it.text?.toString()?.contains("·  今天 ") == true } }
+            longPress(names[0], physical = true)
+            verify(shown("更多信息") && shown("重命名") && shown("删除") && !shown("复制"), "Recent card keeps its three-action long-press menu")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+            click(names[0]); ready()
+            click("条目操作")
+            verify(listOf("详细信息", "重命名", "删除", "导出 .txt 副本", "上一保存版本").all(::shown), "Editor overflow exposes all new and existing actions")
+            screenshot("editor-menu")
+            click("详细信息"); ready()
+            verify(shown("详细信息") && nodes().any { it.text?.toString()?.contains(names[0] + ".txt") == true }, "Editor details opens the active document")
+            click("关闭")
+            click("条目操作"); click("重命名")
+            setText("名称", names[1]); click("重命名")
+            verify(shown("此位置已有同名条目，请换一个名称；未覆盖原条目。"), "Editor rename rejects sibling conflicts")
+            setText("名称", names[0] + "-改名"); click("重命名"); ready()
+            verify(main { model.ui.activeId == ids[0] && model.ui.page == Page.Editor && model.ui.workspace?.entry(ids[0])?.name == names[0] + "-改名" }, "Rename retains active editor ID and file type")
+            click(names[0] + "-改名"); click("取消")
+            verify(main { model.ui.page == Page.Editor }, "Title rename shortcut remains available")
+            click("条目操作"); click("删除"); click("取消")
+            verify(main { model.ui.activeId == ids[0] && model.ui.workspace?.entry(ids[0]) != null }, "Cancel editor deletion preserves document and editor")
+            val pending = File(targetContext.filesDir, "workspace/documents/${ids[0]}/body.txt.new")
+            check(pending.mkdir())
+            try {
+                setText("编辑正文", "删除前保存屏障保留的最新输入")
+                click("条目操作"); click("删除"); click("删除"); ready()
+                verify(main { model.ui.page == Page.Editor && model.ui.workspace?.entry(ids[0]) != null && model.save?.status?.value?.phase == SavePhase.Failed }, "Failed save prevents active-document deletion and keeps editable buffer")
+            } finally { check(pending.delete()) }
+            click("重试"); ready(); saved()
+            click("条目操作"); click("删除"); click("删除"); ready()
+            verify(main { model.ui.page == Page.Recent && model.ui.activeId == null && model.save == null && model.textState == null }, "Deleting active document returns to recent and releases editor")
+            SystemClock.sleep(2200)
+            verify(main { model.ui.workspace?.entry(ids[0]) == null } && !File(targetContext.filesDir, "workspace/documents/${ids[0]}").exists(), "No delayed autosave resurrects the deleted draft")
+            main { model.go(Page.Directory) }; ready(); main { model.open(ids[1]) }; ready()
+            click("条目操作"); click("删除"); click("删除"); ready()
+            verify(main { model.ui.page == Page.Directory && model.ui.activeId == null }, "Deleting an editor opened from directory returns to directory")
+        } finally {
+            main { if (model.ui.page == Page.Editor) model.back() }; ready()
+            runBlocking { withContext(Dispatchers.IO) { lock.withLock {
+                ids.forEach { if (store.refresh().entry(it) != null) store.delete(it) }
+                val properties = java.util.Properties().apply { catalog.reader(Charsets.UTF_8).use { load(it) } }
+                for (n in 0 until properties.getProperty("count").toInt()) {
+                    originalOpened[properties.getProperty("$n.id")]?.let { properties.setProperty("$n.opened", it) }
+                }
+                catalog.writer(Charsets.UTF_8).use { properties.store(it, null) }
+                store.load()
+            } } }
+            main { model.reload() }; ready()
+        }
     }
 
     private fun motionTest() {

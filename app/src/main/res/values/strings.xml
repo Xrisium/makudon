@@ -2,6 +2,14 @@
   <string name="app_name" translatable="false">Makudon</string>
   <string name="brand_name" translatable="false">Makudon</string>
   <string name="recent">最近</string>
+  <string name="date_today">今天</string>
+  <string name="date_yesterday">昨天</string>
+  <string name="date_day_before_yesterday">前天</string>
+  <string name="recent_three_days">3天内</string>
+  <string name="recent_seven_days">7天内</string>
+  <string name="recent_earlier">更早以前</string>
+  <string name="recent_date_time">%1$s %2$s</string>
+  <string name="detailed_info">详细信息</string>
   <string name="directory">目录</string>
   <string name="settings">设置</string>
   <string name="library">文稿库</string>

@@ -37,7 +37,7 @@ import io.github.xrisium.makudon.ui.theme.EditorStyle
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onRename: () -> Unit) {
+fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (String) -> Unit) {
     val ui = model.ui
     val field = model.textState ?: return
     val session = model.save ?: return
@@ -62,14 +62,18 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onRename: () -
         } catch (e: WorkspaceException) { revertAllChanges(); model.inputRejected(e.reason) }
     } }
     Column(Modifier.fillMaxSize()) {
-        PageBar(entry.name, model::back, onTitleClick = onRename, titleEnabled = editable) {
+        PageBar(entry.name, model::back, onTitleClick = { onAction("rename") }, titleEnabled = editable) {
             Tool(R.drawable.ic_undo_2, stringResource(R.string.undo), enabled = editable && model.canUndo, onClick = { model.undo() })
             Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = editable && model.canRedo, onClick = { model.undo(true) })
             Box {
-                Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), onClick = { more = !more })
+                Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = editable, onClick = { more = !more })
                 DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = colors.surface) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.export_copy)) }, leadingIcon = { Glyph(R.drawable.ic_download) }, onClick = { more = false; onExport() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.previous_version)) }, leadingIcon = { Glyph(R.drawable.ic_clock_3) }, onClick = { more = false; model.previous() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = editable, onClick = { more = false; onAction("info") })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = editable, onClick = { more = false; onAction("rename") })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.export_copy)) }, leadingIcon = { Glyph(R.drawable.ic_download) }, enabled = editable, onClick = { more = false; onExport() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.previous_version)) }, leadingIcon = { Glyph(R.drawable.ic_clock_3) }, enabled = editable, onClick = { more = false; model.previous() })
+                    HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
+                    DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = colors.error) }, leadingIcon = { Glyph(R.drawable.ic_trash_2, tint = colors.error) }, enabled = editable, onClick = { more = false; onAction("delete") })
                 }
             }
         }

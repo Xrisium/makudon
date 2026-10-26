@@ -260,6 +260,11 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         recordEdit(next); save?.changed(next)
         return true
     }
+    fun inspect(onSuccess: () -> Unit) { launchWork {
+        if (!barrier()) return@launchWork
+        ui = ui.copy(workspace = disk { store.refresh() })
+        onSuccess()
+    } }
     fun rename(id: String, name: String, onSuccess: () -> Unit = {}) { launchWork {
         if (!barrier()) return@launchWork
         disk { store.rename(id, name) }
@@ -339,14 +344,17 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         var cleanupFailure = false
         try { disk { store.deleteAll(ids) } }
         catch (e: WorkspaceException) { if (e.reason == Failure.Cleanup) cleanupFailure = true else throw e }
-        if (ui.activeId in removed) {
+        val deletedActive = ui.activeId in removed
+        if (deletedActive) {
             observer?.cancel(); observer = null; save = null; textState = null; paragraphFields.clear()
+            departingSession = null
         }
         ui = ui.copy(selected = if (ui.selected in removed) selectedParent else ui.selected,
             newParent = if (ui.newParent in removed) newParent else ui.newParent,
             activeId = if (ui.activeId in removed) null else ui.activeId)
         acceptWorkspace(disk { store.refresh() })
         deleteRequest = null
+        if (deletedActive && (ui.page == Page.Editor || ui.page == Page.Previous)) navigate(ui.origin, backwards = true)
         if (cleanupFailure) throw WorkspaceException(Failure.Cleanup)
     } }
     fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null) {

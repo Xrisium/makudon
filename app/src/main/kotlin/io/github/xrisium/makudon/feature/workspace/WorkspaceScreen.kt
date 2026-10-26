@@ -35,8 +35,6 @@ import androidx.compose.ui.window.Dialog
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
 import io.github.xrisium.makudon.ui.theme.EditorStyle
-import java.text.DateFormat
-import java.util.Date
 
 @Composable
 fun Glyph(icon: Int, modifier: Modifier = Modifier, description: String? = null, tint: Color = LocalContentColor.current) {
@@ -114,9 +112,9 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                 ) { page ->
                     when (page) {
                         Page.New -> NewPage(model, ::importDocument)
-                        Page.Editor -> EditorScreen(model, onExport = ::export, onRename = {
+                        Page.Editor -> EditorScreen(model, onExport = ::export, onAction = { action ->
                             target = workspace.entry(ui.activeId.orEmpty())
-                            dialog = "rename"
+                            if (action == "info") model.inspect { dialog = "editor-info" } else dialog = action
                         })
                         Page.Licenses -> Column {
                             PageBar(stringResource(R.string.licenses), model::back)
@@ -155,7 +153,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                 }
             }, confirmButton = { TextButton(onClick = { model.delete(entry.id); dialog = null }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.delete)) } }, dismissButton = { TextButton(onClick = { dialog = null }, modifier = Modifier.focusRequester(cancelFocus)) { Text(stringResource(R.string.cancel)) } })
         }
-        "info" -> if (entry != null && workspace != null) AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(R.string.more_info)) }, text = {
+        "info", "editor-info" -> if (entry != null && workspace != null) AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if (dialog == "editor-info") R.string.detailed_info else R.string.more_info)) }, text = {
             Text(if (entry.folder) stringResource(R.string.folder_details, entry.name, workspace.path(entry.id), workspace.entries.count { it.parent == entry.id }) else stringResource(R.string.info_details, entry.filename, stringResource(kindLabel(entry.kind)), workspace.path(entry.parent ?: Workspace.ROOT), entry.bytes))
         }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.close)) } }, dismissButton = { if (!entry.folder) TextButton(onClick = { model.previous(entry.id); dialog = null }) { Text(stringResource(R.string.previous_version)) } })
         "restore" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(R.string.restore_previous)) }, text = { Text(stringResource(R.string.restore_warning)) }, confirmButton = { TextButton(onClick = { model.restorePrevious(); dialog = null }) { Text(stringResource(R.string.confirm)) } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } })
@@ -167,6 +165,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
 internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) -> Unit, onNew: () -> Unit, onAction: (Entry, String) -> Unit) {
     val actionLabel = stringResource(R.string.item_actions)
     val colors = MaterialTheme.colorScheme
+    val calendar = rememberRecentCalendar()
     Column {
         Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 12.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Box(Modifier.weight(1f).heightIn(min = 48.dp).padding(end = 8.dp), contentAlignment = Alignment.CenterStart) {
@@ -174,29 +173,37 @@ internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) ->
             }
             Tool(R.drawable.ic_plus, stringResource(R.string.new_document), enabled = !busy, onClick = onNew)
         }
-        val recent = workspace.entries.filter { !it.folder && it.opened > 0 }.sortedByDescending { it.opened }
+        val groups = workspace.recentGroups(calendar)
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (recent.isEmpty()) item { Text(stringResource(R.string.empty_recent), Modifier.padding(vertical = 32.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(recent, key = { it.id }) { item ->
-                var menu by remember(item.id) { mutableStateOf(false) }
-                Box(Modifier.animateItem(fadeInSpec = tween(180), placementSpec = tween(180), fadeOutSpec = tween(180))) {
-                    Surface(shape = RoundedCornerShape(20.dp), color = colors.surface, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                        .combinedClickable(enabled = !busy, onLongClickLabel = actionLabel, onLongClick = { menu = true }, onClick = { onOpen(item.id) })
-                        .semantics { customActions = listOf(CustomAccessibilityAction(actionLabel) { if (!busy) menu = true; !busy }) }) {
-                        Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(item.name, style = MaterialTheme.typography.titleMedium)
-                            Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(workspace.path(item.parent ?: Workspace.ROOT) + "  ·  " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(item.modified)) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+            if (groups.isEmpty()) item { Text(stringResource(R.string.empty_recent), Modifier.padding(vertical = 32.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            groups.forEach { (period, recent) ->
+                item(key = "period-$period") {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp).semantics { heading() }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(periodLabel(period)), style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+                        HorizontalDivider(Modifier.weight(1f), color = colors.outlineVariant)
                     }
-                    DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(20.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 240.dp, max = 290.dp)) {
-                        Text(item.name, Modifier.padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.titleSmall)
-                        HorizontalDivider(Modifier.padding(horizontal = 12.dp))
-                        listOf(Triple("info", R.string.more_info, R.drawable.ic_info), Triple("rename", R.string.rename, R.drawable.ic_pencil_line), Triple("delete", R.string.delete, R.drawable.ic_trash_2)).forEach { (action, label, icon) ->
-                            if (action == "delete") HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
-                            DropdownMenuItem(text = { Text(stringResource(label), color = if (action == "delete" && !busy) colors.error else Color.Unspecified) },
-                                leadingIcon = { Glyph(icon, tint = if (action == "delete" && !busy) colors.error else colors.onSurfaceVariant) }, enabled = !busy,
-                                onClick = { menu = false; onAction(item, action) })
+                }
+                items(recent, key = { it.id }) { item ->
+                    var menu by remember(item.id) { mutableStateOf(false) }
+                    Box(Modifier.animateItem(fadeInSpec = tween(180), placementSpec = tween(180), fadeOutSpec = tween(180))) {
+                        Surface(shape = RoundedCornerShape(20.dp), color = colors.surface, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                            .combinedClickable(enabled = !busy, onLongClickLabel = actionLabel, onLongClick = { menu = true }, onClick = { onOpen(item.id) })
+                            .semantics { customActions = listOf(CustomAccessibilityAction(actionLabel) { if (!busy) menu = true; !busy }) }) {
+                            Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(item.name, style = MaterialTheme.typography.titleMedium)
+                                Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(workspace.path(item.parent ?: Workspace.ROOT) + "  ·  " + recentDate(item.modified, calendar) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(20.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 240.dp, max = 290.dp)) {
+                            Text(item.name, Modifier.padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.titleSmall)
+                            HorizontalDivider(Modifier.padding(horizontal = 12.dp))
+                            listOf(Triple("info", R.string.more_info, R.drawable.ic_info), Triple("rename", R.string.rename, R.drawable.ic_pencil_line), Triple("delete", R.string.delete, R.drawable.ic_trash_2)).forEach { (action, label, icon) ->
+                                if (action == "delete") HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
+                                DropdownMenuItem(text = { Text(stringResource(label), color = if (action == "delete" && !busy) colors.error else Color.Unspecified) },
+                                    leadingIcon = { Glyph(icon, tint = if (action == "delete" && !busy) colors.error else colors.onSurfaceVariant) }, enabled = !busy,
+                                    onClick = { menu = false; onAction(item, action) })
+                            }
                         }
                     }
                 }
