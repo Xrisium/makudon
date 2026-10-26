@@ -2,43 +2,44 @@
 
 ## 最短路径
 
-先按 [设备选择约定](device-policy.md) 查看连接状态：**有真机时仅用真机，无真机才用模拟器，用户明确要求除外。**
+按 [设备选择约定](device-policy.md)：**Agent 会话测试优先模拟器，完成后集中向测试真机覆盖安装；除非用户要求，不直接通过数据线调试真机。**
 
-有真机时使用 `test-android.cmd -Serial YOUR_SERIAL` 或 VS Code 的 `Makudon: Run on selected device`。Agent 应识别唯一在线真机并传序列号；多台真机未指定时再请用户选择。未授权 / offline / 运行中断连时处理真机问题，不自动回退模拟器。
+日常使用无参数 `test-android.cmd` 或 `Ctrl+Shift+B` 复用 / 启动配置 AVD。最终交付前重新识别测试真机，唯一在线真机直接选取并显式指定序列号；多台且未指定时请用户选择。真机未授权 / offline 时记录交付未完成，不反复安装或转为真机自动化。
 
-现有无参数双击、`Ctrl+Shift+B` 和无 `-Serial` 的 Run / Screenshot / Logcat 仍走配置 AVD，**尚无自动设备分流**。仅确认无真机或用户要求模拟器时才用它们；脚本会复用 / 启动 AVD，不会每次创建、clean、卸载、清数据或 wipe。
+除非本轮用户要求或确有必须真机调试的原因，真机交付仅单向推送 APK 并发起覆盖安装，随后即视为完成该子任务；不二次询问安装是否完成，不追加启动 / 进程检查，也不等待手机端确认。已有命令明确报错则如实记录，详见[交付完成规则](device-policy.md#日常测试与最终交付)。
 
-日常迭代先集中完成本地修改、增量构建与 `Check`，禁止在真机上频繁、反复覆盖安装，测试 APK 同样适用。必要的最终验收才合并安排安装并检查进程；额外安装须说明原因和影响并获得用户明确授权。用户叫停后本轮不再安装，也不改用模拟器绕过，具体见 [安装频率约定](device-policy.md#安装频率与用户使用)。无真机使用模拟器时，正常退出保存的 Quick Boot 快照通常可加快下次启动。
+无 `-Serial` 的 Run / Screenshot / Logcat 选择配置 AVD，不会自动转向真机；脚本不创建新镜像、卸载、清数据或 wipe。
 
-当前应进入“最近”，可新建、编辑、自动保存和重新打开；目录长按提供整理动作。开发版详细范围与限制见 [工作区验收记录](testing/2026-10-25-workspace.md)。运行前等待“已保存到本机”，尤其是保留数据覆盖安装会重启进程。
+日常迭代先集中完成本地修改、增量构建与 `Check`，禁止在真机上频繁、反复覆盖安装，测试 APK 同样适用。最终交付合并安装；额外安装须说明原因和影响并获用户明确授权。用户叫停后本轮不再安装，也不改用模拟器绕过，具体见 [安装频率约定](device-policy.md#安装频率与测试数据)。正常退出保存的 Quick Boot 快照通常可加快下次模拟器启动。
+
+连接的测试真机只用于本软件人工测试，可按需要覆盖、重建或重置 Makudon 开发包的文稿与目录树，无需逐次确认；不默认卸载应用、清除其他设置或操作其他应用。该测试授权不改变产品数据保护规则。覆盖安装会重启进程，交付前提示并记录本次是否重置文稿。
 
 **覆盖安装保留已持久化数据，重启进程不会保留仅在内存中的未保存内容。未来编辑器接入前后都应先保存再运行测试入口。**
 
 ## 常用操作
 
 ```powershell
-# 仅无真机或用户明确要求模拟器时使用
+# 日常 Agent 测试优先模拟器
 pwsh -NoProfile -File scripts/android.ps1 -Action Emulator
 # 构建与静态检查，不启动设备
 pwsh -NoProfile -File scripts/android.ps1 -Action Check
 # 查看设备，包括 unauthorized/offline 状态
 pwsh -NoProfile -File scripts/android.ps1 -Action Devices
-# 有真机时仅用真机：替换为本次 Devices 中的目标 serial
-pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial YOUR_SERIAL
-# 截图：.local/screenshots/
-pwsh -NoProfile -File scripts/android.ps1 -Action Screenshot -Serial YOUR_SERIAL
-# 当前开发应用日志，Ctrl+C 停止；进程重启后重新执行
-pwsh -NoProfile -File scripts/android.ps1 -Action Logcat -Serial YOUR_SERIAL
+# 完成本地 / 模拟器验证后的最终交付：替换为目标真机 serial
+& "$env:USERPROFILE\DevTools\Android\Sdk\platform-tools\adb.exe" -s YOUR_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+# 日常截图与日志：使用本次识别的模拟器序列号
+pwsh -NoProfile -File scripts/android.ps1 -Action Screenshot -Serial EMULATOR_SERIAL
+pwsh -NoProfile -File scripts/android.ps1 -Action Logcat -Serial EMULATOR_SERIAL
 ```
 
-真机开启开发者选项与 USB 调试，在手机确认 RSA 授权。不自动为未知手机安装驱动。手机一律明确 `-Serial`，截图与日志沿用同一目标；多设备选择按设备约定，不把现有脚本默认选 AVD 当作允许绕过真机的理由。
+真机交付需要设备已授权，不自动安装未知手机驱动；手机一律显式指定 `-Serial`。除非用户要求，截图、日志与自动化均在模拟器进行，不在真机安装测试 APK。
 
 ## 产物与复现
 
 - APK：`app/build/outputs/apk/debug/app-debug.apk`。
 - Lint：`app/build/reports/lint-results-debug.html`。
 - 未来的 JVM 单测报告：`app/build/reports/tests/testDebugUnitTest/index.html`；尚无单测时不会生成报告，任务为 `NO-SOURCE`。
-- 最近安装记录：`.local/last-run.json`，含时间、设备、APK SHA256、Git HEAD 和是否有未提交改动。dirty=true 时 HEAD 不能代表完整源码；复现前应保存差异或提交当前改动。
+- 最近 Run 记录：`.local/last-run.json`，含时间、设备、APK SHA256、Git HEAD 和是否有未提交改动。dirty=true 时 HEAD 不能代表完整源码；直接 adb 单向交付不会更新此文件，须另记本次推送的设备 / APK 身份，不把旧记录当作本次安装证据。
 - 模拟器启动日志：`.local/logs/`；截图：`.local/screenshots/`。这些文件不提交。
 - 使用 [验收模板](templates/manual-test.md) 记录有价值的里程碑；引用产物身份，不能只写“测试通过”。
 
@@ -53,7 +54,7 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Logcat -Serial YOUR_SERIAL
 
 ```powershell
 # 以下为一次集中验收的命令示例，不应在每次修改后重复执行安装
-# 先按设备策略识别目标；下面仅示意用户明确要求的模拟器
+# 先按设备策略识别当前模拟器目标
 $env:JAVA_HOME = "$env:USERPROFILE\DevTools\Android\Jdk\17.0.18+8"
 .\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest
 # Run 会构建并保留数据重启应用；先等正文已保存
@@ -73,6 +74,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
 动效回归提供 `-e case motion`（26 项横滑、状态恢复、保存失败、生命周期、主题和零动画倍率）与 `-e case motion-visual`（8 项退场会话、主题像素、中间帧、系统深浅、许可页及实际 200% 字体检查）。不指定 case 或指定 `workspace` 执行原有 29 项完整流程。画面用例会临时修改动画倍率、字号和夜间模式，在 `finally` 恢复；截图只保存于应用测试缓存，取出后放 `.local/`。详见[动效验收](testing/2026-10-25-motion.md)。
 
 首个编辑切片的 [详细验收规范](testing/plain-text-editor-acceptance.md) 已形成草案，覆盖保存竞争、失败注入、真实进程中断、恢复、中文输入与长文性能；目前全部待执行，原基础工程验收不能替代这些结果。
+
+最近日期与编辑菜单使用 `-e case recent`：合成四档文稿，检查分组与日期、系统日期 / 时区广播刷新、真实长按、编辑菜单、重命名冲突 / 标题快捷入口、删除取消、保存失败阻止删除、删除后来源导航和无延迟保存复活。系统时间 / 时区 / 自动时间配置在 finally 恢复，本次合成文稿在 finally 清理。此用例只在模拟器执行，不默认对真机做时间修改或故障注入。
 
 ## 常见问题
 
