@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.data.WorkspaceStore
+import io.github.xrisium.makudon.data.LibraryController
 import io.github.xrisium.makudon.domain.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -18,7 +19,7 @@ import kotlinx.coroutines.flow.first
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Previous }
+enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Previous, Backup }
 val MainPages = listOf(Page.Directory, Page.Recent, Page.Settings)
 
 data class WorkspaceUi(
@@ -77,7 +78,23 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     private var clipboardToken = 0L
     private val ioLock = Mutex()
-    private val store = WorkspaceStore(File(application.filesDir, "workspace"), rootName = application.getString(R.string.library))
+    private val library = LibraryController(application.filesDir, application.getString(R.string.library), available = {
+        application.getSystemService(android.os.storage.StorageManager::class.java).let { storage ->
+            storage.getAllocatableBytes(storage.getUuidForPath(application.filesDir))
+        }
+    })
+    private val store: WorkspaceStore get() = library.store
+    private var libraryEpoch = 0L
+    val backup = BackupCoordinator(viewModelScope, application, ioLock, library, { barrier() }) { current ->
+        libraryEpoch++
+        observer?.cancel(); observer = null; save = null; textState = null
+        paragraphFields.clear(); departingSession = null; sessionId++
+        selection = null; clipboard = null; pasteRequest = null; deleteRequest = null
+        canUndo = false; canRedo = false; history = EditHistory(); blocks = emptyList()
+        ui = ui.copy(workspace = current, activeId = null, previous = null, selected = Workspace.ROOT, newParent = Workspace.ROOT,
+            revealFolder = null, directoryRevision = ui.directoryRevision + 1, message = R.string.backup_library_changed, error = null)
+        navigate(Page.Directory, backwards = true)
+    }
     private var observer: Job? = null
     private var sessionId = 0L
     private var departingSession: Long? = null
@@ -92,7 +109,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun <T> disk(block: () -> T): T = withContext(Dispatchers.IO + NonCancellable) { ioLock.withLock { block() } }
     private fun failure(e: Exception) = (e as? WorkspaceException)?.reason ?: Failure.Storage
     private fun launchWork(savingPreferences: Boolean = false, block: suspend () -> Unit) {
-        if (ui.busy || ui.transitioning || ui.tabTransitioning) return
+        if (ui.busy || ui.transitioning || ui.tabTransitioning || backup.locked) return
         ui = ui.copy(busy = true, savingPreferences = savingPreferences, error = null, message = null)
         viewModelScope.launch {
             try { block() }
@@ -102,10 +119,10 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     fun reload() {
-        if (loading?.isActive == true) return
+        if (loading?.isActive == true || backup.locked) return
         ui = ui.copy(busy = true, error = null)
         loading = viewModelScope.launch {
-            try { acceptWorkspace(disk { store.load() }) }
+            try { acceptWorkspace(disk { library.load() }) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { ui = ui.copy(error = failure(e)) }
             finally { ui = ui.copy(busy = false) }
@@ -170,7 +187,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     fun newDocument(from: Page = ui.page, parent: String? = null) {
-        if (ui.busy || ui.transitioning || ui.tabTransitioning) return
+        if (ui.busy || ui.transitioning || ui.tabTransitioning || backup.locked) return
         val state = ui.workspace ?: return
         val requested = parent ?: if (from == Page.Recent) Workspace.ROOT else ui.selected
         val target = requested.takeIf { state.entry(it)?.folder == true } ?: Workspace.ROOT
@@ -196,7 +213,12 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         observer?.cancel()
         paragraphFields.clear()
         val field = TextFieldState(text)
-        val session = SaveCoordinator(viewModelScope, text, SystemClock::uptimeMillis) { value -> disk { store.save(id, value) } }
+        val epoch = libraryEpoch
+        val openedStore = store
+        val session = SaveCoordinator(viewModelScope, text, SystemClock::uptimeMillis) { value -> disk {
+            if (epoch != libraryEpoch || store !== openedStore) throw WorkspaceException(Failure.StaleRestore)
+            store.save(id, value)
+        } }
         sessionId++
         departingSession = null
         textState = field; save = session
@@ -210,6 +232,9 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun back() {
         if (ui.busy || ui.transitioning || ui.tabTransitioning) return
         when (ui.page) {
+            Page.Backup -> {
+                if (backup.locked) backup.cancel() else navigate(Page.Settings, backwards = true)
+            }
             Page.Editor -> go(ui.origin)
             Page.New -> navigate(ui.origin, backwards = true)
             Page.Licenses -> navigate(Page.Settings, backwards = true)
@@ -380,6 +405,11 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         licenseText = disk { getApplication<Application>().resources.openRawResource(R.raw.third_party_notices).bufferedReader().use { it.readText() } }
         navigate(Page.Licenses)
     } }
+    fun backups() { launchWork {
+        if (!barrier()) return@launchWork
+        navigate(Page.Backup)
+        backup.refresh()
+    } }
     fun export(uri: Uri?) {
         val text = exportText; exportText = null
         if (uri == null) return
@@ -399,7 +429,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (uri == null) return
         viewModelScope.launch {
             loading?.join()
-            snapshotFlow { !ui.busy && !ui.transitioning && !ui.tabTransitioning }.first { it }
+            snapshotFlow { !ui.busy && !ui.transitioning && !ui.tabTransitioning && !backup.locked }.first { it }
             if (requestId != null && requestId in externalRequests) return@launch
             val existing = ui.workspace?.entries?.firstOrNull { requestId != null && it.importRequestId == requestId }
             if (existing != null) { launchWork { openInternal(existing.id, Page.Recent) }; return@launch }

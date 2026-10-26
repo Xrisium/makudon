@@ -91,6 +91,26 @@ class WorkspaceStore(
     }
 
     private fun state() = workspace ?: throw WorkspaceException(Failure.Corrupt)
+    /** Only used in a fresh, unpublished generation. No live body is overwritten. */
+    fun prepare(next: Workspace, material: (Entry) -> Pair<ByteArray, ByteArray?>, check: () -> Unit = {}) {
+        if (catalog.exists()) throw WorkspaceException(Failure.Conflict)
+        validate(next)
+        next.entries.filter { !it.folder }.forEach { entry ->
+            check()
+            val (bytes, previous) = material(entry)
+            TextRules.decode(bytes)
+            atomic.write(body(entry), bytes)
+            if (entry.modified > 0 && !body(entry).setLastModified(entry.modified)) throw WorkspaceException(Failure.Storage)
+            if (previous != null) atomic.write(File(nodeDirectory(entry.id), "previous.txt"), previous)
+        }
+        check()
+        publish(next)
+    }
+    fun previousBytes(id: String): ByteArray? {
+        find(id)
+        val file = File(nodeDirectory(id), "previous.txt")
+        return if (file.exists()) atomic.read(file, TextRules.MAX_BYTES) else null
+    }
     private fun find(id: String) = state().entry(id) ?: throw WorkspaceException(Failure.Missing)
     private fun parent(id: String) { if (!find(id).folder) throw WorkspaceException(Failure.Missing) }
     fun refresh(): Workspace {

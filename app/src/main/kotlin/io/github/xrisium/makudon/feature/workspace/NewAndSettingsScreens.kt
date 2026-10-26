@@ -92,6 +92,14 @@ fun SettingsPage(model: WorkspaceViewModel) {
                 }
             }
         }
+        item {
+            Surface(onClick = model::backups, enabled = enabled, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(stringResource(R.string.backup_title)); Text(stringResource(R.string.backup_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Glyph(R.drawable.ic_chevron_right)
+                }
+            }
+        }
         item { TextButton(onClick = model::licenses, enabled = enabled) { Text(stringResource(R.string.licenses)); Spacer(Modifier.width(6.dp)); Glyph(R.drawable.ic_chevron_right) } }
         item { Text(stringResource(R.string.local_notice), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Box(Modifier.fillMaxWidth().padding(vertical = 18.dp), contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.makudon_lockup), stringResource(R.string.brand_name), Modifier.width(126.dp).height(28.dp)) } }

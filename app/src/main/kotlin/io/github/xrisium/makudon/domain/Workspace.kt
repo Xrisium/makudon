@@ -84,8 +84,8 @@ data class Workspace(
     }
 }
 
-enum class Failure { InvalidName, Conflict, Cycle, Missing, InvalidText, TooLarge, Storage, Corrupt, NoPrevious, Cleanup, NoChange, ClipboardTooLarge, CatalogFull }
-class WorkspaceException(val reason: Failure) : Exception(reason.name)
+enum class Failure { InvalidName, Conflict, Cycle, Missing, InvalidText, TooLarge, Storage, Corrupt, NoPrevious, Cleanup, NoChange, ClipboardTooLarge, CatalogFull, InvalidArchive, ArchiveLimit, EmptyArchive, StaleRestore, NoSnapshot, Space }
+class WorkspaceException(val reason: Failure, val detail: String? = null) : Exception(reason.name)
 
 object TextRules {
     const val MAX_BYTES = 1_048_576

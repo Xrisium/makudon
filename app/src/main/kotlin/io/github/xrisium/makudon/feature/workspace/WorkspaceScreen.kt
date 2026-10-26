@@ -112,6 +112,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                 ) { page ->
                     when (page) {
                         Page.New -> NewPage(model, ::importDocument)
+                        Page.Backup -> BackupPage(model)
                         Page.Editor -> EditorScreen(model, onExport = ::export, onAction = { action ->
                             target = workspace.entry(ui.activeId.orEmpty())
                             if (action == "info") model.inspect { dialog = "editor-info" } else dialog = action
@@ -226,6 +227,12 @@ fun PageBar(title: String, back: () -> Unit, onTitleClick: (() -> Unit)? = null,
 
 fun kindLabel(kind: DocumentKind) = when (kind) { DocumentKind.Folder -> R.string.folder; DocumentKind.Plain -> R.string.plain_text; DocumentKind.Markdown -> R.string.markdown }
 fun errorLabel(failure: Failure) = when (failure) {
+    Failure.InvalidArchive -> R.string.backup_invalid_archive
+    Failure.ArchiveLimit -> R.string.backup_limit
+    Failure.EmptyArchive -> R.string.backup_empty
+    Failure.StaleRestore -> R.string.backup_stale
+    Failure.NoSnapshot -> R.string.backup_no_snapshot
+    Failure.Space -> R.string.backup_space
     Failure.NoChange -> R.string.paste_already_here
     Failure.ClipboardTooLarge -> R.string.clipboard_too_large
     Failure.CatalogFull -> R.string.catalog_full
