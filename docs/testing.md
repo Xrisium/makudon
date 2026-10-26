@@ -79,6 +79,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
 
 ## 常见问题
 
+ZIP 备份恢复使用 `-e case backup`（27 项），真实 320dp / 200% 字号用 `-e case backup-visual`（2 项）。覆盖标准电脑 ZIP、三种模式、逐项冲突、覆盖确认 / 取消、快照交换、迟到保存、普通重读后继续保存、SAF 导出 / 源不变及保存失败屏障。测试跟随库指针选择当前代际，不再假定权威正文始终在旧 workspace 目录；详见 [ZIP 验收记录](testing/2026-10-27-zip-backup.md)。
+
 - **AVD 已在启动 / offline**：等启动完成重试；脚本宁可报错也不启动同一 AVD 的第二实例。可先 `Devices` 查看。不要删除 AVD 解决启动慢。
 - **启动超时**：查看 `.local/logs`，可加 `-BootTimeoutSeconds 300`。WHPX 失败参照共享环境说明处理，不自动修改 BIOS/Windows 功能。
 - **快照异常**：手动关闭对应模拟器后 `-Action Run -ColdBoot`；这只跳过加载快照，保留 userdata。

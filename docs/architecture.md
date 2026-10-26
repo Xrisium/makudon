@@ -13,11 +13,16 @@ app/src/main/kotlin/io/github/xrisium/makudon/
   domain/Workspace.kt      节点、排序、UTF-8 / 名称规则、有限 Markdown 范围解析
   domain/DirectorySelection.kt  复选规范化、继承 / 半选、粘贴目标与整批冲突校验
   data/WorkspaceStore.kt   私有目录、原子索引发布、正文 / 上一版本与恢复
+  data/LibraryController.kt 整库指针、独立代际与最近恢复快照
+  data/LibraryArchive.kt    有界纯目录 ZIP 与逐篇磁盘暂存
+  domain/ArchiveRestore.kt  路径匹配与逐项冲突规划
 ```
 
 现已实现上述职责；[ADR 0003](adr/0003-workspace-catalog.md)记录原生工作区的数据格式、索引事务边界和有限排版编辑。没有 DI、数据库、导航运行库或 WebView。
 
 每篇私有文稿使用独立 ID，同时只编辑一篇；进程内单一 ViewModel / Mutex 协调保存和目录操作。外部 VIEW 与应用内导入共用只读副本链路，正文不写回源 URI。保存、恢复、导入与导出已接入；完整故障 / 进程中断矩阵及真机体验仍须验收，见 [当前状态](status.md)。
+
+ZIP 的 BackupCoordinator 与原 ViewModel 共用 IO Mutex / 保存屏障，Compose 仅消费库存与恢复计划，正文逐篇暂存磁盘。LibraryController 首次载入建立兼容旧 workspace 的小指针，后续完整准备独立代际再原子切换当前库 / 最近快照，库内格式不变。活动保存检查原库实例及代际，禁止切换后的旧回调写入。事务 / 空间 / 清理边界见 [ADR 0006](adr/0006-plain-zip-and-library-generations.md)。
 
 复选状态与新建目标独立，单项 / 批量共用 ViewModel 的进程内私有剪贴板和保存屏障。WorkspaceStore 的 captureAll / pasteAll / moveAll / deleteAll 接收去重操作根；批量复制先准备全部独立正文，移动 / 删除整批校验后一次发布索引。对话框只提交明确的单个目标，不执行文件 I/O，事务与失败边界见 [ADR 0005](adr/0005-batch-directory-and-private-clipboard.md)。
 
