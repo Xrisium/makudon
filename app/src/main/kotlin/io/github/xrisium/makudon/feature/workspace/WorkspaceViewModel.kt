@@ -101,7 +101,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     private var departingSession: Long? = null
     private var exportText: String? = null
     private var exportName: String = ""
-    var licenseText by mutableStateOf("")
+    var licenseTexts by mutableStateOf<List<String>>(emptyList())
         private set
     private var loading: Job? = null
     private val externalRequests = mutableSetOf<String>()
@@ -408,7 +408,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (prepareExport()) files.text(exportName, checkNotNull(exportText))
     }
     fun licenses() { launchWork {
-        licenseText = disk { getApplication<Application>().resources.openRawResource(R.raw.third_party_notices).bufferedReader().use { it.readText() } }
+        licenseTexts = disk { licenseEntries.map { entry -> getApplication<Application>().resources.openRawResource(entry.resource).bufferedReader().use { it.readText() } } }
         navigate(Page.Licenses)
     } }
     fun backups() { launchWork {

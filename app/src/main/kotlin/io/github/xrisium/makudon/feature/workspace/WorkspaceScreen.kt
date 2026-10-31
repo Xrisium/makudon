@@ -108,10 +108,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                             target = workspace.entry(ui.activeId.orEmpty())
                             if (action == "info") model.inspect { dialog = "editor-info" } else dialog = action
                         })
-                        Page.Licenses -> Column {
-                            PageBar(stringResource(R.string.licenses), model::back)
-                            Text(model.licenseText, Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), style = MaterialTheme.typography.bodySmall)
-                        }
+                        Page.Licenses -> LicensesPage(model)
                         Page.Previous -> Column {
                             PageBar(stringResource(R.string.previous_version), model::back)
                             TextButton(onClick = { dialog = "restore" }, enabled = !ui.busy, modifier = Modifier.padding(horizontal = 12.dp)) { Text(stringResource(R.string.restore_previous)) }
@@ -206,13 +203,13 @@ internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) ->
 }
 
 @Composable
-fun PageBar(title: String, back: () -> Unit, onTitleClick: (() -> Unit)? = null, titleEnabled: Boolean = true, trailing: @Composable RowScope.() -> Unit = {}) {
+fun PageBar(title: String, back: () -> Unit, onTitleClick: (() -> Unit)? = null, titleEnabled: Boolean = true, maxTitleLines: Int = 1, trailing: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Tool(R.drawable.ic_arrow_left, stringResource(R.string.back), onClick = back)
         Text(title, Modifier.weight(1f).then(if (onTitleClick != null) Modifier.clip(RoundedCornerShape(12.dp))
             .clickable(enabled = titleEnabled, onClickLabel = stringResource(R.string.rename), role = Role.Button, onClick = onTitleClick)
             .heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically) else Modifier),
-            style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            style = MaterialTheme.typography.titleMedium, maxLines = maxTitleLines, overflow = TextOverflow.Ellipsis)
         trailing()
     }
 }
