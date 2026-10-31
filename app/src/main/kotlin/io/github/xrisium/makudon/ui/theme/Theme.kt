@@ -24,17 +24,20 @@ val UiFont = FontFamily(Font(R.font.noto_sans_sc, weight = FontWeight.Medium, va
 val EditorFont = FontFamily(Font(R.font.noto_sans_sc, weight = FontWeight(450), variationSettings = FontVariation.Settings(FontVariation.weight(450))))
 val EditorStyle = TextStyle(fontFamily = EditorFont, fontWeight = FontWeight(450), fontSize = 18.sp, lineHeight = 33.sp)
 
+// Shared by the applied theme and the settings previews.
+fun themePalette(theme: ColorTheme): List<Color> = when (theme) {
+    ColorTheme.Ink -> listOf(0xFF1E201F, 0xFF272A28, 0xFFE0E3DD, 0xFFA4ADA3, 0xFF3B423C, 0xFF303731)
+    ColorTheme.Cream -> listOf(0xFFF3E9DA, 0xFFFFF9F0, 0xFF39312A, 0xFF74675B, 0xFFD8C5AE, 0xFFE9D7C0)
+    ColorTheme.Mist -> listOf(0xFFE3EDF1, 0xFFF7FCFD, 0xFF29373D, 0xFF5C7078, 0xFFC0D4DC, 0xFFCADDE5)
+    ColorTheme.Sage -> listOf(0xFFE5ECE0, 0xFFF9FCF5, 0xFF303B2D, 0xFF60705B, 0xFFC3D3BC, 0xFFCFDEC8)
+    else -> listOf(0xFFF7F7F5, 0xFFFFFFFF, 0xFF272827, 0xFF686B67, 0xFFE3E4DF, 0xFFEEEFEA)
+}.map { Color(it) }
+
 @Composable
 fun MakudonTheme(theme: ColorTheme = ColorTheme.System, ready: Boolean = true, content: @Composable () -> Unit) {
     val selected = if (theme == ColorTheme.System) { if (isSystemInDarkTheme()) ColorTheme.Ink else ColorTheme.Paper } else theme
     val targetColors = remember(selected) {
-        val values = when (selected) {
-            ColorTheme.Ink -> listOf(0xFF1E201F, 0xFF272A28, 0xFFE0E3DD, 0xFFA4ADA3, 0xFF3B423C, 0xFF303731)
-            ColorTheme.Cream -> listOf(0xFFF5F1E8, 0xFFFBF8F1, 0xFF34312D, 0xFF6D685F, 0xFFDFD9CF, 0xFFECE7DC)
-            ColorTheme.Mist -> listOf(0xFFF1F4F6, 0xFFFAFCFD, 0xFF2C3439, 0xFF5E6B73, 0xFFDCE2E6, 0xFFE6EBEF)
-            ColorTheme.Sage -> listOf(0xFFF1F4EF, 0xFFFAFCF8, 0xFF30372F, 0xFF626E60, 0xFFDCE3D9, 0xFFE5EBE2)
-            else -> listOf(0xFFF7F7F5, 0xFFFFFFFF, 0xFF272827, 0xFF686B67, 0xFFE3E4DF, 0xFFEEEFEA)
-        }.map { Color(it) }
+        val values = themePalette(selected)
         val dark = selected == ColorTheme.Ink
         val base = if (dark) darkColorScheme() else lightColorScheme()
         base.copy(

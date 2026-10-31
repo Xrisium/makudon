@@ -109,8 +109,6 @@
   <string name="save_failure_help">保存失败，当前输入仍在编辑器中。请重试或导出副本后再离开。</string>
   <string name="retry">重试</string>
   <string name="document_count">%1$d 字符</string>
-  <string name="auto_save">自动保存</string>
-  <string name="auto_save_detail">编辑后自动保存到本机</string>
   <string name="theme">颜色主题</string>
   <string name="theme_system">跟随系统</string>
   <string name="theme_paper">纸白</string>

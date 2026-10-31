@@ -5,16 +5,22 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
 import io.github.xrisium.makudon.ui.theme.EditorStyle
+import io.github.xrisium.makudon.ui.theme.themePalette
 
 @Composable
 fun NewPage(model: WorkspaceViewModel, import: () -> Unit) {
@@ -54,7 +60,6 @@ fun themeLabel(theme: ColorTheme) = when (theme) {
     ColorTheme.Mist -> R.string.theme_mist; ColorTheme.Sage -> R.string.theme_sage; ColorTheme.Ink -> R.string.theme_ink
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsPage(model: WorkspaceViewModel) {
     val ui = model.ui
@@ -65,8 +70,16 @@ fun SettingsPage(model: WorkspaceViewModel) {
         item { Text(stringResource(R.string.settings), Modifier.padding(start = 4.dp, bottom = 6.dp), style = MaterialTheme.typography.headlineMedium) }
         item { Text(stringResource(R.string.theme), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                ColorTheme.entries.forEach { theme -> FilterChip(selected = workspace.theme == theme, enabled = enabled, onClick = { model.preferences(theme = theme) }, label = { Text(stringResource(themeLabel(theme))) }, shape = RoundedCornerShape(14.dp)) }
+            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ColorTheme.entries.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { theme ->
+                            ThemeOption(theme, workspace.theme == theme, enabled, Modifier.weight(1f)) {
+                                model.preferences(theme = theme)
+                            }
+                        }
+                    }
+                }
             }
         }
         item { Text(stringResource(R.string.font), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -85,14 +98,6 @@ fun SettingsPage(model: WorkspaceViewModel) {
             }
         }
         item {
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
-                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text(stringResource(R.string.auto_save)); Text(stringResource(R.string.auto_save_detail), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    Glyph(R.drawable.ic_check)
-                }
-            }
-        }
-        item {
             Surface(onClick = model::backups, enabled = enabled, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
                 Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) { Text(stringResource(R.string.backup_title)); Text(stringResource(R.string.backup_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -103,5 +108,45 @@ fun SettingsPage(model: WorkspaceViewModel) {
         item { TextButton(onClick = model::licenses, enabled = enabled) { Text(stringResource(R.string.licenses)); Spacer(Modifier.width(6.dp)); Glyph(R.drawable.ic_chevron_right) } }
         item { Text(stringResource(R.string.local_notice), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Box(Modifier.fillMaxWidth().padding(vertical = 18.dp), contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.makudon_lockup), stringResource(R.string.brand_name), Modifier.width(126.dp).height(28.dp)) } }
+    }
+}
+
+@Composable
+private fun ThemeOption(theme: ColorTheme, selected: Boolean, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val palette = themePalette(theme)
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier.border(if (selected) 2.dp else 1.dp, if (selected) colors.onSurface else colors.outlineVariant, shape)
+            .background(colors.surface, shape)
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .padding(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(9.dp)).background(palette[0])) {
+            if (theme == ColorTheme.System) {
+                SystemHalf(themePalette(ColorTheme.Paper), Modifier.weight(1f))
+                SystemHalf(themePalette(ColorTheme.Ink), Modifier.weight(1f))
+            } else {
+                Box(Modifier.fillMaxSize().padding(8.dp).background(palette[1], RoundedCornerShape(6.dp))) {
+                    Column(Modifier.padding(7.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.width(46.dp).height(4.dp).background(palette[2], RoundedCornerShape(2.dp)))
+                        Box(Modifier.fillMaxWidth(0.8f).height(3.dp).background(palette[5], RoundedCornerShape(2.dp)))
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(start = 2.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(themeLabel(theme)), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+            if (selected) Glyph(R.drawable.ic_check, Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun SystemHalf(palette: List<Color>, modifier: Modifier) {
+    Box(modifier.fillMaxHeight().background(palette[0]).padding(8.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(palette[1], RoundedCornerShape(6.dp)).padding(6.dp)) {
+            Box(Modifier.fillMaxWidth(0.65f).height(4.dp).background(palette[2], RoundedCornerShape(2.dp)))
+        }
     }
 }
