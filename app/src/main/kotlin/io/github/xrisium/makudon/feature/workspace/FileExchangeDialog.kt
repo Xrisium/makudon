@@ -46,8 +46,10 @@ fun FileExchangeDialog(model: WorkspaceViewModel) {
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                state.error?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
-                state.message?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+                val body = state.error?.let { stringResource(it) } ?: state.message ?: state.export?.name
+                body?.let {
+                    Text(it, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (!state.importing && state.export == null && state.error != null) TextButton(onClick = exchange::retryPreparation, enabled = !state.busy) { Text(stringResource(R.string.retry)) }
                 if (state.importing) {
                     for (app in state.apps) {
@@ -64,14 +66,7 @@ fun FileExchangeDialog(model: WorkspaceViewModel) {
                         Text(stringResource(R.string.file_system_picker), Modifier.weight(1f))
                     }
                 } else if (state.export != null) {
-                    Text(state.export.name, style = MaterialTheme.typography.titleSmall)
-                    Text(stringResource(R.string.file_export_snapshot), style = MaterialTheme.typography.bodySmall)
-                    // Huawei's advertised SEND handler has not established a local-save contract.
-                    // Keep it honestly labelled as sharing until native local-save verification passes.
                     if (AndroidFileAccess.supportsDownloads) Button(onClick = exchange::download, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.file_save_downloads)) }
-                    for (app in state.apps.filter { it.huawei }) {
-                        OutlinedButton(onClick = { exchange.share(app, context::startActivity) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.file_share_manager, app.label)) }
-                    }
                     OutlinedButton(onClick = { exchange.share(null, context::startActivity) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.file_share_other)) }
                     OutlinedButton(onClick = { exchange.create(exporter::launch) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.file_system_save)) }
                 }

@@ -101,8 +101,6 @@ class FileExchange(private val application: Application, private val scope: Coro
         work {
             val export = withContext(Dispatchers.IO) { copies.prepare(name, mime, active, write) }
             ui = ui.copy(export = export)
-            val apps = withContext(Dispatchers.IO) { AndroidFileAccess.apps(application, Intent(Intent.ACTION_SEND).setType(mime)) }
-            ui = ui.copy(export = export, apps = apps)
         }
     }
 
@@ -169,7 +167,6 @@ class FileExchange(private val application: Application, private val scope: Coro
             try {
                 val intent = AndroidFileAccess.shareIntent(application, export)
                 launch(if (app == null) Intent.createChooser(intent, application.getString(R.string.file_share_other)) else intent.setComponent(app.component))
-                ui = ui.copy(message = application.getString(R.string.file_shared))
             } catch (_: android.content.ActivityNotFoundException) { launchFailed(false) }
             catch (_: SecurityException) { launchFailed(false) }
             catch (_: IllegalArgumentException) { ui = ui.copy(error = R.string.file_operation_error) }

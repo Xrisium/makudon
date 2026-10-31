@@ -217,12 +217,9 @@
   <string name="file_select_app">选择用于选取文件的应用</string>
   <string name="file_export_method">选择导出方式</string>
   <string name="file_system_picker">安卓原生文件选择器</string>
-  <string name="file_system_save">系统选择保存位置</string>
+  <string name="file_system_save">选择保存位置</string>
   <string name="file_save_downloads">保存到下载目录</string>
-  <string name="file_share_manager">通过%1$s分享</string>
   <string name="file_share_other">通过其他应用分享</string>
-  <string name="file_export_snapshot">这是开始导出时的副本；重试会使用同一份内容。关闭后可重新生成。</string>
-  <string name="file_shared">已交给其他应用，保存结果请在该应用确认。</string>
   <string name="file_download_saved">已保存到 Download/Makudon/%1$s</string>
   <string name="file_saved_location">已写入所选位置。</string>
   <string name="file_app_unavailable">无法打开所选应用。请选择其他应用或系统入口。</string>

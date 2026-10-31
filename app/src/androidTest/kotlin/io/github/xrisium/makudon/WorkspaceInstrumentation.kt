@@ -36,6 +36,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyBackup = false
     private var onlyBackupVisual = false
     private var onlyFiles = false
+    private var onlyExportDialog = false
     private var currentActivity: Activity? = null
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
     override fun onCreate(arguments: Bundle?) {
@@ -51,6 +52,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyBackup = arguments?.getString("case") == "backup"
         onlyBackupVisual = arguments?.getString("case") == "backup-visual"
         onlyFiles = arguments?.getString("case") == "files"
+        onlyExportDialog = arguments?.getString("case") == "export-dialog"
         start()
     }
     override fun onStart() {
@@ -58,7 +60,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            when { onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
@@ -152,6 +154,30 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+    private fun exportDialogTest() {
+        val files = model.files
+        fun prepared() { waitFor("export operation") { main { !files.ui.busy } }; waitForIdleSync() }
+        fun visibleText(text: String) = nodes().any { it.text?.toString() == text }
+        val destination = android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/export")
+        try {
+            main { files.text("弹窗测试.txt", "export dialog test") }; prepared()
+            verify(visibleText("弹窗测试.txt") && visibleText("保存到下载目录") && visibleText("通过其他应用分享") && visibleText("选择保存位置") && nodes().none { it.text?.toString()?.startsWith("这是开始导出时的副本") == true || it.text?.toString()?.startsWith("通过保存至云空间分享") == true }, "Initial export shows only the filename and requested actions")
+            main { files.saveTo(destination) }; prepared()
+            verify(visibleText(targetContext.getString(R.string.file_saved_location)) && !visibleText("弹窗测试.txt"), "Chosen location result replaces the filename")
+            main { files.share(null) { } }; prepared()
+            verify(visibleText("弹窗测试.txt") && !visibleText(targetContext.getString(R.string.file_saved_location)), "Share returns to filename without claiming a save")
+            main { files.download() }; prepared()
+            val saved = main { files.ui.message }
+            verify(saved != null && visibleText(saved) && !visibleText("弹窗测试.txt"), "Downloads result replaces the filename")
+            val name = saved!!.substringAfterLast('/')
+            val downloads = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            targetContext.contentResolver.query(downloads, arrayOf("_id"), "_display_name=?", arrayOf(name), null)?.use { cursor ->
+                while (cursor.moveToNext()) targetContext.contentResolver.delete(android.content.ContentUris.withAppendedId(downloads, cursor.getLong(0)), null, null)
+            }
+            screenshot("export-dialog")
+        } finally { main { files.close() } }
+    }
+
     @android.annotation.SuppressLint("NewApi") // This platform suite runs on the configured API 36 emulator.
     private fun fileExchangeTest() {
         val access = io.github.xrisium.makudon.data.AndroidFileAccess
@@ -210,10 +236,11 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { files.close() }
             main { files.text("中文快照.txt", "captured before edits 😀") }; prepared()
             val snapshot = main { files.ui.export!! }
+            verify(nodes().any { it.text?.toString() == snapshot.name } && nodes().none { it.text?.toString()?.startsWith("这是开始导出时的副本") == true || it.text?.toString()?.startsWith("通过保存至云空间分享") == true }, "Export initially shows the filename without extra explanation or dedicated cloud share")
             main { currentActivity?.recreate() }
             waitFor("export restored after recreation") { nodes().any { it.text?.toString() == "选择导出方式" } }
             verify(main { files.ui.export == snapshot }, "Activity recreation preserves export bytes and filename")
-            click("系统选择保存位置")
+            click("选择保存位置")
             waitFor("system save picker") { uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true }
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
             waitFor("save picker returned") { uiAutomation.rootInActiveWindow?.packageName == targetContext.packageName }
@@ -224,13 +251,13 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { files.ui.export == snapshot && files.ui.visible }, "Cancelled save retains the same export session")
             main { files.saveTo(uri("export")) }; prepared()
             verify(resolver.openInputStream(uri("export"))!!.bufferedReader().use { it.readText() } == "captured before edits 😀", "Retry writes original snapshot bytes")
-            verify(main { files.ui.message == targetContext.getString(R.string.file_saved_location) }, "Direct write reports saved location rather than share success")
+            verify(main { files.ui.message == targetContext.getString(R.string.file_saved_location) } && nodes().none { it.text?.toString() == snapshot.name }, "Direct write replaces the filename with the save result")
             screenshot("files-export-options")
             val share = access.shareIntent(targetContext, snapshot)
             val sharedUri = share.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)!!
             verify(share.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0 && share.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0 && share.clipData!!.getItemAt(0).uri == sharedUri, "File sharing grants read-only URI via stream and ClipData")
             main { files.share(null) { } }; prepared()
-            verify(main { files.ui.message == targetContext.getString(R.string.file_shared) && files.ui.export == snapshot }, "Share launch is explicitly unconfirmed and retains retry copy")
+            verify(main { files.ui.message == null && files.ui.export == snapshot } && nodes().any { it.text?.toString() == snapshot.name }, "Share launch retains the filename without claiming a save")
             main { files.close() }
             main { files.text("迟到结果.txt", "must not be written") }; prepared()
             main { files.create { }; files.close(); files.created(Activity.RESULT_OK, Intent().setData(uri("export"))) }
@@ -252,7 +279,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
             main { files.text("同名验收.txt", "download one") }; prepared(); main { files.download() }; prepared()
             val savedOne = main { files.ui.message }
-            verify(savedOne?.startsWith("已保存到 Download/Makudon/") == true, "Actual Downloads collection publishes verified UTF-8 file")
+            verify(savedOne?.startsWith("已保存到 Download/Makudon/") == true && nodes().none { it.text?.toString() == "同名验收.txt" }, "Downloads save result replaces the filename")
             val firstName = savedOne!!.substringAfterLast('/')
             main { files.close(); files.text("同名验收.txt", "download two") }; prepared(); main { files.download() }; prepared()
             val secondName = main { files.ui.message!!.substringAfterLast('/') }
@@ -288,8 +315,8 @@ class WorkspaceInstrumentation : Instrumentation() {
                     }
                     error("Missing file control: $label")
                 }
-                reveal("系统选择保存位置"); screenshot("files-export-200")
-                verify(find("系统选择保存位置").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep export fallback and close reachable")
+                reveal("选择保存位置"); screenshot("files-export-200")
+                verify(find("选择保存位置").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep export fallback and close reachable")
                 main { files.close(); files.import(ImportKind.Text) }; prepared()
                 reveal("安卓原生文件选择器"); screenshot("files-import-200")
                 verify(find("安卓原生文件选择器").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep app choices and system fallback reachable")
