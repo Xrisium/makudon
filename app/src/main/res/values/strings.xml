@@ -216,7 +216,7 @@
   <string name="backup_space">可用空间不足，无法同时保留当前库、恢复前快照及完整候选库。</string>
   <string name="file_select_app">选择用于选取文件的应用</string>
   <string name="file_export_method">选择导出方式</string>
-  <string name="file_system_picker">系统选择文件</string>
+  <string name="file_system_picker">安卓原生文件选择器</string>
   <string name="file_system_save">系统选择保存位置</string>
   <string name="file_save_downloads">保存到下载目录</string>
   <string name="file_share_manager">通过%1$s分享</string>

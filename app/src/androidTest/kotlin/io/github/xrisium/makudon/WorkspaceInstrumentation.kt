@@ -171,9 +171,9 @@ class WorkspaceInstrumentation : Instrumentation() {
         val before = main { model.ui.workspace!!.entries.filter { !it.folder }.map { it.id }.toSet() }
         try {
             click("新建文稿"); click("导入"); prepared()
-            verify(listOf("选择用于选取文件的应用", "测试文件选择", "系统选择文件").all { label -> nodes().any { it.text?.toString() == label } }, "Import offers real app labels and explicit system fallback")
+            verify(listOf("选择用于选取文件的应用", "测试文件选择", "安卓原生文件选择器").all { label -> nodes().any { it.text?.toString() == label } }, "Import offers real app labels and explicit system fallback")
             screenshot("files-import-apps")
-            click("系统选择文件")
+            click("安卓原生文件选择器")
             waitFor("system file picker") { uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true }
             verify(main { !files.ui.visible }, "Explicit system fallback opens actual DocumentsUI")
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
@@ -289,8 +289,8 @@ class WorkspaceInstrumentation : Instrumentation() {
                 reveal("系统选择保存位置"); screenshot("files-export-200")
                 verify(find("系统选择保存位置").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep export fallback and close reachable")
                 main { files.close(); files.import(ImportKind.Text) }; prepared()
-                reveal("系统选择文件"); screenshot("files-import-200")
-                verify(find("系统选择文件").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep app choices and system fallback reachable")
+                reveal("安卓原生文件选择器"); screenshot("files-import-200")
+                verify(find("安卓原生文件选择器").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep app choices and system fallback reachable")
             } finally {
                 main { files.close() }
                 shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")

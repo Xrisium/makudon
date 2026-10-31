@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -57,7 +58,11 @@ fun FileExchangeDialog(model: WorkspaceViewModel) {
                             Text(app.label, Modifier.weight(1f))
                         }
                     }
-                    OutlinedButton(onClick = { exchange.launchImport(AndroidFileAccess.importIntent(Intent.ACTION_OPEN_DOCUMENT), importer::launch) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.file_system_picker)) }
+                    TextButton(onClick = { exchange.launchImport(AndroidFileAccess.importIntent(Intent.ACTION_OPEN_DOCUMENT), importer::launch) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                        Image(painterResource(R.drawable.ic_android_robot), contentDescription = null, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.file_system_picker), Modifier.weight(1f))
+                    }
                 } else if (state.export != null) {
                     Text(state.export.name, style = MaterialTheme.typography.titleSmall)
                     Text(stringResource(R.string.file_export_snapshot), style = MaterialTheme.typography.bodySmall)
