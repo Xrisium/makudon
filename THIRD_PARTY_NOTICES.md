@@ -8,6 +8,7 @@ Android 开发版已集成完整 Noto Sans SC、按需 Lucide / Fluent 向量图
 - Noto Sans SC — Copyright 2014–2021 Adobe，Reserved Font Name “Source”；[SIL OFL 1.1](docs/licenses/notosanssc-OFL.txt)。
 - Lucide — Copyright (c) 2026 Lucide Icons and Contributors；部分图标源自 Feather，Copyright (c) 2013-present Cole Bemis；[ISC 与 MIT 完整声明](docs/licenses/lucide-LICENSE.txt)。
 - Fluent UI System Icons / Markdown 20 Filled — Copyright (c) 2020 Microsoft Corporation；[MIT 完整声明](docs/licenses/fluentui-system-icons-LICENSE.txt)，[固定来源及哈希](assets/icons/provenance.json)。
+- Android robot — Google LLC；[CC BY 3.0 原文](docs/licenses/cc-by-3.0.txt)，[官方来源](https://developer.android.com/static/images/brand/android-head_flat.svg)。The Android robot is reproduced or modified from work created and shared by Google and used according to terms described in the Creative Commons 3.0 Attribution License. Android is a trademark of Google LLC.
 - AndroidX / Compose — The Android Open Source Project；[Apache 2.0](docs/licenses/androidx-LICENSE.txt)。
 - kotlinx.coroutines — JetBrains / Kotlin Contributors；[Apache 2.0](docs/licenses/kotlinx-coroutines-LICENSE.txt)。
 

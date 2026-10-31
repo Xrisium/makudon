@@ -1,5 +1,7 @@
 # Android 素材集成
 
+2026-10-31：文件选择器使用 Google 官方扁平 Android robot 头部 SVG，转换为 28dp VectorDrawable，保留路径与原色；原始来源、SHA-256、CC BY 3.0 许可和署名见[素材记录](../../docs/third-party-assets.md)。
+
 2026-10-25：品牌组合、39 个按需 Lucide 图标、Fluent Markdown 20 Filled 和完整 Noto Sans SC 可变字体已进入 Android 资源。固定来源、下载哈希、转换结果哈希见 [provenance.json](provenance.json)。
 
 - 图标从固定上游 SVG 转为 VectorDrawable，保留路径 / 图形几何，继承主题 tint。Lucide 保留 24px 画布和 2px 圆端点线宽；Markdown 保留原生 20px 画布。未引入整套图标字体或运行库。
