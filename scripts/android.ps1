@@ -1,7 +1,7 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param(
-    [ValidateSet('Setup', 'Doctor', 'Build', 'Check', 'Run', 'Emulator', 'Devices', 'Logcat', 'Screenshot')]
+    [ValidateSet('Setup', 'Doctor', 'Build', 'Check', 'Run', 'InstallDevice', 'Emulator', 'Devices', 'Logcat', 'Screenshot')]
     [string]$Action = 'Run',
     [string]$SdkPath,
     [string]$JdkPath,
@@ -175,6 +175,20 @@ try {
         'Check' { Invoke-Build @(':app:assembleDebug', ':app:testDebugUnitTest', ':app:lintDebug') }
         'Devices' { Invoke-Native $adb @('devices', '-l') }
         'Emulator' { $target = Get-TestDevice; Write-Host "Ready: $target" }
+        'InstallDevice' {
+            if (!$Serial) { throw 'InstallDevice requires -Serial for the freshly identified physical device. Run Devices first.' }
+            if ($Serial -like 'emulator-*') { throw 'InstallDevice is for physical devices only.' }
+            $device = @(Get-Devices | Where-Object Serial -CEQ $Serial)
+            if ($device.Count -ne 1 -or $device[0].State -ne 'device') {
+                throw "Device $Serial is not online and authorized. Run Devices and select an available physical device."
+            }
+            $apk = Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk'
+            Assert-File $apk
+            $hash = (Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash
+            Write-Host "Installing existing APK on $Serial (SHA-256: $hash). App data is retained; the app may restart."
+            Invoke-Native $adb @('-s', $Serial, 'install', '-r', $apk) | Out-Host
+            Write-Host 'ADB install command completed. This does not establish that manual device acceptance passed.'
+        }
         'Run' {
             Invoke-Build @(':app:assembleDebug')
             $target = Get-TestDevice

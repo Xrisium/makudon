@@ -38,11 +38,11 @@
 pwsh -NoProfile -File scripts/android.ps1 -Action Devices
 # 日常模拟器测试
 pwsh -NoProfile -File scripts/android.ps1 -Action Run
-# 最终真机交付：仅推送并发起覆盖安装，不追加启动 / 进程检查
-& "$env:USERPROFILE\DevTools\Android\Sdk\platform-tools\adb.exe" -s YOUR_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+# 最终真机交付：复用已验证的 APK，仅推送并发起覆盖安装
+pwsh -NoProfile -File scripts/android.ps1 -Action InstallDevice -Serial YOUR_SERIAL
 ```
 
-VS Code 的 `Makudon: Run on selected device` 与 `test-android.cmd -Serial YOUR_SERIAL` 同样支持显式目标，但包含启动与检查，不作为默认单向交付入口。直接调用 adb 不会更新 `.local/last-run.json`，应在交付记录写明 APK 身份、设备型号与已发起推送安装的事实；不能引用旧安装记录冒充本次结果。此次仅调整流程文档，不修改脚本逻辑。
+`InstallDevice` 必须显式指定本次识别的在线真机，拒绝 `emulator-*` 序列号；不构建、不启动应用或检查进程，只执行一次 `adb install -r`，输出 APK SHA-256，并如实报告命令错误。安装命令可能等待手机系统确认；不另行轮询或重试。它不更新 `.local/last-run.json`；交付记录应写明 APK 身份、设备型号和实际结果，不能引用旧安装记录冒充本次结果。VS Code 的 `Makudon: Run on selected device` 与 `test-android.cmd -Serial YOUR_SERIAL` 包含启动与检查，不作为默认单向交付入口。
 
 ## 已观察到的真机环境
 

@@ -30,8 +30,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Check
 pwsh -NoProfile -File scripts/android.ps1 -Action Devices
 # 日常测试：默认复用 / 启动配置 AVD
 pwsh -NoProfile -File scripts/android.ps1 -Action Run
-# 最终交付：替换为本次识别的测试真机序列号，仅推送安装
-& "$env:USERPROFILE\DevTools\Android\Sdk\platform-tools\adb.exe" -s YOUR_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+# 最终交付：替换为本次识别的测试真机序列号，安装已有 APK
+pwsh -NoProfile -File scripts/android.ps1 -Action InstallDevice -Serial YOUR_SERIAL
 ```
 
 `Setup` 只生成/更新 `.local/android.json`、`.local/Makudon.code-workspace` 和 `local.properties` 的 SDK 配置，不下载安装工具。三个文件都不进入 Git。已生成的本机配置无需每次重复初始化。
@@ -49,7 +49,7 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Setup -SdkPath 'D:\Android\Sdk
 推荐 `code .local/Makudon.code-workspace`，或从 VS Code 打开这个工作区文件。也可直接打开项目根目录，所有任务仍能正确选择 JDK。
 
 - `Ctrl+Shift+B`：默认构建、安装并启动到模拟器。
-- 上述快捷键符合日常模拟器测试流程；最终真机交付使用上面的 adb 单向推送安装命令，完成推送并发起安装即收尾。`Makudon: Run on selected device` 包含启动与进程检查，仅在本轮用户要求或确有必须真机调试的原因时使用。
+- 上述快捷键符合日常模拟器测试流程；最终真机交付使用上面的 `InstallDevice` 单向推送安装命令，完成推送并发起安装即收尾。`Makudon: Run on selected device` 包含启动与进程检查，仅在本轮用户要求或确有必须真机调试的原因时使用。
 - 命令面板 → `Tasks: Run Task`：选择 Check、Build APK、Devices、Screenshot、Logcat 等。
 - 打开 `MainActivity.kt` 激活现有 JetBrains Kotlin 扩展。首次工作区信任、扩展条款等由用户在界面确认。
 - 从生成工作区启动的集成终端自带 `JAVA_HOME` / `ANDROID_HOME`。如果语言服务导入不正确，先 `Check` 判断是否为真实编译问题，然后重载窗口/工作区并检查 Kotlin 输出。
