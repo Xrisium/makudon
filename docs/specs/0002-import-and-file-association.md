@@ -6,6 +6,8 @@
 
 ## 1. 一致的副本语义
 
+2026-10-31 更新：应用内文稿与 ZIP 选择先显示实际处理应用，优先排列已发现的华为文件管理；使用 GET_CONTENT / OPENABLE，并保留 OPEN_DOCUMENT 系统入口。导出增加只读分享和 API 29+ 下载目录保存，见 [ADR 0007](../adr/0007-file-manager-first.md)。下表系统选择器为后备路径，源文件与副本语义不变；本轮不增加外部 SEND 导入。
+
 两种入口共用同一条导入链路：
 
 1. 应用内“导入文件”：由系统选择器选择本机纯文本 / `.md`。
@@ -19,7 +21,7 @@
 
 | 入口 | 设计要求 |
 | --- | --- |
-| 应用内选择 | `ACTION_OPEN_DOCUMENT` + `CATEGORY_OPENABLE`，单选、只读，使用 `EXTRA_LOCAL_ONLY` 表达本机文件偏好；不遍历整个存储 |
+| 应用内选择 | 先选择处理应用，`ACTION_GET_CONTENT` + `CATEGORY_OPENABLE`；系统后备用 `ACTION_OPEN_DOCUMENT`。单选、只读，`EXTRA_LOCAL_ONLY` 表达本机偏好；不遍历整个存储 |
 | 系统打开方式 | 独立、窄范围的 `ACTION_VIEW` / `CATEGORY_DEFAULT` 接收入口，支持带读取授权的 `content://`，冷启动与已有会话转入使用同一处理逻辑 |
 | MIME 优先范围 | `text/plain`、`text/markdown`、`text/x-markdown`；纯文本 MIME 或 `.txt` / `.md` 文件名提示都要经过实际内容检查 |
 | 文件名不规范 | 可从 `OpenableColumns.DISPLAY_NAME` 获取显示名，不能假定 `content://.../123` 的 URI path 含扩展名或等于真实路径 |

@@ -79,6 +79,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
 
 ## 常见问题
 
+文件管理适配专项使用 `-e case files`。测试 APK 仅在模拟器安装，包含真实 GET_CONTENT 结果 Activity 和可控的元数据 / 授权 / 下载失败 provider；覆盖应用选择、系统后备、取消、多项拒绝、固定正文 / 名称、Activity 重建、迟到结果、下载发布和同名不覆盖、分享只读授权及暂存生命周期。用例临时设置实际 320dp / 字号 200%，在 finally 恢复。真机仅安装应用 APK 一次，厂商交互结果与范围见 [本轮记录](testing/2026-10-31-file-manager.md)。
+
 ZIP 备份恢复使用 `-e case backup`（27 项），真实 320dp / 200% 字号用 `-e case backup-visual`（2 项）。覆盖标准电脑 ZIP、三种模式、逐项冲突、覆盖确认 / 取消、快照交换、迟到保存、普通重读后继续保存、SAF 导出 / 源不变及保存失败屏障。测试跟随库指针选择当前代际，不再假定权威正文始终在旧 workspace 目录；详见 [ZIP 验收记录](testing/2026-10-27-zip-backup.md)。
 
 - **AVD 已在启动 / offline**：等启动完成重试；脚本宁可报错也不启动同一 AVD 的第二实例。可先 `Devices` 查看。不要删除 AVD 解决启动慢。

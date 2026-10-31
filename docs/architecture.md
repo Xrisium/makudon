@@ -32,6 +32,8 @@ ZIP 的 BackupCoordinator 与原 ViewModel 共用 IO Mutex / 保存屏障，Comp
 
 ## 按需增长的依赖方向
 
+文件交互由 FileExchange 协调、FileExchangeDialog 显示应用与导出方式；AndroidFileAccess 处理 Intent / URI / Downloads，ExportFiles 管理独立生命周期的分享副本。四个文稿 / ZIP 出入口共用这条链路，不改变私有库格式。正文与 ZIP 复制 / 回读 / 清理均在 IO dispatcher；FileProvider 仅开放 files/shared-exports，见 [ADR 0007](adr/0007-file-manager-first.md)。
+
 ```text
 UI / ViewModel → domain 中实际需要的规则或仓库契约
 data → domain 契约 + Android 文件 API
