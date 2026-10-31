@@ -49,9 +49,11 @@ internal fun FontSettingsPage(model: WorkspaceViewModel, isUi: Boolean) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { choice ->
                             val active = selected.choice == choice
+                            val optionPreference = selected.copy(choice = choice)
+                            val optionFamily = remember(optionPreference, isUi) { fontFamily(optionPreference, isUi) }
                             Surface(Modifier.weight(1f).selectable(selected = active, enabled = enabled, role = Role.RadioButton) { change(selected.copy(choice = choice)) }, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(if (active) 2.dp else 1.dp, if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant)) {
                                 Row(Modifier.padding(14.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(stringResource(fontLabel(choice)), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                    Text(stringResource(fontLabel(choice)), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = optionFamily, fontWeight = fontWeight(optionPreference, isUi)))
                                     if (active) Glyph(R.drawable.ic_check)
                                 }
                             }

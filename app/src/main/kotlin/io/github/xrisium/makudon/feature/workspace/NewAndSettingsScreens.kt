@@ -91,7 +91,7 @@ fun SettingsPage(model: WorkspaceViewModel) {
                             Column(Modifier.weight(1f)) { Text(stringResource(if (uiFont) R.string.ui_font else R.string.editor_font)); Text(stringResource(fontLabel(preference.choice)) + " · " + stringResource(thicknessLabel(preference.thickness)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             Glyph(R.drawable.ic_chevron_right)
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        if (uiFont) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
             }
