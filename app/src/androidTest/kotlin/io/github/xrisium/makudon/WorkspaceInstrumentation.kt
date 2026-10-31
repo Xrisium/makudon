@@ -155,6 +155,8 @@ class WorkspaceInstrumentation : Instrumentation() {
     @android.annotation.SuppressLint("NewApi") // This platform suite runs on the configured API 36 emulator.
     private fun fileExchangeTest() {
         val access = io.github.xrisium.makudon.data.AndroidFileAccess
+        val robot = checkNotNull(targetContext.getDrawable(R.drawable.ic_android_robot))
+        verify(kotlin.math.abs(robot.intrinsicWidth.toFloat() / robot.intrinsicHeight - 152f / 89f) < 0.04f, "Android robot intrinsic dimensions retain the official SVG aspect ratio")
         val files = model.files
         val resolver = targetContext.contentResolver
         fun uri(path: String) = android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/$path")
@@ -202,7 +204,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             setText("编辑正文", "开始导出时的最新输入 😀")
             main { model.exportCopy() }; prepared()
             val editorCopy = main { files.ui.export!! }
-            main { model.rename(checkNotNull(active), "导出后的名称") }; ready()
+            main { model.rename(checkNotNull(active), "导出后-${SystemClock.uptimeMillis()}") }; ready()
             main { model.textState!!.edit { replace(0, length, "之后的输入") } }
             verify(editorCopy.file.readText() == "开始导出时的最新输入 😀" && editorCopy.name != main { model.ui.workspace!!.entry(checkNotNull(active))!!.name + ".txt" }, "Editor export captures latest input and freezes filename across later edits and rename")
             main { files.close() }
