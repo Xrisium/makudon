@@ -19,10 +19,34 @@ import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.sp
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.ColorTheme
+import io.github.xrisium.makudon.domain.FontChoice
+import io.github.xrisium.makudon.domain.FontPreference
+import io.github.xrisium.makudon.domain.FontThickness
 
-val UiFont = FontFamily(Font(R.font.noto_sans_sc, weight = FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))))
-val EditorFont = FontFamily(Font(R.font.noto_sans_sc, weight = FontWeight(450), variationSettings = FontVariation.Settings(FontVariation.weight(450))))
-val EditorStyle = TextStyle(fontFamily = EditorFont, fontWeight = FontWeight(450), fontSize = 18.sp, lineHeight = 33.sp)
+fun fontWeight(preference: FontPreference, ui: Boolean): FontWeight = FontWeight(when (preference.thickness) {
+    FontThickness.Light -> 300
+    FontThickness.Normal -> if (preference.choice == FontChoice.Sans) { if (ui) 500 else 450 } else 400
+    FontThickness.Bold -> 500
+})
+
+fun fontFamily(preference: FontPreference, ui: Boolean): FontFamily {
+    val weight = fontWeight(preference, ui)
+    return when (preference.choice) {
+        FontChoice.System -> FontFamily.Default
+        FontChoice.WenKai -> FontFamily(Font(when (preference.thickness) {
+            FontThickness.Light -> R.font.wenkai_light
+            FontThickness.Normal -> R.font.wenkai_regular
+            FontThickness.Bold -> R.font.wenkai_medium
+        }, weight = weight))
+        FontChoice.Sans, FontChoice.Serif -> FontFamily(Font(
+            if (preference.choice == FontChoice.Sans) R.font.noto_sans_sc else R.font.noto_serif_sc,
+            weight = weight, variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
+        ))
+    }
+}
+
+private val LocalEditorStyle = staticCompositionLocalOf { TextStyle.Default }
+val EditorStyle: TextStyle @Composable get() = LocalEditorStyle.current
 
 // Shared by the applied theme and the settings previews.
 fun themePalette(theme: ColorTheme): List<Color> = when (theme) {
@@ -34,7 +58,7 @@ fun themePalette(theme: ColorTheme): List<Color> = when (theme) {
 }.map { Color(it) }
 
 @Composable
-fun MakudonTheme(theme: ColorTheme = ColorTheme.System, ready: Boolean = true, content: @Composable () -> Unit) {
+fun MakudonTheme(theme: ColorTheme = ColorTheme.System, ready: Boolean = true, uiFont: FontPreference = FontPreference(), editorFont: FontPreference = FontPreference(), content: @Composable () -> Unit) {
     val selected = if (theme == ColorTheme.System) { if (isSystemInDarkTheme()) ColorTheme.Ink else ColorTheme.Paper } else theme
     val targetColors = remember(selected) {
         val values = themePalette(selected)
@@ -60,13 +84,18 @@ fun MakudonTheme(theme: ColorTheme = ColorTheme.System, ready: Boolean = true, c
             controller.isAppearanceLightNavigationBars = lightBars
         }
     }
-    fun text(size: Int, line: Int) = TextStyle(fontFamily = UiFont, fontWeight = FontWeight.Medium, fontSize = size.sp, lineHeight = line.sp)
+    val uiFamily = remember(uiFont) { fontFamily(uiFont, true) }
+    val editorFamily = remember(editorFont) { fontFamily(editorFont, false) }
+    val editorStyle = TextStyle(fontFamily = editorFamily, fontWeight = fontWeight(editorFont, false), fontSize = 18.sp, lineHeight = 33.sp)
+    fun text(size: Int, line: Int) = TextStyle(fontFamily = uiFamily, fontWeight = fontWeight(uiFont, true), fontSize = size.sp, lineHeight = line.sp)
+    CompositionLocalProvider(LocalEditorStyle provides editorStyle) {
     MaterialTheme(colorScheme = colors, typography = Typography(
         headlineLarge = text(28, 38), headlineMedium = text(26, 36), headlineSmall = text(22, 32),
         titleLarge = text(20, 30), titleMedium = text(17, 26), titleSmall = text(14, 22),
         bodyLarge = text(16, 26), bodyMedium = text(14, 23), bodySmall = text(12, 20),
         labelLarge = text(14, 22), labelMedium = text(12, 19), labelSmall = text(11, 18),
     ), content = content)
+    }
 }
 
 // One progress value keeps every color role on the same frame. Retargeting starts

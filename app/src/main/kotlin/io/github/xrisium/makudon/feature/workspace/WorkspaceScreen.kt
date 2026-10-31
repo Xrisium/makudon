@@ -109,6 +109,8 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                             if (action == "info") model.inspect { dialog = "editor-info" } else dialog = action
                         })
                         Page.Licenses -> LicensesPage(model)
+                        Page.UiFont -> FontSettingsPage(model, true)
+                        Page.EditorFont -> FontSettingsPage(model, false)
                         Page.Previous -> Column {
                             PageBar(stringResource(R.string.previous_version), model::back)
                             TextButton(onClick = { dialog = "restore" }, enabled = !ui.busy, modifier = Modifier.padding(horizontal = 12.dp)) { Text(stringResource(R.string.restore_previous)) }

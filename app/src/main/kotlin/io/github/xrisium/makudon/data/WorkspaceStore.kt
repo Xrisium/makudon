@@ -45,7 +45,11 @@ class WorkspaceStore(
                 fun value(key: String) = p.getProperty("$n.$key") ?: throw WorkspaceException(Failure.Corrupt)
                 Entry(value("id"), value("name"), value("parent").ifEmpty { null }, DocumentKind.valueOf(value("kind")), value("created").toLong(), value("opened").toLong(), importRequestId = p.getProperty("$n.importRequest"))
             }
-            val candidate = Workspace(entries, ColorTheme.valueOf(p.getProperty("theme")), SortKey.valueOf(p.getProperty("sort")), p.getProperty("descending").toBooleanStrict(), p.getProperty("foldersFirst").toBooleanStrict(), p.getProperty("lastImportRequest"))
+            fun font(prefix: String) = FontPreference(
+                p.getProperty("$prefix.choice")?.let { value -> FontChoice.entries.firstOrNull { it.name == value } } ?: FontChoice.Sans,
+                p.getProperty("$prefix.thickness")?.let { value -> FontThickness.entries.firstOrNull { it.name == value } } ?: FontThickness.Normal,
+            )
+            val candidate = Workspace(entries, ColorTheme.valueOf(p.getProperty("theme")), SortKey.valueOf(p.getProperty("sort")), p.getProperty("descending").toBooleanStrict(), p.getProperty("foldersFirst").toBooleanStrict(), p.getProperty("lastImportRequest"), font("uiFont"), font("editorFont"))
             validate(candidate)
             workspace = candidate
         }
@@ -76,6 +80,8 @@ class WorkspaceStore(
         val p = Properties()
         p["schema"] = "1"; p["count"] = next.entries.size.toString(); p["theme"] = next.theme.name
         p["sort"] = next.sort.name; p["descending"] = next.descending.toString(); p["foldersFirst"] = next.foldersFirst.toString()
+        p["uiFont.choice"] = next.uiFont.choice.name; p["uiFont.thickness"] = next.uiFont.thickness.name
+        p["editorFont.choice"] = next.editorFont.choice.name; p["editorFont.thickness"] = next.editorFont.thickness.name
         next.lastImportRequestId?.let { p["lastImportRequest"] = it }
         next.entries.forEachIndexed { n, entry ->
             p["$n.id"] = entry.id; p["$n.name"] = entry.name; p["$n.parent"] = entry.parent.orEmpty()
@@ -246,8 +252,8 @@ class WorkspaceStore(
         }
         if (incomplete) throw WorkspaceException(Failure.Cleanup)
     }
-    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean) {
-        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst))
+    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont) {
+        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont))
     }
     fun restore(id: String): String {
         val entry = find(id)

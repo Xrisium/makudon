@@ -6,6 +6,9 @@ import java.util.Locale
 enum class DocumentKind(val extension: String) { Folder(""), Plain("txt"), Markdown("md") }
 enum class SortKey { Name, Modified, Created, Type, Size }
 enum class ColorTheme { System, Paper, Cream, Mist, Sage, Ink }
+enum class FontChoice { Sans, Serif, WenKai, System }
+enum class FontThickness { Light, Normal, Bold }
+data class FontPreference(val choice: FontChoice = FontChoice.Sans, val thickness: FontThickness = FontThickness.Normal)
 
 data class Entry(
     val id: String,
@@ -31,6 +34,8 @@ data class Workspace(
     val descending: Boolean = false,
     val foldersFirst: Boolean = true,
     val lastImportRequestId: String? = null,
+    val uiFont: FontPreference = FontPreference(),
+    val editorFont: FontPreference = FontPreference(),
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {

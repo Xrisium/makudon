@@ -119,12 +119,23 @@
   <string name="font">字体</string>
   <string name="ui_font">界面字体</string>
   <string name="editor_font">正文字体</string>
-  <string name="ui_font_detail" translatable="false">Noto Sans SC · 500</string>
-  <string name="editor_font_detail" translatable="false">Noto Sans SC · 450</string>
-  <string name="font_reserved">预留切换</string>
-  <string name="font_sample">把平凡的一天，\n写成自己的故事。</string>
+  <string name="font_sans" translatable="false">Noto Sans</string>
+  <string name="font_serif" translatable="false">Noto Serif</string>
+  <string name="font_wenkai">霞鹜文楷</string>
+  <string name="font_system">系统字体</string>
+  <string name="font_thickness">字体粗细</string>
+  <string name="font_light">较细</string>
+  <string name="font_normal">标准</string>
+  <string name="font_bold">较粗</string>
+  <string name="font_preview">预览</string>
+  <string name="font_preview_title">一级标题</string>
+  <string name="font_preview_chinese">海内存知己，天涯若比邻。</string>
+  <string name="font_preview_english" translatable="false">• The quick brown fox jumps.</string>
+  <string name="font_preview_date">• %1$s</string>
   <string name="licenses">开源许可与素材致谢</string>
   <string name="notice_noto">Noto Sans SC</string>
+  <string name="notice_noto_serif" translatable="false">Noto Serif SC</string>
+  <string name="notice_wenkai">霞鹜文楷</string>
   <string name="notice_lucide">Lucide</string>
   <string name="notice_fluent">Fluent UI System Icons</string>
   <string name="notice_fredoka">Fredoka</string>

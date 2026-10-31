@@ -8,7 +8,8 @@ import io.github.xrisium.makudon.domain.ColorTheme
 
 @Composable
 fun MakudonApp(model: WorkspaceViewModel) {
-    MakudonTheme(model.ui.workspace?.theme ?: ColorTheme.System, ready = model.ui.workspace != null) {
+    val workspace = model.ui.workspace
+    MakudonTheme(workspace?.theme ?: ColorTheme.System, ready = workspace != null, uiFont = workspace?.uiFont ?: io.github.xrisium.makudon.domain.FontPreference(), editorFont = workspace?.editorFont ?: io.github.xrisium.makudon.domain.FontPreference()) {
         WorkspaceScreen(model)
     }
 }

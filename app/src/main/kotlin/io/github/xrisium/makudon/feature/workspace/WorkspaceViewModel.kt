@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.first
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Previous, Backup }
+enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Previous, Backup, UiFont, EditorFont }
 val MainPages = listOf(Page.Directory, Page.Recent, Page.Settings)
 
 data class WorkspaceUi(
@@ -239,7 +239,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             }
             Page.Editor -> go(ui.origin)
             Page.New -> navigate(ui.origin, backwards = true)
-            Page.Licenses -> navigate(Page.Settings, backwards = true)
+            Page.Licenses, Page.UiFont, Page.EditorFont -> navigate(Page.Settings, backwards = true)
             Page.Previous -> navigate(if (textState != null) Page.Editor else ui.origin, backwards = true)
             else -> Unit
         }
@@ -384,19 +384,22 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (deletedActive && (ui.page == Page.Editor || ui.page == Page.Previous)) navigate(ui.origin, backwards = true)
         if (cleanupFailure) throw WorkspaceException(Failure.Cleanup)
     } }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null) {
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme
         val nextSort = sort ?: w.sort
         val nextDescending = descending ?: w.descending
         val nextFoldersFirst = foldersFirst ?: w.foldersFirst
         // A repeated selection must not write the catalog or flash disabled colors.
-        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst) return
+        val nextUiFont = uiFont ?: w.uiFont
+        val nextEditorFont = editorFont ?: w.editorFont
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont) return
         launchWork(savingPreferences = true) {
-            disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst) }
+            disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont) }
             ui = ui.copy(workspace = disk { store.refresh() })
         }
     }
+    fun fontSettings(uiFont: Boolean) { if (!ui.busy && !ui.transitioning) navigate(if (uiFont) Page.UiFont else Page.EditorFont) }
     fun prepareExport(): Boolean {
         flushParagraphs()
         val text = textState?.text?.toString() ?: return false

@@ -19,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
-import io.github.xrisium.makudon.ui.theme.EditorStyle
 import io.github.xrisium.makudon.ui.theme.themePalette
 
 @Composable
@@ -86,14 +85,14 @@ fun SettingsPage(model: WorkspaceViewModel) {
         item {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
-                    listOf(R.string.ui_font to R.string.ui_font_detail, R.string.editor_font to R.string.editor_font_detail).forEach { (title, detail) ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text(stringResource(title)); Text(stringResource(detail), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            Text(stringResource(R.string.font_reserved), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    listOf(true, false).forEach { uiFont ->
+                        val preference = if (uiFont) workspace.uiFont else workspace.editorFont
+                        Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { model.fontSettings(uiFont) }.padding(vertical = 14.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(stringResource(if (uiFont) R.string.ui_font else R.string.editor_font)); Text(stringResource(fontLabel(preference.choice)) + " · " + stringResource(thicknessLabel(preference.thickness)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Glyph(R.drawable.ic_chevron_right)
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
-                    Text(stringResource(R.string.font_sample), Modifier.padding(vertical = 20.dp), style = EditorStyle)
                 }
             }
         }

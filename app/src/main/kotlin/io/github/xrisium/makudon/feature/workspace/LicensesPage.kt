@@ -26,6 +26,8 @@ internal data class LicenseEntry(@param:StringRes val title: Int, @param:StringR
 
 internal val licenseEntries = listOf(
     LicenseEntry(R.string.notice_noto, R.string.notice_ofl, R.string.notice_noto_description, R.raw.notice_noto),
+    LicenseEntry(R.string.notice_noto_serif, R.string.notice_ofl, null, R.raw.notice_noto_serif),
+    LicenseEntry(R.string.notice_wenkai, R.string.notice_ofl, null, R.raw.notice_wenkai),
     LicenseEntry(R.string.notice_lucide, R.string.notice_isc_mit, R.string.notice_lucide_description, R.raw.notice_lucide),
     LicenseEntry(R.string.notice_fluent, R.string.notice_mit, R.string.notice_fluent_description, R.raw.notice_fluent),
     LicenseEntry(R.string.notice_fredoka, R.string.notice_ofl, R.string.notice_fredoka_description, R.raw.notice_fredoka),

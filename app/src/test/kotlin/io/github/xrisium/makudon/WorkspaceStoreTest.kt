@@ -16,6 +16,21 @@ class WorkspaceStoreTest {
     private fun expect(reason: Failure, action: () -> Unit) {
         try { action(); fail("Expected $reason") } catch (e: WorkspaceException) { assertEquals(reason, e.reason) }
     }
+    @Test fun fontPreferencesRemainIndependentAcrossRestartAndPreserveDocuments() {
+        val dir = temp.newFolder()
+        val original = store(dir)
+        val id = original.create("稿", Workspace.ROOT, DocumentKind.Plain, "正文")
+        val uiFont = FontPreference(FontChoice.WenKai, FontThickness.Light)
+        val editorFont = FontPreference(FontChoice.Serif, FontThickness.Bold)
+        original.settings(ColorTheme.System, SortKey.Name, false, true, uiFont, editorFont)
+        val reopened = store(dir)
+        assertEquals(uiFont, reopened.refresh().uiFont)
+        assertEquals(editorFont, reopened.refresh().editorFont)
+        assertEquals("正文", reopened.read(id))
+        reopened.settings(ColorTheme.Paper, SortKey.Name, false, true)
+        assertEquals(uiFont, store(dir).refresh().uiFont)
+        assertEquals(editorFont, store(dir).refresh().editorFont)
+    }
     @Test fun freshWorkspaceCreatesDocumentsAtRootWithoutAddingAnInboxAfterRestart() {
         val dir = temp.newFolder()
         val store = store(dir)
@@ -39,6 +54,8 @@ class WorkspaceStoreTest {
         val originalBody = body.readBytes()
         val store = store(dir)
         assertArrayEquals(originalCatalog, catalog.readBytes())
+        assertEquals(FontPreference(), store.refresh().uiFont)
+        assertEquals(FontPreference(), store.refresh().editorFont)
         assertEquals(Workspace.LEGACY_INBOX, store.refresh().entry(id)?.parent)
         val destination = store.create("写作", Workspace.ROOT, DocumentKind.Folder)
         store.rename(Workspace.LEGACY_INBOX, "旧资料")
