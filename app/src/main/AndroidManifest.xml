@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.GET_CONTENT" />
+      <category android:name="android.intent.category.OPENABLE" />
+      <data android:mimeType="*/*" />
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.SEND" />
+      <data android:mimeType="*/*" />
+    </intent>
+  </queries>
   <application
     android:name=".app.MakudonApplication"
     android:allowBackup="false"
@@ -9,6 +20,13 @@
     android:label="@string/app_name"
     android:supportsRtl="true"
     android:theme="@style/Theme.Makudon">
+    <provider
+      android:name="androidx.core.content.FileProvider"
+      android:authorities="${applicationId}.exports"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/export_paths" />
+    </provider>
     <activity
       android:name=".MainActivity"
       android:launchMode="singleTask"

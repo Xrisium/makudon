@@ -214,4 +214,20 @@
   <string name="backup_stale">本地文稿库已改变，此次预览已失效。请取消后重新选择 ZIP。</string>
   <string name="backup_no_snapshot">没有可撤回的恢复快照。</string>
   <string name="backup_space">可用空间不足，无法同时保留当前库、恢复前快照及完整候选库。</string>
+  <string name="file_select_app">选择用于选取文件的应用</string>
+  <string name="file_export_method">选择导出方式</string>
+  <string name="file_system_picker">系统选择文件</string>
+  <string name="file_system_save">系统选择保存位置</string>
+  <string name="file_save_downloads">保存到下载目录</string>
+  <string name="file_share_manager">通过%1$s分享</string>
+  <string name="file_share_other">通过其他应用分享</string>
+  <string name="file_export_snapshot">这是开始导出时的副本；重试会使用同一份内容。关闭后可重新生成。</string>
+  <string name="file_shared">已交给其他应用，保存结果请在该应用确认。</string>
+  <string name="file_download_saved">已保存到 Download/Makudon/%1$s</string>
+  <string name="file_saved_location">已写入所选位置。</string>
+  <string name="file_app_unavailable">无法打开所选应用。请选择其他应用或系统入口。</string>
+  <string name="file_invalid_selection">未取得可读取的单个文件，请重新选择。</string>
+  <string name="file_request_expired">此次文件操作已失效，请关闭后重新发起。</string>
+  <string name="file_operation_error">文件操作未完成，请重试或选择其他方式。原文稿和待导出副本仍保留；目标位置可能有不完整文件。</string>
+  <string name="file_download_cleanup_error">保存未完成，且下载目录中的不完整文件未能清理。请在文件管理中检查；可使用同一副本重试。</string>
 </resources>

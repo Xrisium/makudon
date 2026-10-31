@@ -1,5 +1,29 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity android:name="io.github.xrisium.makudon.FixturePicker" android:exported="true" android:label="测试文件选择">
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <activity android:name="io.github.xrisium.makudon.FixturePicker$Cancel" android:exported="true" android:label="测试取消选择">
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <activity android:name="io.github.xrisium.makudon.FixturePicker$Multiple" android:exported="true" android:label="测试多项选择">
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
         <!-- Synthetic fixtures exist only in the separate test APK; no provider or permission is added to Makudon. -->
         <provider android:name="io.github.xrisium.makudon.FixtureProvider"
             android:authorities="io.github.xrisium.makudon.debug.test.fixtures"

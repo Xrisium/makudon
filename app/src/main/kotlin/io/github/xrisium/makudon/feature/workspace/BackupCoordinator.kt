@@ -50,11 +50,12 @@ class BackupCoordinator(
     private var baseline: String? = null
     private var exporting: ArchiveExport? = null
     private var exportFile: File? = null
+    private var exportName: String? = null
     private var decisions = emptyMap<String, ConflictChoice>()
     private var restoreFolder = ""
     private var restoreTime = 0L
     val locked: Boolean get() = ui.busy || stage != null || ui.needsReload
-    val pendingExportName: String get() = application.getString(R.string.backup_filename, SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()))
+    val pendingExportName: String get() = exportName ?: application.getString(R.string.backup_filename, SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()))
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { lock.withLock { block() } }
     private fun run(progress: Int, action: suspend () -> Unit) {
@@ -160,12 +161,17 @@ class BackupCoordinator(
     fun prepareExport() {
         if (locked) return
         run(R.string.backup_preparing_export) {
+            exportName = application.getString(R.string.backup_filename, SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()))
             if (!barrier()) throw WorkspaceException(Failure.Storage)
             val plan = io { newStage(); LibraryArchive.exportPlan(library.store.refresh()) }
             exporting = plan
             if (plan.renames.isNotEmpty()) ui = ui.copy(exportRenames = plan.renames)
             else generateExport()
         }
+    }
+    fun chooseExport(exchange: FileExchange) {
+        val file = exportFile ?: return
+        if (ui.exportReady && !ui.busy) exchange.archive(pendingExportName, file) { cancel() }
     }
     fun confirmExportNames() { if (ui.exportRenames == null) return; run(R.string.backup_preparing_export) { generateExport() } }
     private suspend fun generateExport() {
@@ -216,7 +222,7 @@ class BackupCoordinator(
 
     private suspend fun discard() {
         val folder = stage
-        archive = null; baseline = null; exporting = null; exportFile = null; decisions = emptyMap()
+        archive = null; baseline = null; exporting = null; exportFile = null; exportName = null; decisions = emptyMap()
         stage = null
         ui = ui.copy(inventory = null, plan = null, exportReady = false, exportRenames = null, mode = RestoreMode.Separate)
         if (folder != null) withContext(Dispatchers.IO + NonCancellable) {

@@ -1,9 +1,6 @@
 package io.github.xrisium.makudon.feature.workspace
 
-import android.content.Intent
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
@@ -73,15 +70,9 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
     val screens = rememberSaveableStateHolder()
     var dialog by remember { mutableStateOf<String?>(null) }
     var target by remember { mutableStateOf<Entry?>(null) }
-    val importer = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result -> model.import(result.data?.data) }
-    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { model.export(it) }
-    fun export() { if (model.prepareExport()) exporter.launch(model.pendingExportName) }
+    fun export() { model.exportCopy() }
     fun importDocument() {
-        importer.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "text/markdown", "text/x-markdown", "application/octet-stream"))
-            putExtra(Intent.EXTRA_LOCAL_ONLY, true); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        })
+        model.files.import(ImportKind.Text, ui.newParent)
     }
     BackHandler(ui.page !in MainPages || ui.transitioning) { model.back() }
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -134,6 +125,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
         }
     }
     ClipboardDialogs(model)
+    FileExchangeDialog(model)
     val entry = target?.id?.let { workspace?.entry(it) }
     when (dialog) {
         "folder", "rename" -> if (entry != null && workspace != null) NameDialog(

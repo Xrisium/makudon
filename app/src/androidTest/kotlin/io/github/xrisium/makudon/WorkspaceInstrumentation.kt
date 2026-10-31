@@ -35,6 +35,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyRecent = false
     private var onlyBackup = false
     private var onlyBackupVisual = false
+    private var onlyFiles = false
     private var currentActivity: Activity? = null
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
     override fun onCreate(arguments: Bundle?) {
@@ -49,6 +50,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyRecent = arguments?.getString("case") == "recent"
         onlyBackup = arguments?.getString("case") == "backup"
         onlyBackupVisual = arguments?.getString("case") == "backup-visual"
+        onlyFiles = arguments?.getString("case") == "files"
         start()
     }
     override fun onStart() {
@@ -56,7 +58,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            when { onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
@@ -150,6 +152,157 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+    @android.annotation.SuppressLint("NewApi") // This platform suite runs on the configured API 36 emulator.
+    private fun fileExchangeTest() {
+        val access = io.github.xrisium.makudon.data.AndroidFileAccess
+        val files = model.files
+        val resolver = targetContext.contentResolver
+        fun uri(path: String) = android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/$path")
+        fun prepared() { waitFor("file operation") { main { !files.ui.busy } }; waitForIdleSync() }
+        fun rejected(code: Int, intent: Intent?) = try { access.selectedUri(code, intent); false } catch (_: IllegalArgumentException) { true }
+        verify(access.selectedUri(Activity.RESULT_CANCELED, Intent().setData(uri("markdown"))) == null, "Cancelled results never import attached data")
+        verify(rejected(Activity.RESULT_OK, null), "Successful result without URI is rejected")
+        verify(rejected(Activity.RESULT_FIRST_USER, Intent().setData(uri("markdown"))), "Unexpected result codes are rejected")
+        verify(rejected(Activity.RESULT_OK, Intent().setData(android.net.Uri.parse("file:///tmp/draft.txt"))), "Direct file paths are rejected")
+        val clip = android.content.ClipData.newRawUri("one", uri("markdown"))
+        verify(access.selectedUri(Activity.RESULT_OK, Intent().apply { clipData = clip }) == uri("markdown"), "Single ClipData URI is accepted")
+        clip.addItem(android.content.ClipData.Item(uri("invalid")))
+        verify(rejected(Activity.RESULT_OK, Intent().apply { clipData = clip }), "Multiple ClipData items are rejected")
+        val before = main { model.ui.workspace!!.entries.filter { !it.folder }.map { it.id }.toSet() }
+        try {
+            click("新建文稿"); click("导入"); prepared()
+            verify(listOf("选择用于选取文件的应用", "测试文件选择", "系统选择文件").all { label -> nodes().any { it.text?.toString() == label } }, "Import offers real app labels and explicit system fallback")
+            screenshot("files-import-apps")
+            click("系统选择文件")
+            waitFor("system file picker") { uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true }
+            verify(main { !files.ui.visible }, "Explicit system fallback opens actual DocumentsUI")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            waitFor("system picker cancellation") { main { files.ui.visible } }
+            click("测试取消选择"); waitFor("picker cancellation returned") { main { files.ui.visible } }; prepared()
+            verify(main { files.ui.visible && model.ui.workspace!!.entries.count { !it.folder } == before.size }, "Real picker cancellation returns to app choice without creating a draft")
+            click("测试多项选择"); waitFor("invalid picker result returned") { main { files.ui.error != null } }; prepared()
+            verify(main { files.ui.error == io.github.xrisium.makudon.R.string.file_invalid_selection }, "Real multi-file result reports recoverable error")
+            click("测试文件选择")
+            waitFor("real picker import") { main { !model.ui.busy && model.ui.page == Page.Editor } }; ready()
+            val first = main { model.ui.activeId!! }
+            verify(source(first, DocumentKind.Markdown).contains("独立副本"), "Explicit app launch imports actual ClipData result as private Markdown")
+            main { files.import(ImportKind.Text, Workspace.ROOT) }; prepared()
+            val unavailable = access.importIntent().setComponent(android.content.ComponentName("missing.file.app", "Missing"))
+            main { files.launchImport(unavailable) { targetContext.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+            verify(main { files.ui.error == io.github.xrisium.makudon.R.string.file_app_unavailable && files.ui.visible }, "Missing app keeps choice open and never starts a fallback automatically")
+            main { files.close() }
+            main { model.import(uri("binary-md")) }; ready()
+            verify(main { model.ui.workspace!!.entry(model.ui.activeId!!)!!.kind == DocumentKind.Markdown }, "Octet-stream metadata preserves .md type")
+            main { model.import(uri("no-metadata")) }; ready()
+            verify(main { model.ui.workspace!!.entry(model.ui.activeId!!)!!.kind == DocumentKind.Plain }, "Missing name metadata still imports a valid text MIME stream")
+            val active = main { model.ui.activeId }
+            main { model.import(uri("denied")) }; ready()
+            verify(main { model.ui.activeId == active && model.ui.error != null }, "Revoked source access preserves active document")
+            main { model.dismissError() }
+            setText("编辑正文", "开始导出时的最新输入 😀")
+            main { model.exportCopy() }; prepared()
+            val editorCopy = main { files.ui.export!! }
+            main { model.rename(checkNotNull(active), "导出后的名称") }; ready()
+            main { model.textState!!.edit { replace(0, length, "之后的输入") } }
+            verify(editorCopy.file.readText() == "开始导出时的最新输入 😀" && editorCopy.name != main { model.ui.workspace!!.entry(checkNotNull(active))!!.name + ".txt" }, "Editor export captures latest input and freezes filename across later edits and rename")
+            main { files.close() }
+            main { files.text("中文快照.txt", "captured before edits 😀") }; prepared()
+            val snapshot = main { files.ui.export!! }
+            main { currentActivity?.recreate() }
+            waitFor("export restored after recreation") { nodes().any { it.text?.toString() == "选择导出方式" } }
+            verify(main { files.ui.export == snapshot }, "Activity recreation preserves export bytes and filename")
+            click("系统选择保存位置")
+            waitFor("system save picker") { uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true }
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            waitFor("save picker returned") { uiAutomation.rootInActiveWindow?.packageName == targetContext.packageName }
+            verify(main { files.ui.export == snapshot }, "Actual system save cancellation retains original snapshot")
+            main { files.saveTo(uri("denied")) }; prepared()
+            verify(main { files.ui.error != null && files.ui.export == snapshot }, "Failed destination keeps immutable copy for retry")
+            main { files.saveTo(null) }
+            verify(main { files.ui.export == snapshot && files.ui.visible }, "Cancelled save retains the same export session")
+            main { files.saveTo(uri("export")) }; prepared()
+            verify(resolver.openInputStream(uri("export"))!!.bufferedReader().use { it.readText() } == "captured before edits 😀", "Retry writes original snapshot bytes")
+            verify(main { files.ui.message == targetContext.getString(R.string.file_saved_location) }, "Direct write reports saved location rather than share success")
+            screenshot("files-export-options")
+            val share = access.shareIntent(targetContext, snapshot)
+            val sharedUri = share.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)!!
+            verify(share.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0 && share.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0 && share.clipData!!.getItemAt(0).uri == sharedUri, "File sharing grants read-only URI via stream and ClipData")
+            main { files.share(null) { } }; prepared()
+            verify(main { files.ui.message == targetContext.getString(R.string.file_shared) && files.ui.export == snapshot }, "Share launch is explicitly unconfirmed and retains retry copy")
+            main { files.close() }
+            main { files.text("迟到结果.txt", "must not be written") }; prepared()
+            main { files.create { }; files.close(); files.created(Activity.RESULT_OK, Intent().setData(uri("export"))) }
+            verify(main { files.ui.error == R.string.file_request_expired } && resolver.openInputStream(uri("export"))!!.bufferedReader().use { it.readText() } == "captured before edits 😀", "Late save result cannot write after its export session was closed")
+            main { files.close() }
+            verify(resolver.openInputStream(sharedUri)!!.bufferedReader().use { it.readText() } == "captured before edits 😀", "Closing export leaves asynchronously shared copy readable")
+            val source = File(targetContext.cacheDir, "files-source.zip").apply { writeText("independent ZIP source") }
+            main { files.archive("备份.zip", source) { source.delete() } }; prepared()
+            val zipCopy = main { files.ui.export!! }
+            main { files.close() }
+            verify(!source.exists() && zipCopy.file.readText() == "independent ZIP source", "ZIP source cleanup cannot delete shared export copy")
+            for (failure in listOf("download-update-fail", "download-cleanup-fail")) {
+                var failed = false
+                try { access.download(resolver, snapshot, uri(failure)) }
+                catch (e: Exception) { failed = if (failure.endsWith("cleanup-fail")) e is io.github.xrisium.makudon.data.DownloadCleanupException else e is IllegalStateException }
+                verify(failed, "Download publication and cleanup failure remains visible: $failure")
+                if (failure.endsWith("cleanup-fail")) resolver.delete(uri(failure), "cleanup", null)
+                else verify(try { resolver.openInputStream(uri(failure))?.close(); false } catch (_: java.io.FileNotFoundException) { true }, "Failed publication removes pending download")
+            }
+            main { files.text("同名验收.txt", "download one") }; prepared(); main { files.download() }; prepared()
+            val savedOne = main { files.ui.message }
+            verify(savedOne?.startsWith("已保存到 Download/Makudon/") == true, "Actual Downloads collection publishes verified UTF-8 file")
+            val firstName = savedOne!!.substringAfterLast('/')
+            main { files.close(); files.text("同名验收.txt", "download two") }; prepared(); main { files.download() }; prepared()
+            val secondName = main { files.ui.message!!.substringAfterLast('/') }
+            verify(firstName != secondName, "Repeated Downloads filename creates independent file rather than overwrite")
+            val downloads = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            resolver.query(downloads, arrayOf("_id", "_display_name"), "_display_name IN (?,?)", arrayOf(firstName, secondName), null)!!.use { cursor ->
+                val contents = mutableSetOf<String>()
+                while (cursor.moveToNext()) {
+                    val item = android.content.ContentUris.withAppendedId(downloads, cursor.getLong(0))
+                    contents += resolver.openInputStream(item)!!.bufferedReader().use { it.readText() }
+                    resolver.delete(item, null, null)
+                }
+                verify(contents == setOf("download one", "download two"), "Both same-name exports preserve their independent content")
+            }
+            main { files.close(); files.import(ImportKind.Archive) }; prepared()
+            verify(main { files.ui.importing }, "ZIP import uses the same app-selection mechanism")
+            main { files.close() }
+            val expired = FileExchange(targetContext.applicationContext as android.app.Application, kotlinx.coroutines.CoroutineScope(Dispatchers.Main))
+            main { expired.imported(Activity.RESULT_OK, Intent().setData(uri("markdown"))) }
+            verify(expired.ui.error == R.string.file_request_expired, "Result without surviving request reports expiry and does not import")
+            val oldFont = shell("settings get system font_scale")
+            val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+            try {
+                shell("wm size 840x1890"); shell("settings put system font_scale 2.0")
+                waitFor("narrow file UI") { main { currentActivity?.resources?.configuration?.let { it.screenWidthDp <= 320 && it.fontScale >= 1.99f } == true } }
+                main { files.text("大字号.txt", "字号验收") }; prepared(); SystemClock.sleep(400)
+                fun reveal(label: String) {
+                    repeat(15) {
+                        val node = nodes().firstOrNull { it.text?.toString() == label }
+                        if (node != null) { node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id); SystemClock.sleep(200); return }
+                        nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                        SystemClock.sleep(100)
+                    }
+                    error("Missing file control: $label")
+                }
+                reveal("系统选择保存位置"); screenshot("files-export-200")
+                verify(find("系统选择保存位置").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep export fallback and close reachable")
+                main { files.close(); files.import(ImportKind.Text) }; prepared()
+                reveal("系统选择文件"); screenshot("files-import-200")
+                verify(find("系统选择文件").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep app choices and system fallback reachable")
+            } finally {
+                main { files.close() }
+                shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+                shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+                ready()
+            }
+        } finally {
+            main { files.close(); model.dismissError() }; ready()
+            if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
+            for (id in main { model.ui.workspace!!.entries.filter { !it.folder && it.id !in before }.map { it.id } }) { main { model.delete(id) }; ready() }
+        }
+    }
     private fun source(id: String, kind: DocumentKind) = File(workspaceDirectory(), "documents/$id/body.${kind.extension}").readText(Charsets.UTF_8)
 
     private fun backupTest() {

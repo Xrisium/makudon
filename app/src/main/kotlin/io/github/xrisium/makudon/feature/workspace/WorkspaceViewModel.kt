@@ -85,6 +85,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     })
     private val store: WorkspaceStore get() = library.store
     private var libraryEpoch = 0L
+    val files = FileExchange(application, viewModelScope)
     val backup = BackupCoordinator(viewModelScope, application, ioLock, library, { barrier() }) { current ->
         libraryEpoch++
         observer?.cancel(); observer = null; save = null; textState = null
@@ -99,11 +100,12 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     private var sessionId = 0L
     private var departingSession: Long? = null
     private var exportText: String? = null
+    private var exportName: String = ""
     var licenseText by mutableStateOf("")
         private set
     private var loading: Job? = null
     private val externalRequests = mutableSetOf<String>()
-    val pendingExportName: String get() = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty() + ".txt"
+    val pendingExportName: String get() = exportName
 
     init { reload() }
     private suspend fun <T> disk(block: () -> T): T = withContext(Dispatchers.IO + NonCancellable) { ioLock.withLock { block() } }
@@ -399,7 +401,11 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         flushParagraphs()
         val text = textState?.text?.toString() ?: return false
         exportText = text
+        exportName = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty().ifBlank { getApplication<Application>().getString(R.string.untitled) } + ".txt"
         return true
+    }
+    fun exportCopy() {
+        if (prepareExport()) files.text(exportName, checkNotNull(exportText))
     }
     fun licenses() { launchWork {
         licenseText = disk { getApplication<Application>().resources.openRawResource(R.raw.third_party_notices).bufferedReader().use { it.readText() } }
@@ -411,7 +417,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         backup.refresh()
     } }
     fun export(uri: Uri?) {
-        val text = exportText; exportText = null
+        val text = exportText
         if (uri == null) return
         launchWork {
             if (text == null) throw WorkspaceException(Failure.Missing)
@@ -425,7 +431,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             ui = ui.copy(message = R.string.export_done)
         }
     }
-    fun import(uri: Uri?, requestId: String? = null) {
+    fun import(uri: Uri?, requestId: String? = null, targetParent: String? = null) {
         if (uri == null) return
         viewModelScope.launch {
             loading?.join()
@@ -434,14 +440,20 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             val existing = ui.workspace?.entries?.firstOrNull { requestId != null && it.importRequestId == requestId }
             if (existing != null) { launchWork { openInternal(existing.id, Page.Recent) }; return@launch }
             if (requestId != null && ui.workspace?.lastImportRequestId == requestId) return@launch
-            val target = if (ui.page == Page.New) ui.newParent else Workspace.ROOT
+            val target = targetParent ?: if (ui.page == Page.New) ui.newParent else Workspace.ROOT
             launchWork {
                 if (!barrier()) { if (requestId != null) externalRequests.remove(requestId); return@launchWork }
                 val imported = disk {
                     if (uri.scheme != "content") throw WorkspaceException(Failure.InvalidText)
                     val resolver = getApplication<Application>().contentResolver
                     var name = getApplication<Application>().getString(R.string.untitled)
-                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) name = cursor.getString(0).orEmpty() }
+                    try {
+                        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (column >= 0 && cursor.moveToFirst()) name = cursor.getString(column).orEmpty()
+                        }
+                    } catch (_: UnsupportedOperationException) { /* Some providers expose streams without metadata queries. */ }
+                    catch (_: IllegalArgumentException) { /* Missing metadata is not proof that the stream is unreadable. */ }
                     val mime = resolver.getType(uri)
                     if (mime !in setOf("text/plain", "text/markdown", "text/x-markdown") && !name.endsWith(".txt", true) && !name.endsWith(".md", true)) throw WorkspaceException(Failure.InvalidText)
                     val kind = if (name.endsWith(".md", true) || mime in setOf("text/markdown", "text/x-markdown")) DocumentKind.Markdown else DocumentKind.Plain

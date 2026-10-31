@@ -1,7 +1,5 @@
 package io.github.xrisium.makudon.feature.workspace
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -53,8 +51,6 @@ fun BackupPage(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
     LaunchedEffect(inventory != null, plan?.mode, plan?.decisions?.size, state.exportReady, state.exportRenames != null) {
         list.scrollToItem(0)
     }
-    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument(), backup::read)
-    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip"), backup::export)
     Column(modifier.fillMaxSize()) {
         PageBar(stringResource(R.string.backup_title), model::back)
         if (state.busy) {
@@ -73,7 +69,7 @@ fun BackupPage(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
             when {
                 state.exportReady -> item {
                     Text(stringResource(R.string.backup_export_ready))
-                    Button(onClick = { exporter.launch(backup.pendingExportName) }, enabled = !state.busy) { Text(stringResource(R.string.backup_save_zip)) }
+                    Button(onClick = { backup.chooseExport(model.files) }, enabled = !state.busy) { Text(stringResource(R.string.backup_save_zip)) }
                 }
                 state.exportRenames != null -> {
                     item { Text(stringResource(R.string.backup_rename_notice)) }
@@ -135,7 +131,7 @@ fun BackupPage(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                 else -> {
                     item { Text(stringResource(R.string.backup_format_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     item { Button(onClick = backup::prepareExport, enabled = !backup.locked) { Text(stringResource(R.string.backup_export)) } }
-                    item { OutlinedButton(onClick = { importer.launch(arrayOf("*/*")) }, enabled = !backup.locked) { Text(stringResource(R.string.backup_import)) } }
+                    item { OutlinedButton(onClick = { model.files.import(ImportKind.Archive) }, enabled = !backup.locked) { Text(stringResource(R.string.backup_import)) } }
                     state.snapshot?.let { snapshot -> item {
                         HorizontalDivider()
                         Text(stringResource(R.string.backup_snapshot), Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
