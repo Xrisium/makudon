@@ -22,10 +22,15 @@
 | --- | --- | --- | --- |
 | Fredoka | [Google Fonts](https://fonts.google.com/specimen/Fredoka)，The Fredoka Project Authors | [OFL 1.1 原文](licenses/fredoka-OFL.txt)；600 字重生成 Makudon 路径字标 | 提交 SVG 图形；字体原文件仅在忽略的 `.local/` 作设计输入，未嵌入应用 |
 | Noto Sans SC | [Google Fonts 官方仓库](https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/notosanssc)，Adobe 版权声明 | [OFL 1.1 原文](licenses/notosanssc-OFL.txt)；预览使用子集，应用使用完整原始字体 | 已加入 `res/font` 与 APK；原文件约 16.95 MiB、APK 压缩约 10.75 MiB，真实 450 / 500；未修改字体 |
+| Noto Serif SC | [Google Fonts 固定提交](https://github.com/google/fonts/tree/6c1dbe27dcf7d817d4b62cec033ba77fa8e2a5ec/ofl/notoserifsc)，Copyright 2012 Google | [OFL 1.1](licenses/notoserifsc-OFL.txt)，未修改原始可变字体 | `noto_serif_sc.ttf`，25,125,512 字节；SHA-256 `050080D9255A86808F2945BFFAC582B31EF32BC36411CE29563B4961670C66F9` |
+| 霞鹜文楷 | [LXGW 固定提交](https://github.com/lxgw/LxgwWenKai/tree/db34daf997d8f38e3f5595db0a56e00368d1323f/fonts/TTF)，LXGW / The Klee Project Authors | [OFL 1.1 及附加许可](licenses/lxgwwenkai-OFL.txt)，未修改原始字体；三档使用 Light / Regular / Medium | Light 28,625,516 字节，SHA-256 `9A50E3F0F51FAD60D68152D5191BCE1A495BFC4B9CEB1CEE24833835511D1DCA`；Regular 25,928,940 字节，`2D73EEA94AD808999D90C0000C239A84A33B09D4BC6AB6C5B8BBF1EDA8A7FC8B`；Medium 25,800,076 字节，`F4B8A34D1F838FE411540CB7C97B1C384AC9738A876C4104500BC42508B2312A` |
+
 | Lucide | [官方许可证](https://lucide.dev/license)，Lucide Icons and Contributors；部分图标源自 Cole Bemis / Feather | [完整 ISC 与 Feather MIT 声明](licenses/lucide-LICENSE.txt)；应用采用固定 commit 的 39 个按需图标 | 已转 VectorDrawable 并随 APK 分发，无图标运行库；逐文件来源 / 哈希见 [Android 清单](../assets/android/provenance.json) |
 | Fluent UI System Icons / Markdown 20 Filled | [微软官方仓库](https://github.com/microsoft/fluentui-system-icons/tree/82ecf7cbdb43684403c7125efa160be04a33dca5)，Microsoft Corporation | [完整 MIT 声明](licenses/fluentui-system-icons-LICENSE.txt)；Markdown 文件类型标识 | 原始 SVG 保留，已转 Android 向量资源并集成 APK，无 Iconify 运行库 |
 | Android robot | Google LLC，[官方品牌指南](https://developer.android.com/distribute/marketing-tools/brand-guidelines)，[原始 SVG](https://developer.android.com/static/images/brand/android-head_flat.svg) | [CC BY 3.0 原文](licenses/cc-by-3.0.txt)；文件选择器标识，署名见根目录及应用内离线许可 | 2026-10-31 下载，原始 SVG SHA-256 `5f05dae657da9f31e5d4a09b7976f39881617f6b3e4d4562d9ee16295d250bdb`；保留原文件，转换为 VectorDrawable，保持路径和颜色，按原图 152:89 比例适配 28dp 图标位，随 APK 分发；向量文件 SHA-256 `87a0ce0721cbea7412848a42264e780318a0f25d5ffb90b1e1f10ecb1a1f03d5` |
 | 原始 Makudon 图标 | 用户提供的根 [icon.svg](../icon.svg) | 本项目资产，保持根文件原样 | 已有 Android 图标使用；本轮组合标志复用其几何 |
+
+本次字体取自上述固定提交中的相应 TTF 和 OFL 文本，下载日期 2026-10-31；文件的 Git blob 哈希与上游一致。离线完整字形优先于使用只覆盖预览文案的子集；可选下载虽可减小包体，但与当前无网络权限 / 离线原则冲突。新增四个原始字体合计约 100.6 MiB，本次 debug APK 约 83.9 MiB，较此前约 20.9 MiB 增加约 63 MiB。
 
 Fredoka 转路径生成的字标是设计作品，与分发字体软件不同；OFL 官方 [FAQ 1.1–1.1.2](https://openfontlicense.org/ofl-faq/) 说明了 Logo / 图形的使用与许可区别。本项目仍主动保留来源及许可副本以便追溯；不将“转路径”作为处理其他素材许可的通用豁免。
 

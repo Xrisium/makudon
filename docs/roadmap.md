@@ -10,7 +10,7 @@
 | 3 简单目录与文件操作 | 原生已实现，复选 / 剪贴板、最近日期与编辑菜单模拟器验收通过；真机人工待验收 | 目录树、名称搜索、创建 / 排序、长按文件操作；整行展开、通知下移与取消自动收件箱见[任务 0012](tasks/0012-directory-and-editor-fixes.md)；行尾复选、统一剪贴板与一次发布见[任务 0014](tasks/0014-native-multiselect-and-clipboard.md)和 [ADR 0005](adr/0005-batch-directory-and-private-clipboard.md)；最近自然日分组 / 日期和编辑三项菜单见[任务 0015](tasks/0015-recent-dates-and-editor-menu.md) |
 | 4 Markdown 双视图编辑 | 基本原生排版已实现 | 源码 / 标题与段落排版编辑、保真范围更新与共享撤销；完整富文本、图片、跨段选择和长文优化未完成 |
 | 5 扩展导入导出与备份 | 纯目录 ZIP 已实现，模拟器验收通过；真机人工待验收 | 无清单整库 ZIP、单独保存 / 增量更新 / 完全覆盖、逐项冲突、原子整库发布与最近恢复前快照；见[任务 0016](tasks/0016-zip-backup-and-restore.md)及 [ADR 0006](adr/0006-plain-zip-and-library-generations.md)；更广格式未开始 |
-| 6 打磨与首个个人可用版本 | 主题字体品牌、工作区动效已集成；完整打磨未完成 | 配色闪烁修复与底栏强调背景横移见[任务 0011](tasks/0011-theme-and-tab-highlight.md)；离散横滑 / 点击、跨标签直达见[任务 0010](tasks/0010-discrete-tab-transitions.md)；主题渐变、页面正反向与目录 / 搜索 / 列表动效见[任务 0009](tasks/0009-workspace-motion.md)；仍需真机输入法、性能、完整无障碍和签名发布 |
+| 6 打磨与首个个人可用版本 | 主题、独立界面 / 正文字体和品牌、工作区动效已集成；完整打磨未完成 | 字体切换及验证边界见[任务 0020](tasks/0020-font-settings.md)；配色闪烁修复与底栏强调背景横移见[任务 0011](tasks/0011-theme-and-tab-highlight.md)；仍需真机输入法、性能、完整无障碍和签名发布 |
 
 ## 当前待办
 
