@@ -6,7 +6,12 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\android.ps1" -Action Run %*
+if "%~1"=="" (
+  chcp 65001 >nul
+  pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\android-tool.ps1"
+) else (
+  pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\android.ps1" -Action Run %*
+)
 set "RESULT=%ERRORLEVEL%"
 if not "%RESULT%"=="0" pause
 exit /b %RESULT%

@@ -22,7 +22,7 @@
 - 即使真机在线，Agent 的交互回归、截图、日志和 instrumentation / UI 测试也优先使用模拟器；真机交给用户人工验收，不默认安装测试 APK 或进行数据线调试。
 - 除非本轮用户要求或任务确有必须进行真机调试的原因，最终真机覆盖安装仅单向推送：APK 推送并发起安装后即完成该交付子任务，不二次询问安装是否完成，也不默认启动、查询进程或等待手机端确认。命令及结果记录方式见 `docs/device-policy.md`。
 - `pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial <目标真机序列号>`：构建、保留数据覆盖安装并启动。截图 / Logcat 同样传入目标 serial。
-- 无参数 `Run`、双击入口和 `Ctrl+Shift+B` 选择配置 AVD，适合日常 Agent 测试；最终真机单向交付重新识别并显式指定序列号，使用 `docs/device-policy.md` 中的推送安装命令。
+- 无参数 `Run`、双击工具内的模拟器操作和 `Ctrl+Shift+B` 选择配置 AVD；最终真机单向交付重新识别并显式指定序列号，使用 `docs/device-policy.md` 中的推送安装命令。
 - `Run` 会重启开发应用，交付前提示。连接的测试真机仅用于本软件人工测试，文稿与目录树可按测试需要覆盖、重置；此授权不扩展到其他应用、整机或产品存储行为，不默认卸载应用或 wipe AVD。详见 `docs/device-policy.md`。
 - 禁止在真机上频繁、反复覆盖安装，应用 APK 与测试 APK 均适用。先集中完成本地修改、构建与检查，再安排必要的最终验收安装；额外安装须先说明原因与影响并获得用户明确授权。用户叫停后，本轮不再安装，也不得改用模拟器绕过。详见 `docs/device-policy.md`。
 - 使用 JDK 17，不能误用终端默认 JDK 25。AGP 9 内置 Kotlin，不重复应用 `org.jetbrains.kotlin.android`。

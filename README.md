@@ -9,8 +9,8 @@
 工具链复用 `C:\Users\chris\DevTools\Android`，无需 Android Studio。
 
 1. 在 VS Code 打开 `.local/Makudon.code-workspace`（本机初始化生成）。也可以直接打开仓库目录。
-2. 日常 Agent 测试按 **Ctrl+Shift+B** 或无参数双击 **test-android.cmd**，复用 / 启动 `Android_API_36`，即使真机在线也优先模拟器。
-3. 本地检查与模拟器测试完成后，运行 **Makudon: Devices**，按[单向交付命令](docs/device-policy.md#当前脚本能力)向本次识别的测试真机推送 APK 并发起覆盖安装一次，即完成交付子任务，供用户人工验收，无需二次确认安装或启动结果。
+2. 双击 **test-android.cmd** 打开中文调试工具，输入编号选择构建、检查、设备、模拟器、截图或日志；每次操作后按 Enter 返回菜单。也可按 **Ctrl+Shift+B** 构建并在配置模拟器运行。
+3. 本地检查与模拟器测试完成后，在工具中选择 **8** 向在线真机覆盖安装已有 APK；多台真机时按列表选择。也可使用[单向交付命令](docs/device-policy.md#当前脚本能力)。安装供用户人工验收，不代表真机验收通过。
 
 覆盖安装会重启应用。除非用户要求，Agent 不直接通过数据线调试手机。测试真机只用于本软件人工测试，文稿和目录树可按测试需要覆盖、重置；通常覆盖安装仍保留已有数据，详细范围见 [设备约定](docs/device-policy.md)。
 

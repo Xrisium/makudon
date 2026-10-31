@@ -32,7 +32,7 @@
 
 ## 当前脚本能力
 
-无 `-Serial` 的 Run / Screenshot / Logcat 与双击入口、`Ctrl+Shift+B` 选择配置 AVD，符合日常测试优先模拟器的流程，不会自动转向手机。`Run -Serial` 还会启动并检查应用进程，默认单向交付不使用此路径；仅在需要真机调试时使用。最终交付复用已构建并验证的 APK，显式传本次识别的真机序列号：
+无 `-Serial` 的 Run / Screenshot / Logcat、双击工具中的模拟器操作及 `Ctrl+Shift+B` 选择配置 AVD，不会自动转向手机。双击工具的真机安装菜单会重新列出设备，唯一在线真机直接选用，多台时由使用者选择，然后向后端显式传序列号。`Run -Serial` 还会启动并检查应用进程，默认单向交付不使用此路径；仅在需要真机调试时使用。命令行最终交付复用已构建并验证的 APK，显式传本次识别的真机序列号：
 
 ```powershell
 pwsh -NoProfile -File scripts/android.ps1 -Action Devices
