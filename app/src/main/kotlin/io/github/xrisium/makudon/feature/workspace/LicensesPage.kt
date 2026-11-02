@@ -25,6 +25,7 @@ import io.github.xrisium.makudon.R
 internal data class LicenseEntry(@param:StringRes val title: Int, @param:StringRes val license: Int, @param:StringRes val description: Int?, @param:RawRes val resource: Int)
 
 internal val licenseEntries = listOf(
+    LicenseEntry(R.string.notice_commonmark, R.string.notice_bsd, null, R.raw.notice_commonmark),
     LicenseEntry(R.string.notice_noto, R.string.notice_ofl, R.string.notice_noto_description, R.raw.notice_noto),
     LicenseEntry(R.string.notice_noto_serif, R.string.notice_ofl, null, R.raw.notice_noto_serif),
     LicenseEntry(R.string.notice_wenkai, R.string.notice_ofl, null, R.raw.notice_wenkai),

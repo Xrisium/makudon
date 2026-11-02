@@ -127,21 +127,3 @@ object TextRules {
     fun conflicts(entries: List<Entry>, name: String, parent: String, kind: DocumentKind, except: String? = null) =
         entries.any { it.id != except && it.parent == parent && it.kind == kind && it.name.equals(name, ignoreCase = true) }
 }
-
-/** A block range includes no separator. Edits replace this range only; untouched Markdown is never serialized. */
-data class MarkdownBlock(val start: Int, val end: Int, val prefix: String, val text: String, val heading: Int, val editable: Boolean)
-fun markdownBlocks(source: String): List<MarkdownBlock> {
-    val result = mutableListOf<MarkdownBlock>()
-    var start = 0
-    while (start <= source.length) {
-        val separator = source.indexOf("\n\n", start).let { if (it < 0) source.length else it }
-        val raw = source.substring(start, separator)
-        val heading = Regex("^(#{1,2}) ([^\\n]*)$").matchEntire(raw)
-        val unsupported = raw.contains(Regex("(?m)^(?:```|~~~|[>+*\\-] |\\d+\\. |\\||<| {4}|\\t)|[*_`\\[\\]]"))
-        val prefix = heading?.groupValues?.get(1)?.plus(" ") ?: ""
-        result += MarkdownBlock(start, separator, prefix, raw.removePrefix(prefix), prefix.trim().length, !unsupported)
-        if (separator == source.length) break
-        start = separator + 2
-    }
-    return result
-}

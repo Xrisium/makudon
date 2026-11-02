@@ -264,11 +264,10 @@ class WorkspaceStoreTest {
     }
     @Test fun markdownRangesPreserveUntouchedSyntaxAndSeparators() {
         val source = "# 标题\n\n\n普通段落  \n换行\n\n- [ ] 未支持的任务\n\n```kotlin\nval a = 1\n```\n\n"
-        val blocks = markdownBlocks(source)
-        assertEquals(1, blocks.first().heading)
-        assertTrue(blocks.any { !it.editable && "未支持" in it.text })
-        val first = blocks.first()
-        val edited = source.replaceRange(first.start + first.prefix.length, first.end, "改后的标题")
+        val parsed = MarkdownParser.parse(source)
+        assertEquals(1, parsed.root.children.first().level)
+        assertTrue(parsed.elements.any { it.kind == "TaskListItemMarker" })
+        val edited = MarkdownEdits.command(source, TextSelection(2, 4), MarkdownAction.Bold, document = parsed)!!.text
         assertEquals(source.substring(source.indexOf("\n\n")), edited.substring(edited.indexOf("\n\n")))
     }
     @Test fun naturalSiblingSortDoesNotFlattenOrMutateSource() {

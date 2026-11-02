@@ -25,6 +25,10 @@ import kotlinx.coroutines.sync.withLock
 class WorkspaceInstrumentation : Instrumentation() {
     private lateinit var model: WorkspaceViewModel
     private val checks = mutableListOf<String>()
+    private var profileMarkdownLong = false
+    private var onlyMarkdownLong = false
+    private var onlyMarkdownVisual = false
+    private var onlyMarkdown = false
     private var onlyLong = false
     private var onlyMotion = false
     private var onlyVisual = false
@@ -47,6 +51,10 @@ class WorkspaceInstrumentation : Instrumentation() {
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
+        profileMarkdownLong = arguments?.getString("profile") == "true"
+        onlyMarkdownLong = arguments?.getString("case") == "markdown-long"
+        onlyMarkdownVisual = arguments?.getString("case") == "markdown-visual"
+        onlyMarkdown = arguments?.getString("case") == "markdown"
         onlyLong = arguments?.getString("case") == "long"
         onlyMotion = arguments?.getString("case") == "motion"
         onlyVisual = arguments?.getString("case") == "motion-visual"
@@ -69,6 +77,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     override fun onStart() {
         try {
+            if (onlyMarkdown) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitFor("language bootstrap and first workspace frame") {
                 val label = main { currentActivity?.getString(R.string.recent) }
@@ -81,7 +90,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -108,7 +117,12 @@ class WorkspaceInstrumentation : Instrumentation() {
         val root = uiAutomation.rootInActiveWindow ?: return emptyList()
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
-        visit(root); return result
+        visit(root)
+        if (onlyMarkdown) {
+            val activeLayer = uiAutomation.windows.firstOrNull { it.id == root.windowId }?.layer ?: 0
+            uiAutomation.windows.filter { it.layer > activeLayer && it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.forEach { window -> window.root?.let(::visit) }
+        }
+        return result
     }
     private fun find(label: String): AccessibilityNodeInfo {
         var match: AccessibilityNodeInfo? = null
@@ -277,7 +291,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             menu(); click("正文大小: 大"); ready()
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
             click("排版"); ready(); screenshot("text-size-typeset-large")
-            verify(main { model.ui.typeset && model.textState?.text?.toString() == "# 标题\n\n正文段落\n\n## 次级标题" }, "Typeset size preserves exact Markdown source")
+            verify(main { model.ui.editorMode == EditorMode.Typeset && model.textState?.text?.toString() == "# 标题\n\n正文段落\n\n## 次级标题" }, "Typeset size preserves exact Markdown source")
             main { currentActivity?.recreate() }; ready()
             verify(main { model.ui.workspace?.editorTextSize == EditorTextSize.Large }, "Size survives Activity recreation")
             main { model.back() }; ready(); main { model.reload() }; ready(); main { model.open(ids[0]) }; ready()
@@ -1834,6 +1848,252 @@ class WorkspaceInstrumentation : Instrumentation() {
         }
     }
 
+    private fun markdownLongTest() {
+        main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Markdown) }; ready()
+        val id = main { checkNotNull(model.ui.activeId) }
+        try {
+            click("源码")
+            val unit = "# 标题 😀\n\n正文 **粗体** 与中文。\n\n"
+            val points = unit.codePointCount(0, unit.length)
+            val dense = unit.repeat(100_000 / points) + "中".repeat(100_000 % points)
+            var started = SystemClock.uptimeMillis()
+            setText("编辑正文", dense); saved(60_000)
+            val savedAt = SystemClock.uptimeMillis()
+            waitFor("dense Markdown parsed", 60_000) { main { model.markdownDocument?.source == dense } }
+            sendStatus(0, Bundle().apply { putString("stream", "Dense Markdown 100000 points input+save_ms=${savedAt - started}, input+parse_ms=${SystemClock.uptimeMillis() - started}\n") })
+            verify(source(id, DocumentKind.Markdown) == dense, "100000-point dense Markdown saves complete UTF-8 source")
+            val profiler = if (profileMarkdownLong) {
+                android.os.Debug.startMethodTracingSampling(File(targetContext.cacheDir, "markdown-long.trace").absolutePath, 32 * 1024 * 1024, 5_000)
+                Thread {
+                    SystemClock.sleep(15_000)
+                    android.os.Debug.stopMethodTracing()
+                    sendStatus(0, Bundle().apply { putString("stream", "Markdown sampling trace captured\n") })
+                }.apply { isDaemon = true; start() }
+            } else null
+            started = SystemClock.uptimeMillis(); click("排版"); waitForIdleSync()
+            profiler?.join()
+            sendStatus(0, Bundle().apply { putString("stream", "Dense Markdown typeset_switch_ms=${SystemClock.uptimeMillis() - started}\n") })
+            verify(main { model.textState!!.text.toString() == dense }, "Dense Markdown typeset projection preserves all source")
+            started = SystemClock.uptimeMillis(); click("阅读"); waitForIdleSync()
+            sendStatus(0, Bundle().apply { putString("stream", "Dense Markdown reading_switch_ms=${SystemClock.uptimeMillis() - started}\n") })
+            verify(nodes().none { it.isEditable }, "Long Markdown reading uses a non-editable lazy viewport")
+            click("源码")
+            val emoji = "😀".repeat(100_000)
+            started = SystemClock.uptimeMillis(); setText("编辑正文", emoji); saved(60_000)
+            waitFor("emoji Markdown parsed", 60_000) { main { model.markdownDocument?.source == emoji } }
+            sendStatus(0, Bundle().apply { putString("stream", "Single paragraph 100000 emoji Markdown input+save+parse_ms=${SystemClock.uptimeMillis() - started}\n") })
+            verify(source(id, DocumentKind.Markdown) == emoji, "100000 emoji code points remain complete through parse and save")
+            setText("编辑正文", emoji + "超"); verify(main { model.textState!!.text.toString() == emoji }, "Markdown oversized paste is rejected without partial replacement")
+            main { model.dismissError() }
+        } finally {
+            if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
+            main { model.delete(id) }; ready()
+        }
+    }
+
+    private fun markdownVisualTest() {
+        val oldFont = shell("settings get system font_scale").trim()
+        val oldSize = shell("wm size").lineSequence().firstOrNull { it.startsWith("Override size:") }?.substringAfter(":")?.trim()
+        val oldTheme = main { model.ui.workspace!!.theme }
+        val oldLanguage = main { model.languages.selected }
+        main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Markdown) }; ready()
+        val id = main { checkNotNull(model.ui.activeId) }
+        try {
+            click("源码"); setText("编辑正文", "# Writing & 阅读 😀\n\nA **bold** and *italic* paragraph with ~~removed~~ words.\n\n- [ ] A task\n- [x] Finished\n\n> A quote\n\n| A | B |\n| --- | --- |\n| Text | 中文 |\n\n```text\nplain code\n```\n")
+            saved(); waitFor("visual parse") { main { model.markdownDocument?.source == model.textState?.text?.toString() } }
+            main { model.preferences(theme = ColorTheme.Paper) }; ready()
+            main { model.changeLanguage("en") }; ready()
+            main { model.editorMode(EditorMode.Reading) }; ready(); screenshot("markdown-reading-en-light")
+            verify(nodes().none { it.isEditable } && nodes().any { it.text?.toString() == "Reading" }, "English light-theme reading stays read-only")
+            verify(nodes().any { it.isHeading }, "Reading exposes real accessibility heading semantics")
+            verify(nodes().any { it.isCheckable && !it.isClickable }, "Reading task semantics expose state without a mutating click action")
+            shell("wm size 840x1800"); shell("settings put system font_scale 2.0")
+            waitFor("English narrow fonts", 30_000) { main { currentActivity!!.resources.configuration.screenWidthDp <= 321 && currentActivity!!.resources.configuration.fontScale >= 1.99f } }; ready()
+            screenshot("markdown-reading-en-narrow-200")
+            verify(listOf(R.string.source_view, R.string.typeset_view, R.string.reading_view).all { resource ->
+                val label = main { model.languages.context().getString(resource) }; nodes().any { it.text?.toString() == label || it.contentDescription?.toString() == label }
+            }, "English 320dp doubled fonts retain three accessible mode labels")
+            main { model.editorMode(EditorMode.Typeset) }; ready(); click("Format"); screenshot("markdown-tools-en-narrow-200")
+            val width = checkNotNull(uiAutomation.takeScreenshot()).let { val w = it.width; it.recycle(); w }
+            verify(listOf("Heading", "Bold", "List", "Quote", "Link", "More formatting").all { label ->
+                val bounds = Rect(); find(label).getBoundsInScreen(bounds); bounds.left >= 0 && bounds.right <= width && !bounds.isEmpty
+            }, "All six toolbar touch targets fit the 320dp window")
+            shell("settings put system font_scale 1.0"); shell("wm size 1800x840")
+            waitFor("landscape layout", 30_000) { main { currentActivity!!.resources.configuration.screenWidthDp > currentActivity!!.resources.configuration.screenHeightDp && currentActivity!!.resources.configuration.fontScale <= 1.01f } }; ready()
+            main { model.editorMode(EditorMode.Reading) }; ready(); screenshot("markdown-reading-landscape")
+            verify(nodes().none { it.isEditable }, "Landscape reading has no editable body")
+        } catch (e: Exception) { screenshot("markdown-visual-failure"); throw e } finally {
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+            ready(); main { model.changeLanguage(oldLanguage) }; ready()
+            if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
+            main { model.delete(id) }; ready(); main { model.preferences(theme = oldTheme) }; ready()
+        }
+    }
+
+    private fun markdownTest() {
+        val oldFont = shell("settings get system font_scale").trim()
+        val oldSize = shell("wm size").lineSequence().firstOrNull { it.startsWith("Override size:") }?.substringAfter(":")?.trim()
+        val oldTheme = main { model.ui.workspace!!.theme }
+        var id: String? = null
+        fun parsed() = waitFor("current Markdown parse") { main { model.markdownDocument?.source == model.textState?.text?.toString() } }
+        fun sourceSelection(start: Int, end: Int = start) {
+            main { model.editorMode(EditorMode.Source) }; SystemClock.sleep(300); waitForIdleSync()
+            val labelled = find("编辑正文")
+            fun editable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+                if (node.isEditable) return node
+                for (i in 0 until node.childCount) node.getChild(i)?.let { child -> editable(child)?.let { return it } }
+                return null
+            }
+            val node = editable(labelled) ?: nodes().firstOrNull { it.isEditable } ?: error("Missing editable child for source selection")
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS); SystemClock.sleep(100); node.refresh()
+            check(node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, start)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, end)
+            }))
+            sendStatus(0, Bundle().apply { putString("stream", main { "Selection diagnostic: expected=$start..$end actual=${model.currentSelection()} editable=${node.isEditable} semantic=${node.textSelectionStart}..${node.textSelectionEnd} mode=${model.ui.editorMode}\n" }) })
+            waitFor("source selection applied") { main { model.currentSelection() == TextSelection(start, end) } }
+            main { model.editorMode(EditorMode.Typeset) }; SystemClock.sleep(300); waitForIdleSync()
+        }
+        try {
+            click("新建文稿"); click("Markdown"); ready()
+            id = main { checkNotNull(model.ui.activeId) }
+            val sample = "# 写作标题 😀\n\n正文 **粗体** 与 *斜体*、~~删除~~和[链接](https://example.com)。\n\n- [ ] 任务\n  - 子项\n\n> 引用\n\n| A | B |\n| --- | --- |\n| 中文 | 😀 |\n\n```kotlin\nval x = 1\n```\n\n<div>原样保留</div>\n"
+            click("源码"); setText("编辑正文", sample); saved(); parsed()
+            verify(source(id, DocumentKind.Markdown) == sample, "Source input saves exact Unicode Markdown")
+            click("排版"); verify(main { model.ui.editorMode == EditorMode.Typeset }, "Typeset is a continuous native editor")
+            screenshot("markdown-typeset")
+            click("阅读"); verify(nodes().none { it.isEditable }, "Reading exposes no editable text field")
+            val revision = main { model.save!!.revision }
+            verify(main { model.textState!!.text.toString() == sample }, "Reading uses latest memory text without rewriting source")
+            screenshot("markdown-reading")
+            click("排版"); click("源码"); click("阅读")
+            verify(main { model.save!!.revision == revision } && source(id, DocumentKind.Markdown) == sample, "Three-view roundtrip creates no body revision or byte changes")
+            click("排版"); click("格式")
+            val position = sample.indexOf("正文")
+            sourceSelection(position, position + 2)
+            verify(main { model.currentSelection() == TextSelection(position, position + 2) }, "Typeset switch retains exact source selection for tools")
+            click("粗体"); parsed(); saved()
+            val bold = main { model.textState!!.text.toString() }
+            if (bold != sample.replace("正文", "**正文**")) File(targetContext.cacheDir, "markdown-bold-diagnostic.txt").writeText(bold)
+            verify(bold == sample.replace("正文", "**正文**"), "Typeset toolbar applies bold only to the selected source range")
+            click("撤销"); saved(); verify(main { model.textState!!.text.toString() == sample }, "One undo restores formatting and original source")
+            verify(main { model.currentSelection() == TextSelection(position, position + 2) }, "Undo restores the original selected range")
+            click("重做"); saved(); verify(main { model.textState!!.text.toString() == bold }, "Redo restores the complete formatting operation")
+            click("撤销"); parsed(); saved()
+            sourceSelection(sample.indexOf("正文"), sample.indexOf("任务") + 2)
+            verify(main { model.currentSelection().max > model.currentSelection().min + 30 }, "Native source and typeset share a cross-paragraph selection")
+            sourceSelection(2)
+            click("标题"); click("3 级标题"); parsed(); saved()
+            verify(main { model.textState!!.text.toString().startsWith("### 写作标题") }, "Heading tool changes current heading level in typeset")
+            click("撤销"); parsed(); saved()
+            sourceSelection(sample.indexOf("引用"))
+            click("引用"); parsed(); saved()
+            verify(main { !model.textState!!.text.toString().contains("> 引用") }, "Quote tool removes one quote layer")
+            click("撤销"); parsed(); saved()
+            sourceSelection(position, position + 2)
+            click("链接"); verify(nodes().any { it.text?.toString() == "链接名称" }, "Link dialog opens from typeset with retained selection")
+            click("取消"); verify(main { model.textState!!.text.toString() == sample }, "Cancelling a link leaves source unchanged")
+            val stale = main { model.editToken() }
+            main { model.applyEditorEdit(EditResult(sample + "x", model.currentSelection())) }; parsed(); saved()
+            verify(main { !model.applyLink(stale, "迟到", "https://example.com") && model.textState!!.text.toString() == sample + "x" }, "A delayed link command rejects its old source revision")
+            click("源码"); setText("编辑正文", sample); saved(); parsed(); click("排版")
+            runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }
+            SystemClock.sleep(300); waitForIdleSync()
+            click("切换任务完成状态"); saved(); parsed()
+            verify(main { model.textState!!.text.toString() == sample.replace("- [ ] 任务", "- [x] 任务") }, "A typeset task checkbox changes only the source marker")
+            click("撤销"); saved(); parsed()
+            verify(main { model.textState!!.text.toString() == sample }, "A task toggle is one shared undo step")
+
+            main { model.editorMode(EditorMode.Source) }; setText("编辑正文", "- item"); saved(); parsed()
+            main { model.textState!!.edit { selection = androidx.compose.ui.text.TextRange(length) }; model.editorMode(EditorMode.Typeset) }
+            find("编辑正文").performAction(AccessibilityNodeInfo.ACTION_FOCUS); waitForIdleSync()
+            main {
+                val connection = checkNotNull(currentActivity!!.window.decorView.findFocus()?.onCreateInputConnection(android.view.inputmethod.EditorInfo()))
+                check(connection.commitText("\n", 1))
+            }
+            saved(); parsed()
+            verify(main { model.textState!!.text.toString() == "- item\n- " }, "Real InputConnection Enter continues a typeset list")
+            click("撤销"); saved(); verify(main { model.textState!!.text.toString() == "- item" }, "Enter and its automatic marker undo together")
+            parsed()
+            main {
+                val connection = checkNotNull(currentActivity!!.window.decorView.findFocus()?.onCreateInputConnection(android.view.inputmethod.EditorInfo()))
+                connection.setComposingText("zhong", 1)
+                connection.setComposingText("中文", 1)
+                connection.finishComposingText()
+            }
+            saved(); parsed()
+            verify(main { model.textState!!.text.toString() == "- item中文" }, "Real composing InputConnection commits Chinese without duplicate or lost text")
+            main {
+                val connection = checkNotNull(currentActivity!!.window.decorView.findFocus()?.onCreateInputConnection(android.view.inputmethod.EditorInfo()))
+                connection.setComposingText("组", 1)
+            }
+            parsed(); click("粗体"); saved(); parsed()
+            verify(main { model.textState!!.text.toString() == "- item中文组****" && model.textState!!.composition == null }, "Explicit formatting preserves visible composing text and finishes composition")
+            main {
+                val connection = checkNotNull(currentActivity!!.window.decorView.findFocus()?.onCreateInputConnection(android.view.inputmethod.EditorInfo()))
+                connection.setComposingText("读", 1)
+            }
+            val composingVisible = main { model.textState!!.text.toString() }
+            click("阅读"); parsed(); saved()
+            verify(main { model.textState!!.text.toString() == composingVisible } && nodes().none { it.isEditable }, "Switching to reading during composition keeps visible text and removes editing input")
+
+            click("源码"); setText("编辑正文", sample); saved(); parsed(); click("排版")
+            click("条目操作"); click("查找与替换")
+            setText("查找内容", "正文"); waitForIdleSync()
+            verify(nodes().any { it.text?.toString() == "1 / 1" }, "Find reports literal match count in typeset")
+            setText("替换为", "新正文"); click("全部替换"); saved(); parsed()
+            verify(main { model.textState!!.text.toString() == sample.replace("正文", "新正文") }, "Replace all edits current source atomically")
+            click("关闭"); click("撤销"); saved(); parsed()
+            click("阅读"); click("条目操作"); click("查找"); setText("查找内容", "粗体"); waitForIdleSync()
+            verify(nodes().none { it.text?.toString() == "全部替换" || it.text?.toString() == "替换为" }, "Reading find has no replacement action")
+            click("关闭")
+            val readRevision = main { model.save!!.revision }
+            main { model.undo(); model.format(MarkdownAction.Bold) }
+            verify(main { model.save!!.revision == readRevision && model.textState!!.text.toString() == sample }, "Reading gates mutating editor commands as well as hiding tools")
+            main { model.exportCopy() }; waitFor("Markdown export prepared") { main { !model.files.ui.busy && model.files.ui.export != null } }
+            val export = main { checkNotNull(model.files.ui.export) }
+            verify(export.name.endsWith(".md") && export.mime == "text/markdown" && export.file.readText() == sample, "Default Markdown export preserves source and MIME")
+            main { model.files.close(); model.exportCopy(true) }; waitFor("TXT export prepared") { main { !model.files.ui.busy && model.files.ui.export != null } }
+            verify(main { model.files.ui.export!!.name.endsWith(".txt") && model.files.ui.export!!.mime == "text/plain" } && main { model.files.ui.export!!.file }.readText() == sample, "TXT alternative preserves Markdown source as an independent snapshot")
+            main { model.files.close() }
+            click("源码")
+            val pending = File(workspaceDirectory(), "documents/$id/body.md.new")
+            check(pending.mkdir())
+            val unsaved = sample + "尚未保存的最新正文"
+            try {
+                setText("编辑正文", unsaved)
+                waitFor("Markdown save failure") { main { model.save?.status?.value?.phase == SavePhase.Failed } }
+                click("阅读"); parsed()
+                verify(main { model.ui.editorMode == EditorMode.Reading && model.textState!!.text.toString() == unsaved && model.save!!.status.value.phase == SavePhase.Failed }, "Reading shows latest memory content and retains a save failure")
+                verify(source(id, DocumentKind.Markdown) == sample, "Reading never replaces the last confirmed file after a save failure")
+            } finally { check(pending.delete()) }
+            main { model.retrySave() }; ready(); saved()
+            click("源码"); setText("编辑正文", sample); saved(); parsed(); click("阅读")
+            val retained = main { model.textState }
+            main { currentActivity!!.recreate() }; ready(); parsed()
+            verify(main { model.ui.editorMode == EditorMode.Reading && model.textState === retained }, "Activity recreation retains reading mode and shared editor session")
+            shell("wm size 840x1800"); shell("settings put system font_scale 2.0")
+            waitFor("narrow screen and actual doubled app fonts", 30_000) { main { currentActivity!!.resources.configuration.screenWidthDp <= 321 && currentActivity!!.resources.configuration.fontScale >= 1.99f } }
+            ready(); SystemClock.sleep(500)
+            screenshot("markdown-reading-narrow-200")
+            verify(listOf("源码", "排版", "阅读").all { label -> nodes().any { it.text?.toString() == label } }, "320dp and 200 percent fonts keep all three mode controls")
+            main { model.editorMode(EditorMode.Typeset) }; ready()
+            waitFor("typeset mode after resize") { main { model.ui.editorMode == EditorMode.Typeset } }
+            screenshot("markdown-typeset-narrow-200")
+            main { model.editorMode(EditorMode.Reading); model.immersive = true }; waitForIdleSync(); screenshot("markdown-immersive")
+            verify(nodes().none { it.isEditable || it.text?.toString() == "格式" }, "Immersive reading remains non-editable")
+        } catch (e: Exception) { screenshot("markdown-before-cleanup-failure"); throw e } finally {
+            main { model.files.close(); model.immersive = false }
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+            ready()
+            if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
+            id?.let { main { model.delete(it) }; ready() }
+            main { model.preferences(theme = oldTheme) }; ready()
+        }
+    }
+
     private fun exercise() {
         verify(main { model.ui.page == Page.Recent }, "Launch defaults to Recent")
         val defaultLocation = main { Workspace.ROOT }
@@ -1849,13 +2109,13 @@ class WorkspaceInstrumentation : Instrumentation() {
         click("重做"); saved(); verify(source(id, DocumentKind.Markdown).endsWith("临时修改"), "Redo restores editing action")
         click("撤销"); saved(); click("排版")
         verify(main { model.textState?.text?.toString() == original }, "Switching views without edit preserves exact source")
-        setText("排版编辑第 1 段", "新标题")
+        setText("编辑正文", original.replace("# 模拟器写作", "# 新标题"))
         click("返回"); ready()
         val edited = original.replace("# 模拟器写作", "# 新标题")
         verify(source(id, DocumentKind.Markdown) == edited, "Fast typeset edit then leave flushes last paragraph and preserves unknown syntax")
         main { model.open(id) }; ready(); click("源码")
         verify(main { model.textState?.text?.toString() == edited }, "Reopen returns complete saved source")
-        click("排版"); setText("排版编辑第 2 段", "新段落\n\n新空行 😀")
+        click("排版"); setText("编辑正文", edited.replace("第一段中文与 emoji 😀。", "新段落\n\n新空行 😀"))
         click("源码")
         val secondEdit = edited.replace("第一段中文与 emoji 😀。", "新段落\n\n新空行 😀")
         verify(main { model.textState?.text?.toString() == secondEdit }, "Multiline typeset paragraph patch preserves separators and following blocks")

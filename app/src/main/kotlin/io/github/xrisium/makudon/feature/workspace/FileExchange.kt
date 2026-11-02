@@ -90,7 +90,7 @@ class FileExchange(private val application: Application, private val scope: Coro
         }
     }
 
-    fun text(name: String, text: String) = prepare(name, "text/plain", null) { output -> output.write(TextRules.bytes(text)) }
+    fun text(name: String, text: String) = prepare(name, if (name.endsWith(".md", true)) "text/markdown" else "text/plain", null) { output -> output.write(TextRules.bytes(text)) }
     fun archive(name: String, file: File, closed: () -> Unit) = prepare(name, "application/zip", closed) { output -> file.inputStream().use { it.copyTo(output) } }
 
     private fun prepare(name: String, mime: String, closed: (() -> Unit)?, write: (java.io.OutputStream) -> Unit) {

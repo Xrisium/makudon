@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.SystemClock
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.ui.text.TextRange
 import androidx.compose.runtime.*
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -38,7 +39,7 @@ data class WorkspaceUi(
     val origin: Page = Page.Recent,
     val activeId: String? = null,
     val infoDiskBytes: Long? = null,
-    val typeset: Boolean = true,
+    val editorMode: EditorMode = EditorMode.Typeset,
     val mainTab: Page = Page.Recent,
     val navigationId: Long = 0,
     val backwards: Boolean = false,
@@ -56,17 +57,30 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var save by mutableStateOf<SaveCoordinator?>(null)
         private set
-    var blocks by mutableStateOf<List<MarkdownBlock>>(emptyList())
+    var markdownDocument by mutableStateOf<MarkdownDocument?>(null)
         private set
-    var blockEpoch by mutableIntStateOf(0)
+    private var parseJob: Job? = null
+    private val parseLock = Mutex()
+    var editorRevision by mutableLongStateOf(0)
         private set
+    var editorMessage by mutableStateOf<Int?>(null)
+        private set
+    val editorScroll = androidx.compose.foundation.ScrollState(0)
+    val readingList = androidx.compose.foundation.lazy.LazyListState()
+    var readingAnchor by mutableIntStateOf(0)
+    var editorAnchor by mutableIntStateOf(0)
+    var readingAnchorOffset by mutableIntStateOf(0)
+    var editorAnchorOffset by mutableIntStateOf(0)
+    var immersive by mutableStateOf(false)
+    data class EditToken(val session: Long, val revision: Long, val selection: TextSelection)
+    fun editToken() = EditToken(sessionId, editorRevision, currentSelection())
+    fun currentSelection() = textState?.selection?.let { TextSelection(it.start, it.end) } ?: TextSelection(0)
     var canUndo by mutableStateOf(false)
         private set
     var canRedo by mutableStateOf(false)
         private set
     private var history = EditHistory()
     private var historySource = ""
-    private val paragraphFields = mutableMapOf<Int, TextFieldState>()
     data class ClipboardItem(val entry: Entry, val location: String)
     data class Clipboard(val items: List<ClipboardItem>, val cut: Boolean, val copies: List<WorkspaceStore.Copy>, val token: Long) {
         val ids: List<String> get() = items.map { it.entry.id }
@@ -111,9 +125,9 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     val backup = BackupCoordinator(viewModelScope, application, ioLock, library, { barrier() }) { current ->
         libraryEpoch++
         observer?.cancel(); observer = null; save = null; textState = null
-        paragraphFields.clear(); departingSession = null; sessionId++
+        departingSession = null; sessionId++
         selection = null; clipboard = null; pasteRequest = null; deleteRequest = null
-        canUndo = false; canRedo = false; history = EditHistory(); blocks = emptyList()
+        canUndo = false; canRedo = false; history = EditHistory(); markdownDocument = null; parseJob?.cancel()
         ui = ui.copy(workspace = current, activeId = null, selected = Workspace.ROOT, newParent = Workspace.ROOT,
             revealFolder = null, directoryRevision = ui.directoryRevision + 1, message = R.string.backup_library_changed, error = null)
         navigate(Page.Directory, backwards = true)
@@ -160,7 +174,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
                 acceptTrash(inventory)
                 ui = ui.copy(storageBlocked = false)
                 if (ui.activeId != null && current.entry(ui.activeId.orEmpty()) == null) {
-                    observer?.cancel(); observer = null; save = null; textState = null; paragraphFields.clear(); departingSession = null
+                    observer?.cancel(); observer = null; save = null; textState = null; departingSession = null
                     ui = ui.copy(activeId = null)
                     if (ui.page == Page.Editor) navigate(ui.origin, backwards = true)
                 }
@@ -171,11 +185,9 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     private suspend fun barrier(retry: Boolean = false): Boolean {
-        flushParagraphs()
         val coordinator = save ?: return true
         while (true) {
-            flushParagraphs()
-            textState?.let { coordinator.changed(it.text.toString()) }
+                textState?.let { coordinator.changed(it.text.toString()) }
             if (!coordinator.flush(retry)) return false
             if (textState?.text?.toString() == coordinator.latest) return true
         }
@@ -220,7 +232,6 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (id != ui.navigationId) return
         if (ui.page in MainPages && departingSession == sessionId) {
             observer?.cancel(); observer = null; save = null; textState = null
-            paragraphFields.clear()
             departingSession = null
             ui = ui.copy(activeId = null)
         }
@@ -258,12 +269,12 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         onSuccess()
     } }
     fun open(id: String) { launchWork { openInternal(id, if (ui.page == Page.Directory) Page.Directory else Page.Recent) } }
+    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     private suspend fun openInternal(id: String, origin: Page) {
         if (!barrier()) return
         val text = disk { store.open(id) }
         val refreshed = disk { store.refresh() }
         observer?.cancel()
-        paragraphFields.clear()
         val field = TextFieldState(text)
         val epoch = libraryEpoch
         val openedStore = store
@@ -275,10 +286,12 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         departingSession = null
         textState = field; save = session
         history = EditHistory(); historySource = text; canUndo = false; canRedo = false
-        blocks = markdownBlocks(text); blockEpoch++
-        ui = ui.copy(activeId = id, origin = origin, typeset = true, workspace = refreshed)
+        markdownDocument = null; editorRevision = 0; editorMessage = null; immersive = false
+        editorAnchor = 0; readingAnchor = 0; editorAnchorOffset = 0; readingAnchorOffset = 0
+        ui = ui.copy(activeId = id, origin = origin, editorMode = EditorMode.Typeset, workspace = refreshed)
+        requestParse(text)
         navigate(Page.Editor)
-        observer = viewModelScope.launch { snapshotFlow { field.text.toString() }.collect { recordEdit(it); session.changed(it) } }
+        observer = viewModelScope.launch { snapshotFlow { field.text.toString() }.collect { recordEdit(it); session.changed(it); field.undoState.clearHistory() } }
     }
     fun back() {
         if (ui.busy || ui.transitioning || ui.tabTransitioning) return
@@ -301,48 +314,98 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             else -> Unit
         }
     }
-    fun typeset(value: Boolean) {
-        if (ui.busy || ui.transitioning || ui.page != Page.Editor || ui.typeset == value) return
-        flushParagraphs(); paragraphFields.clear(); if (value) { blocks = markdownBlocks(textState?.text?.toString().orEmpty()); blockEpoch++ }; ui = ui.copy(typeset = value)
+    // Compatibility for existing test/navigation callers; there is only one editable field now.
+    fun typeset(value: Boolean) = editorMode(if (value) EditorMode.Typeset else EditorMode.Source)
+    fun editorMode(value: EditorMode) {
+        if (ui.busy || ui.transitioning || ui.page != Page.Editor || ui.editorMode == value) return
+        textState?.let { recordEdit(it.text.toString()); save?.changed(it.text.toString()) }
+        ui = ui.copy(editorMode = value)
+        immersive = false
+        if (value == EditorMode.Reading) viewModelScope.launch { save?.flush() }
     }
-    fun registerParagraph(index: Int, field: TextFieldState) { paragraphFields[index] = field }
-    fun unregisterParagraph(index: Int, field: TextFieldState) {
-        if (paragraphFields[index] !== field) return
-        blocks.getOrNull(index)?.let { if (it.text != field.text.toString()) editBlock(index, it.text, field.text.toString()) }
-        paragraphFields.remove(index)
-    }
-    private fun flushParagraphs() {
-        if (!ui.typeset || ui.page != Page.Editor) return
-        paragraphFields.toMap().forEach { (index, field) -> blocks.getOrNull(index)?.let { if (it.text != field.text.toString()) editBlock(index, it.text, field.text.toString()) } }
+    private fun requestParse(text: String) {
+        parseJob?.cancel()
+        if (ui.workspace?.entry(ui.activeId.orEmpty())?.kind != DocumentKind.Markdown) return
+        val token = sessionId
+        parseJob = viewModelScope.launch {
+            try {
+                val parsed = withContext(Dispatchers.Default) { parseLock.withLock { ensureActive(); MarkdownParser.parse(text) } }
+                if (token == sessionId && textState?.text?.toString() == text) markdownDocument = parsed
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { if (token == sessionId) editorMessage = R.string.md_parse_failed }
+        }
     }
     private fun recordEdit(text: String) {
-        history.record(historySource, text); historySource = text
+        if (text != historySource) {
+            history.record(historySource, text, currentSelection(), currentSelection())
+            historySource = text; editorRevision++; requestParse(text)
+        }
         canUndo = history.canUndo; canRedo = history.canRedo
     }
+    fun recordInput(before: String, after: String, beforeSelection: TextSelection, afterSelection: TextSelection) {
+        recordEdit(before)
+        history.record(before, after, beforeSelection, afterSelection)
+        if (before != after) { historySource = after; editorRevision++; requestParse(after) }
+        canUndo = history.canUndo; canRedo = history.canRedo
+    }
+    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+    fun applyEditorEdit(result: EditResult, token: EditToken? = null): Boolean {
+        if (ui.busy || ui.transitioning || ui.storageBlocked || ui.page != Page.Editor || ui.editorMode == EditorMode.Reading) return false
+        val field = textState ?: return false
+        recordEdit(field.text.toString())
+        if (token != null && (token.session != sessionId || token.revision != editorRevision)) { editorMessage = R.string.md_stale; return false }
+        try { TextRules.bytes(result.text) } catch (e: WorkspaceException) { inputRejected(e.reason); return false }
+        val before = field.text.toString()
+        history.record(before, result.text, currentSelection(), result.selection)
+        historySource = result.text
+        replaceEditorText(result.text, result.selection)
+        // Keep one bounded undo owner, including hardware and platform undo requests.
+        field.undoState.clearHistory()
+        if (before != result.text) { editorRevision++; requestParse(result.text) }
+        save?.changed(result.text); canUndo = history.canUndo; canRedo = history.canRedo; editorMessage = null
+        return true
+    }
+    fun format(action: MarkdownAction, level: Int = 0) {
+        if (ui.busy || ui.transitioning || ui.storageBlocked || ui.page != Page.Editor || ui.editorMode == EditorMode.Reading) return
+        val source = textState?.text?.toString() ?: return
+        val parsed = markdownDocument?.takeIf { it.source == source } ?: run { editorMessage = R.string.md_preparing; return }
+        try {
+            val result = MarkdownEdits.command(source, currentSelection(), action, level, parsed)
+            if (result == null) editorMessage = R.string.md_unavailable else applyEditorEdit(result)
+        } catch (e: WorkspaceException) { inputRejected(e.reason) }
+    }
+    fun editorMessageForLink() { editorMessage = R.string.md_link_unavailable }
+    fun applyLink(token: EditToken, label: String, url: String, remove: Boolean = false): Boolean {
+        val source = textState?.text?.toString() ?: return false
+        if (token.session != sessionId || token.revision != editorRevision) { editorMessage = R.string.md_stale; return false }
+        val parsed = markdownDocument?.takeIf { it.source == source } ?: return false
+        val result = MarkdownEdits.link(source, token.selection, label, url, remove, parsed) ?: run { editorMessage = R.string.md_unavailable; return false }
+        return applyEditorEdit(result, token)
+    }
+    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     fun undo(redo: Boolean = false) {
+        if (ui.editorMode == EditorMode.Reading || ui.busy || ui.transitioning || ui.storageBlocked || ui.page != Page.Editor) return
         val field = textState ?: return
-        flushParagraphs()
-        paragraphFields.clear()
         recordEdit(field.text.toString())
         val next = if (redo) history.redo(historySource) else history.undo(historySource)
         historySource = next
-        field.edit { replace(0, length, next) }
-        save?.changed(next)
+        val selected = history.restoredSelection
+        replaceEditorText(next, selected)
+        field.undoState.clearHistory()
+        save?.changed(next); editorRevision++; requestParse(next)
         canUndo = history.canUndo; canRedo = history.canRedo
-        blocks = markdownBlocks(next); blockEpoch++
     }
-    fun editBlock(index: Int, expected: String, replacement: String): Boolean {
-        val field = textState ?: return false
-        val block = blocks.getOrNull(index) ?: return false
-        if (block.text != expected) return false
-        val source = field.text.toString()
-        val next = source.replaceRange(block.start + block.prefix.length, block.end, replacement)
-        try { TextRules.bytes(next) } catch (e: WorkspaceException) { inputRejected(e.reason); return false }
-        val delta = replacement.length - block.text.length
-        field.edit { replace(block.start + block.prefix.length, block.end, replacement) }
-        blocks = blocks.mapIndexed { n, b -> when { n < index -> b; n == index -> b.copy(end = b.end + delta, text = replacement); else -> b.copy(start = b.start + delta, end = b.end + delta) } }
-        recordEdit(next); save?.changed(next)
-        return true
+    private fun replaceEditorText(next: String, selected: TextSelection) {
+        val field = textState ?: return
+        val before = field.text.toString()
+        var start = 0
+        while (start < minOf(before.length, next.length) && before[start] == next[start]) start++
+        var suffix = 0
+        while (suffix < minOf(before.length, next.length) - start && before[before.lastIndex - suffix] == next[next.lastIndex - suffix]) suffix++
+        field.edit {
+            if (before != next) replace(start, before.length - suffix, next.substring(start, next.length - suffix))
+            selection = TextRange(selected.start.coerceIn(0, length), selected.end.coerceIn(0, length))
+        }
     }
     fun inspect(id: String? = ui.activeId, onSuccess: () -> Unit) {
         if (id == null) return
@@ -433,7 +496,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         acceptTrash(disk { trash.delete(ids) })
         val deletedActive = ui.activeId in removed
         if (deletedActive) {
-            observer?.cancel(); observer = null; save = null; textState = null; paragraphFields.clear()
+            observer?.cancel(); observer = null; save = null; textState = null
             departingSession = null
         }
         ui = ui.copy(selected = if (ui.selected in removed) selectedParent else ui.selected,
@@ -509,15 +572,14 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     fun fontSettings(uiFont: Boolean) { if (!ui.busy && !ui.transitioning) navigate(if (uiFont) Page.UiFont else Page.EditorFont) }
-    fun prepareExport(): Boolean {
-        flushParagraphs()
+    fun prepareExport(plainCopy: Boolean = false): Boolean {
         val text = textState?.text?.toString() ?: return false
         exportText = text
-        exportName = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty().ifBlank { localized().getString(R.string.untitled) } + ".txt"
+        exportName = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty().ifBlank { localized().getString(R.string.untitled) } + if (!plainCopy && ui.workspace?.entry(ui.activeId.orEmpty())?.kind == DocumentKind.Markdown) ".md" else ".txt"
         return true
     }
-    fun exportCopy() {
-        if (prepareExport()) files.text(exportName, checkNotNull(exportText))
+    fun exportCopy(plainCopy: Boolean = false) {
+        if (prepareExport(plainCopy)) files.text(exportName, checkNotNull(exportText))
     }
     fun licenses() { launchWork {
         licenseTexts = disk { licenseEntries.map { entry -> getApplication<Application>().resources.openRawResource(entry.resource).bufferedReader().use { it.readText() } } }
