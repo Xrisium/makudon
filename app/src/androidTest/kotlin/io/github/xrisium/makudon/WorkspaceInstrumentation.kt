@@ -555,7 +555,14 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { files.ui.export == snapshot }, "Activity recreation preserves export bytes and filename")
             click("选择保存位置")
             waitFor("system save picker") { uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true }
-            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            // CREATE_DOCUMENT can focus the filename and open its IME. The first BACK
+            // dismisses that keyboard; cancel only while DocumentsUI still owns the window.
+            repeat(3) {
+                if (uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true) {
+                    uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(700); waitForIdleSync()
+                }
+            }
             waitFor("save picker returned") { uiAutomation.rootInActiveWindow?.packageName == targetContext.packageName }
             verify(main { files.ui.export == snapshot }, "Actual system save cancellation retains original snapshot")
             main { files.saveTo(uri("denied")) }; prepared()
