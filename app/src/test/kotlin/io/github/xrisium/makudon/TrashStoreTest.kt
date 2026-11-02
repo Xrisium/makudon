@@ -224,7 +224,7 @@ class TrashStoreTest {
         val id = lib.store.create("稿", Workspace.ROOT, DocumentKind.Plain, "原文稿")
         val deleted = trash.delete(listOf(id))
         assertTrue(deleted.cleanupPending)
-        val binBytes = File(dir, "trash").walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        val binBytes = File(dir, "trash/materials").walkTopDown().filter { it.isFile }.sumOf { it.length() }
         assertEquals(binBytes + File(dir, "workspace/documents/$id").walkTopDown().filter { it.isFile }.sumOf { it.length() }, deleted.bytes)
         val restored = trash.restore(deleted.roots.map { it.id }, false, ::suffix).entries.single()
         assertNotEquals(id, restored.id); assertEquals("原文稿", lib.store.read(restored.id))

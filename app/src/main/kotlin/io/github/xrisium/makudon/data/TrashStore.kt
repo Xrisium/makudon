@@ -128,7 +128,7 @@ class TrashStore(
     }
     fun inventory(): TrashInventory {
         if (current().pending != null) throw WorkspaceException(Failure.Corrupt)
-        val bytes = directory.walkTopDown().filter { it.isFile }.sumOf { it.length() } + current().sources.sumOf { library.trashSourceBytes(it.library, it.id) }
+        val bytes = File(directory, "materials").walkTopDown().filter { it.isFile }.sumOf { it.length() } + current().sources.sumOf { library.trashSourceBytes(it.library, it.id) }
         return TrashInventory(current().nodes, bytes, current().garbage.isNotEmpty() || current().sources.isNotEmpty())
     }
     fun retryCleanup(): TrashInventory {
