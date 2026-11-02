@@ -2,11 +2,13 @@
 
 路线图是候选顺序，不是自动执行授权。
 
+2026-11-02：按用户要求移除单篇上一版本 / 恢复，补全文稿与文件夹秒级时间及文件夹递归磁盘大小。实施与验证见 [任务 0024](tasks/0024-remove-history-and-entry-details.md)，其余候选不自动推进。
+
 | 阶段 | 状态 | 结果 / 验收 |
 | --- | --- | --- |
 | 0 工程基础 | 已搭建，验证见 status | 可构建、可重复安装的空壳；环境、文档、Git、测试入口 |
 | 1 编辑体验与存储边界设计 | **产品选择已确定，工程协议待实测** | [方案](specs/0001-plain-text-editor.md)、[ADR 已接受](adr/0002-document-storage.md)、[决定记录](specs/0001-open-decisions.md)、[验收规范（未执行）](testing/plain-text-editor-acceptance.md) |
-| 2 首个可靠纯文本切片 | 开发版已接入，完整验收未完成 | 私有文稿、自动保存 / 上一版本、导入副本 / VIEW 候选 / `.txt` 导出，仍需完整故障矩阵与真机验收 |
+| 2 首个可靠纯文本切片 | 开发版已接入，完整验收未完成 | 私有文稿、自动保存、导入副本 / VIEW 候选 / `.txt` 导出；单篇上一版本 / 恢复已按 ADR 0010 移除，仍需完整故障矩阵与真机验收 |
 | 3 简单目录与文件操作 | 原生已实现，复选 / 剪贴板、最近日期与编辑菜单模拟器验收通过；真机人工待验收 | 目录树、名称搜索、创建 / 排序、长按文件操作；整行展开、通知下移与取消自动收件箱见[任务 0012](tasks/0012-directory-and-editor-fixes.md)；行尾复选、统一剪贴板与一次发布见[任务 0014](tasks/0014-native-multiselect-and-clipboard.md)和 [ADR 0005](adr/0005-batch-directory-and-private-clipboard.md)；最近自然日分组 / 日期和编辑三项菜单见[任务 0015](tasks/0015-recent-dates-and-editor-menu.md) |
 | 4 Markdown 双视图编辑 | 基本原生排版已实现 | 源码 / 标题与段落排版编辑、保真范围更新与共享撤销；完整富文本、图片、跨段选择和长文优化未完成 |
 | 5 扩展导入导出与备份 | 纯目录 ZIP 已实现，模拟器验收通过；真机人工待验收 | 无清单整库 ZIP、单独保存 / 增量更新 / 完全覆盖、逐项冲突、原子整库发布与最近恢复前快照；见[任务 0016](tasks/0016-zip-backup-and-restore.md)及 [ADR 0006](adr/0006-plain-zip-and-library-generations.md)；更广格式未开始 |

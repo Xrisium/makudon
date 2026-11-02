@@ -12,7 +12,7 @@ app/src/main/kotlin/io/github/xrisium/makudon/
   ui/theme/               主题
   domain/Workspace.kt      节点、排序、UTF-8 / 名称规则、有限 Markdown 范围解析
   domain/DirectorySelection.kt  复选规范化、继承 / 半选、粘贴目标与整批冲突校验
-  data/WorkspaceStore.kt   私有目录、原子索引发布、正文 / 上一版本与恢复
+  data/WorkspaceStore.kt   私有目录、原子索引发布、当前正文与递归磁盘统计
   data/LibraryController.kt 整库指针、独立代际与最近恢复快照
   data/LibraryArchive.kt    有界纯目录 ZIP 与逐篇磁盘暂存
   data/TrashStore.kt        独立回收站、材料与跨索引事务协调
@@ -22,6 +22,8 @@ app/src/main/kotlin/io/github/xrisium/makudon/
 现已实现上述职责；[ADR 0003](adr/0003-workspace-catalog.md)记录原生工作区的数据格式、索引事务边界和有限排版编辑。没有 DI、数据库、导航运行库或 WebView。
 
 每篇私有文稿使用独立 ID，同时只编辑一篇；进程内单一 ViewModel / Mutex 协调保存和目录操作。外部 VIEW 与应用内导入共用只读副本链路，正文不写回源 URI。保存、恢复、导入与导出已接入；完整故障 / 进程中断矩阵及真机体验仍须验收，见 [当前状态](status.md)。
+
+单篇上一版本和版本恢复已按 [ADR 0010](adr/0010-remove-document-history.md) 移除；不再产生 / 传递 previous 或单篇 recovery。编辑撤销、回收站与 ZIP 整库恢复保留。条目信息统一通过保存屏障及 IO 刷新，固定秒级时间使用当前手机时区，文件夹空间只汇总可达子树文稿的实际私有文件字节，不跟随符号链接。
 
 ZIP 的 BackupCoordinator 与原 ViewModel 共用 IO Mutex / 保存屏障，Compose 仅消费库存与恢复计划，正文逐篇暂存磁盘。LibraryController 首次载入建立兼容旧 workspace 的小指针，后续完整准备独立代际再原子切换当前库 / 最近快照，库内格式不变。活动保存检查原库实例及代际，禁止切换后的旧回调写入。事务 / 空间 / 清理边界见 [ADR 0006](adr/0006-plain-zip-and-library-generations.md)。
 
