@@ -39,3 +39,8 @@ Fredoka 转路径生成的字标是设计作品，与分发字体软件不同；
 - 字体：最终字体文件、覆盖范围、字重、子集 / 修改说明、哈希、包体增量、离线及缺字回退验证。
 - 图标：上游版本、具体图标名称、源文件和 Android 转换结果、是否存在 Feather 派生项；保留完整上游许可最省误差。
 - 图片 / 音频：作者、来源、署名要求、改作 / 再分发范围；涉及肖像、品牌等其他权利时另核对授权。
+
+
+## Markdown 解析
+
+CommonMark Java 0.24.0（core、gfm-tables、gfm-strikethrough、task-list-items），用于带源码范围的离线原生解析，不生成 HTML。固定制品来自项目已有 Maven Central；BSD 2-Clause 许可由四个实际 JAR 的 META-INF/LICENSE.txt 提取，完整随包见 `res/raw/notice_commonmark.txt` 及应用许可详情。替代方案为自写解析器，但不适合嵌套 / 转义及标准兼容需求。APK 体积实测见任务 0026 / 本轮验收记录。项目：[commonmark-java](https://github.com/commonmark/commonmark-java)。

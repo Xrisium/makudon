@@ -12,7 +12,7 @@
 | 1 编辑体验与存储边界设计 | **产品选择已确定，工程协议待实测** | [方案](specs/0001-plain-text-editor.md)、[ADR 已接受](adr/0002-document-storage.md)、[决定记录](specs/0001-open-decisions.md)、[验收规范（未执行）](testing/plain-text-editor-acceptance.md) |
 | 2 首个可靠纯文本切片 | 开发版已接入，完整验收未完成 | 私有文稿、自动保存、导入副本 / VIEW 候选 / `.txt` 导出；单篇上一版本 / 恢复已按 ADR 0010 移除，仍需完整故障矩阵与真机验收 |
 | 3 简单目录与文件操作 | 原生已实现，复选 / 剪贴板、最近日期与编辑菜单模拟器验收通过；真机人工待验收 | 目录树、名称搜索、创建 / 排序、长按文件操作；整行展开、通知下移与取消自动收件箱见[任务 0012](tasks/0012-directory-and-editor-fixes.md)；行尾复选、统一剪贴板与一次发布见[任务 0014](tasks/0014-native-multiselect-and-clipboard.md)和 [ADR 0005](adr/0005-batch-directory-and-private-clipboard.md)；最近自然日分组 / 日期和编辑三项菜单见[任务 0015](tasks/0015-recent-dates-and-editor-menu.md) |
-| 4 Markdown 双视图编辑 | 基本原生排版已实现 | 源码 / 标题与段落排版编辑、保真范围更新与共享撤销；完整富文本、图片、跨段选择和长文优化未完成 |
+| 4 Markdown 三视图编辑 | 三视图与写作工具已实现，模拟器验收通过；真机人工待验 | 连续源码 / 实时排版 / 只读阅读、常用语法、格式栏、跨段选择、查找替换与 `.md` 导出；见[任务 0026](tasks/0026-markdown-three-modes.md)，图片、完整富文本与真机人工验收未完成 |
 | 5 扩展导入导出与备份 | 纯目录 ZIP 已实现，模拟器验收通过；真机人工待验收 | 无清单整库 ZIP、单独保存 / 增量更新 / 完全覆盖、逐项冲突、原子整库发布与最近恢复前快照；见[任务 0016](tasks/0016-zip-backup-and-restore.md)及 [ADR 0006](adr/0006-plain-zip-and-library-generations.md)；更广格式未开始 |
 | 6 打磨与首个个人可用版本 | 主题、独立界面 / 正文字体和品牌、工作区动效已集成；完整打磨未完成 | 字体切换及验证边界见[任务 0020](tasks/0020-font-settings.md)；配色闪烁修复与底栏强调背景横移见[任务 0011](tasks/0011-theme-and-tab-highlight.md)；仍需真机输入法、性能、完整无障碍和签名发布 |
 

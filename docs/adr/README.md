@@ -12,5 +12,6 @@
 | [0008](0008-independent-recycle-bin.md) | 接受并实施 | 独立回收站、保留删除称呼、树内恢复与跨索引事务 |
 | [0009](0009-android-localization.md) | 接受并实施 | 原生双语、独立应用语言偏好与翻译贡献校验 |
 | [0010](0010-remove-document-history.md) | 接受并实施 | 移除单篇历史 / 恢复，补全精确时间与文件夹递归磁盘大小 |
+| [0011](0011-markdown-source-projection.md) | 接受并实施 | 同一源码连续编辑、实时预览与只读阅读 |
 
 新决定使用 [模板](../templates/adr.md)，顺序编号。已接入原生工作区、私有保存和文件出入口；实现与未覆盖验收以 [当前状态](../status.md) 为准。

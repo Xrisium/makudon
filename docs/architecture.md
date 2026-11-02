@@ -10,7 +10,8 @@ app/src/main/kotlin/io/github/xrisium/makudon/
   app/                    进程 ViewModel 所有者、主题与应用装配
   feature/workspace/      三标签、目录、新建、编辑、保存协调、撤销差量
   ui/theme/               主题
-  domain/Workspace.kt      节点、排序、UTF-8 / 名称规则、有限 Markdown 范围解析
+  domain/Workspace.kt      节点、排序、UTF-8 / 名称规则
+  domain/Markdown.kt       CommonMark 源码范围、局部格式 / 结构输入与查找替换
   domain/DirectorySelection.kt  复选规范化、继承 / 半选、粘贴目标与整批冲突校验
   data/WorkspaceStore.kt   私有目录、原子索引发布、当前正文与递归磁盘统计
   data/LibraryController.kt 整库指针、独立代际与最近恢复快照
@@ -19,7 +20,7 @@ app/src/main/kotlin/io/github/xrisium/makudon/
   domain/ArchiveRestore.kt  路径匹配与逐项冲突规划
 ```
 
-现已实现上述职责；[ADR 0003](adr/0003-workspace-catalog.md)记录原生工作区的数据格式、索引事务边界和有限排版编辑。没有 DI、数据库、导航运行库或 WebView。
+现已实现上述职责；[ADR 0003](adr/0003-workspace-catalog.md)记录原生工作区的数据格式、索引事务边界和有限排版编辑。Markdown 连续编辑与三视图由 [ADR 0011](adr/0011-markdown-source-projection.md) 取代原独立段落输入方案。没有 DI、数据库、导航运行库或 WebView。
 
 每篇私有文稿使用独立 ID，同时只编辑一篇；进程内单一 ViewModel / Mutex 协调保存和目录操作。外部 VIEW 与应用内导入共用只读副本链路，正文不写回源 URI。保存、恢复、导入与导出已接入；完整故障 / 进程中断矩阵及真机体验仍须验收，见 [当前状态](status.md)。
 

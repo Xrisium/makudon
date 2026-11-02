@@ -100,3 +100,6 @@ ZIP 备份恢复使用 `-e case backup`（27 项），真实 320dp / 200% 字号
 - **终端双击后消失**：确认启动 `scripts/test-android.cmd`，无参数会显示菜单并保留操作结果；若 PowerShell 7 未安装或启动失败，窗口会暂停显示错误。
 
 不设置 commit 后自动弹模拟器的 hook：Git 提交应可独立、可重复。用户可在每个功能/commit 后主动按同一快捷键测试。
+
+
+Markdown 三视图专项使用 `-e case markdown`，覆盖原生连续选区、格式工具、共享撤销及选区恢复、真实 InputConnection 回车 / 中文 composition、查找替换、阅读只读、Activity 重建及双格式导出。`markdown-visual` 覆盖英文浅色、320dp / 200% 字号、六项工具热区与横屏；`markdown-long` 记录 10 万码点密集 Markdown 与单段高比例 emoji 的保存 / 解析 / 切换单次耗时，不把单次样本作为 p95。仅在模拟器运行，合成资料与临时系统设置按用例清理 / 恢复。
