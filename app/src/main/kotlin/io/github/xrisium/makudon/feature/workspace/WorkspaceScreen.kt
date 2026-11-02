@@ -56,8 +56,8 @@ internal fun WorkspaceNotice(model: WorkspaceViewModel) {
         Surface(color = if (ui.error != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(12.dp).alpha(opacity)) {
             Row(Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(ui.error?.let { stringResource(errorLabel(it)) } ?: stringResource(ui.message ?: R.string.error_storage), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
-                if (ui.error != null && ui.page != Page.Editor) TextButton(onClick = model::reload, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }
-                Tool(R.drawable.ic_x, stringResource(R.string.close), onClick = model::dismissError)
+                if (ui.error != null && (ui.page != Page.Editor || ui.error == Failure.Corrupt)) TextButton(onClick = model::reload, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }
+                Tool(R.drawable.ic_x, stringResource(R.string.close), enabled = !ui.storageBlocked, onClick = model::dismissError)
             }
         }
     }
@@ -104,6 +104,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                     when (page) {
                         Page.New -> NewPage(model, ::importDocument)
                         Page.Backup -> BackupPage(model)
+                        Page.Trash -> TrashPage(model)
                         Page.Editor -> EditorScreen(model, onExport = ::export, onAction = { action ->
                             target = workspace.entry(ui.activeId.orEmpty())
                             if (action == "info") model.inspect { dialog = "editor-info" } else dialog = action

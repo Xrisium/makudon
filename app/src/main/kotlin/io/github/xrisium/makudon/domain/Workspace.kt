@@ -36,6 +36,7 @@ data class Workspace(
     val lastImportRequestId: String? = null,
     val uiFont: FontPreference = FontPreference(),
     val editorFont: FontPreference = FontPreference(),
+    val trashOperation: String? = null,
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {

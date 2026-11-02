@@ -11,6 +11,9 @@ import androidx.lifecycle.viewModelScope
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.data.WorkspaceStore
 import io.github.xrisium.makudon.data.LibraryController
+import io.github.xrisium.makudon.data.TrashStore
+import io.github.xrisium.makudon.data.TrashInventory
+import io.github.xrisium.makudon.data.TrashRestoreResult
 import io.github.xrisium.makudon.domain.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -19,7 +22,7 @@ import kotlinx.coroutines.flow.first
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Previous, Backup, UiFont, EditorFont }
+enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Previous, Backup, UiFont, EditorFont, Trash }
 val MainPages = listOf(Page.Directory, Page.Recent, Page.Settings)
 
 data class WorkspaceUi(
@@ -27,6 +30,7 @@ data class WorkspaceUi(
     val page: Page = Page.Recent,
     val busy: Boolean = true,
     val savingPreferences: Boolean = false,
+    val storageBlocked: Boolean = false,
     val error: Failure? = null,
     val message: Int? = null,
     val selected: String = Workspace.ROOT,
@@ -84,6 +88,21 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
     })
     private val store: WorkspaceStore get() = library.store
+    private val trash = TrashStore(application.filesDir, library)
+    var trashInventory by mutableStateOf(TrashInventory())
+        private set
+    var trashFolder by mutableStateOf<String?>(null)
+        private set
+    var trashPreview by mutableStateOf<String?>(null)
+        private set
+    var trashText by mutableStateOf<String?>(null)
+        private set
+    var trashSelection by mutableStateOf<Set<String>?>(null)
+        private set
+    var trashRestoreRequest by mutableStateOf<List<String>?>(null)
+        private set
+    var trashRestored by mutableStateOf<TrashRestoreResult?>(null)
+        private set
     private var libraryEpoch = 0L
     val files = FileExchange(application, viewModelScope)
     val backup = BackupCoordinator(viewModelScope, application, ioLock, library, { barrier() }) { current ->
@@ -107,8 +126,16 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     private val externalRequests = mutableSetOf<String>()
     val pendingExportName: String get() = exportName
 
-    init { reload() }
-    private suspend fun <T> disk(block: () -> T): T = withContext(Dispatchers.IO + NonCancellable) { ioLock.withLock { block() } }
+    init {
+        library.beforeChange = { if (!trash.ready) throw WorkspaceException(Failure.Corrupt) }
+        reload()
+    }
+    private suspend fun <T> disk(reloading: Boolean = false, block: () -> T): T = withContext(Dispatchers.IO + NonCancellable) {
+        ioLock.withLock {
+            if (!reloading && !trash.ready) throw WorkspaceException(Failure.Corrupt)
+            block()
+        }
+    }
     private fun failure(e: Exception) = (e as? WorkspaceException)?.reason ?: Failure.Storage
     private fun launchWork(savingPreferences: Boolean = false, block: suspend () -> Unit) {
         if (ui.busy || ui.transitioning || ui.tabTransitioning || backup.locked) return
@@ -116,7 +143,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try { block() }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { ui = ui.copy(error = failure(e)) }
+            catch (e: Exception) { ui = ui.copy(error = if (!trash.ready) Failure.Corrupt else failure(e), storageBlocked = ui.storageBlocked || !trash.ready) }
             finally { ui = ui.copy(busy = false, savingPreferences = false) }
         }
     }
@@ -124,9 +151,19 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (loading?.isActive == true || backup.locked) return
         ui = ui.copy(busy = true, error = null)
         loading = viewModelScope.launch {
-            try { acceptWorkspace(disk { library.load() }) }
+            try {
+                val (current, inventory) = disk(reloading = true) { library.load(); val inventory = trash.load(); store.refresh() to inventory }
+                acceptWorkspace(current)
+                acceptTrash(inventory)
+                ui = ui.copy(storageBlocked = false)
+                if (ui.activeId != null && current.entry(ui.activeId.orEmpty()) == null) {
+                    observer?.cancel(); observer = null; save = null; textState = null; paragraphFields.clear(); departingSession = null
+                    ui = ui.copy(activeId = null)
+                    if (ui.page == Page.Editor || ui.page == Page.Previous) navigate(ui.origin, backwards = true)
+                }
+            }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { ui = ui.copy(error = failure(e)) }
+            catch (e: Exception) { ui = ui.copy(error = if (!trash.ready) Failure.Corrupt else failure(e), storageBlocked = ui.storageBlocked || !trash.ready) }
             finally { ui = ui.copy(busy = false) }
         }
     }
@@ -146,7 +183,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch { barrier() }
     }
     fun retrySave() { launchWork { barrier(true) } }
-    fun dismissError() { ui = ui.copy(error = null, message = null) }
+    fun dismissError() { if (!ui.storageBlocked) ui = ui.copy(error = null, message = null) }
     fun inputRejected(reason: Failure = Failure.TooLarge) { ui = ui.copy(error = reason) }
     fun select(id: String) { if (ui.workspace?.entry(id)?.folder == true) ui = ui.copy(selected = id) }
     private fun navigate(page: Page, backwards: Boolean = false) {
@@ -154,6 +191,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (page != Page.Directory) { selection = null; pasteRequest = null; deleteRequest = null }
         ui = ui.copy(page = page, mainTab = if (page in MainPages) page else ui.mainTab,
             backwards = backwards, navigationId = ui.navigationId + 1, transitioning = true)
+        if (page == Page.Settings) refreshTrashSummary()
     }
 
     fun finishTabTransition(id: Long) {
@@ -163,6 +201,14 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectTab(page: Page) {
         if (page !in MainPages || ui.page !in MainPages || ui.busy || ui.transitioning || ui.tabTransitioning || selection != null || page == ui.mainTab) return
         ui = ui.copy(page = page, mainTab = page, tabTransitioning = true, tabTransitionId = ui.tabTransitionId + 1)
+        if (page == Page.Settings) refreshTrashSummary()
+    }
+    private fun refreshTrashSummary() {
+        viewModelScope.launch {
+            try { trashInventory = disk { trash.inventory() } }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { ui = ui.copy(error = failure(e)) }
+        }
     }
 
     // An outgoing editor keeps its field/session until its last animation frame. A stale
@@ -234,6 +280,15 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun back() {
         if (ui.busy || ui.transitioning || ui.tabTransitioning) return
         when (ui.page) {
+            Page.Trash -> {
+                when {
+                    trashRestoreRequest != null -> trashRestoreRequest = null
+                    trashSelection != null -> trashSelection = null
+                    trashPreview != null -> { trashPreview = null; trashText = null }
+                    trashFolder != null -> trashFolder = trashInventory.nodes.firstOrNull { it.id == trashFolder }?.parent
+                    else -> navigate(Page.Settings, backwards = true)
+                }
+            }
             Page.Backup -> {
                 if (backup.locked) backup.cancel() else navigate(Page.Settings, backwards = true)
             }
@@ -368,9 +423,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         val removed = roots.flatMap { state.descendants(it.id) }.toSet()
         val selectedParent = state.entry(ui.selected)?.parent ?: Workspace.ROOT
         val newParent = state.entry(ui.newParent)?.parent ?: Workspace.ROOT
-        var cleanupFailure = false
-        try { disk { store.deleteAll(ids) } }
-        catch (e: WorkspaceException) { if (e.reason == Failure.Cleanup) cleanupFailure = true else throw e }
+        acceptTrash(disk { trash.delete(ids) })
         val deletedActive = ui.activeId in removed
         if (deletedActive) {
             observer?.cancel(); observer = null; save = null; textState = null; paragraphFields.clear()
@@ -382,8 +435,55 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         acceptWorkspace(disk { store.refresh() })
         deleteRequest = null
         if (deletedActive && (ui.page == Page.Editor || ui.page == Page.Previous)) navigate(ui.origin, backwards = true)
-        if (cleanupFailure) throw WorkspaceException(Failure.Cleanup)
+        ui = ui.copy(message = R.string.trash_deleted)
     } }
+    private fun acceptTrash(inventory: TrashInventory) {
+        trashInventory = inventory
+        if (inventory.nodes.none { it.id == trashFolder }) trashFolder = null
+        if (inventory.nodes.none { it.id == trashPreview }) { trashPreview = null; trashText = null }
+        trashSelection = trashSelection?.intersect(inventory.nodes.map { it.id }.toSet())
+    }
+    fun openTrash() { launchWork {
+        if (!barrier()) return@launchWork
+        acceptTrash(disk { trash.load() })
+        trashFolder = null; trashPreview = null; trashText = null; trashSelection = null; trashRestored = null
+        navigate(Page.Trash)
+    } }
+    fun browseTrash(id: String) { launchWork {
+        val node = trashInventory.nodes.firstOrNull { it.id == id } ?: throw WorkspaceException(Failure.Missing)
+        if (node.entry.folder) trashFolder = id else { trashText = disk { trash.read(id) }; trashPreview = id }
+        trashSelection = null; trashRestored = null
+    } }
+    fun selectTrash(id: String? = null) {
+        if (!ui.busy) trashSelection = if (id == null) emptySet() else setOf(id)
+    }
+    fun toggleTrash(id: String) {
+        if (ui.busy) return
+        trashSelection = trashSelection?.let { if (id in it) it - id else it + id }
+    }
+    fun exitTrashSelection() { if (!ui.busy) trashSelection = null }
+    fun requestTrashRestore(ids: List<String>) { launchWork {
+        if (disk { trash.needsRoot(ids) }) trashRestoreRequest = ids else restoreTrashInternal(ids, false)
+    } }
+    fun dismissTrashRestore() { if (!ui.busy) trashRestoreRequest = null }
+    fun confirmTrashRestore() { val ids = trashRestoreRequest ?: return; launchWork { restoreTrashInternal(ids, true) } }
+    private suspend fun restoreTrashInternal(ids: List<String>, allowRoot: Boolean) {
+        if (!barrier()) return
+        val app = getApplication<Application>()
+        trashRestored = disk { trash.restore(ids, allowRoot) { n -> app.getString(if (n == 1) R.string.trash_restore_suffix else R.string.trash_restore_suffix_number, n) } }
+        acceptWorkspace(disk { store.refresh() }); acceptTrash(disk { trash.inventory() })
+        trashRestoreRequest = null; trashSelection = null
+    }
+    fun purgeTrash(ids: List<String>) { launchWork {
+        acceptTrash(disk { trash.purge(ids) }); trashSelection = null; trashRestored = null
+        ui = ui.copy(message = R.string.trash_purged)
+    } }
+    fun retryTrashCleanup() { launchWork { acceptTrash(disk { trash.retryCleanup() }) } }
+    fun viewRestored() {
+        val restored = trashRestored?.entries?.firstOrNull() ?: return
+        ui = ui.copy(selected = restored.parent ?: Workspace.ROOT, revealFolder = restored.parent ?: Workspace.ROOT, directoryRevision = ui.directoryRevision + 1)
+        navigate(Page.Directory, backwards = true)
+    }
     fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme

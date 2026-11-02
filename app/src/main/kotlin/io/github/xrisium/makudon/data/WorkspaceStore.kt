@@ -49,7 +49,7 @@ class WorkspaceStore(
                 p.getProperty("$prefix.choice")?.let { value -> FontChoice.entries.firstOrNull { it.name == value } } ?: FontChoice.Sans,
                 p.getProperty("$prefix.thickness")?.let { value -> FontThickness.entries.firstOrNull { it.name == value } } ?: FontThickness.Normal,
             )
-            val candidate = Workspace(entries, ColorTheme.valueOf(p.getProperty("theme")), SortKey.valueOf(p.getProperty("sort")), p.getProperty("descending").toBooleanStrict(), p.getProperty("foldersFirst").toBooleanStrict(), p.getProperty("lastImportRequest"), font("uiFont"), font("editorFont"))
+            val candidate = Workspace(entries, ColorTheme.valueOf(p.getProperty("theme")), SortKey.valueOf(p.getProperty("sort")), p.getProperty("descending").toBooleanStrict(), p.getProperty("foldersFirst").toBooleanStrict(), p.getProperty("lastImportRequest"), font("uiFont"), font("editorFont"), p.getProperty("trashOperation"))
             validate(candidate)
             workspace = candidate
         }
@@ -83,6 +83,7 @@ class WorkspaceStore(
         p["uiFont.choice"] = next.uiFont.choice.name; p["uiFont.thickness"] = next.uiFont.thickness.name
         p["editorFont.choice"] = next.editorFont.choice.name; p["editorFont.thickness"] = next.editorFont.thickness.name
         next.lastImportRequestId?.let { p["lastImportRequest"] = it }
+        next.trashOperation?.let { p["trashOperation"] = it }
         next.entries.forEachIndexed { n, entry ->
             p["$n.id"] = entry.id; p["$n.name"] = entry.name; p["$n.parent"] = entry.parent.orEmpty()
             p["$n.kind"] = entry.kind.name; p["$n.created"] = entry.created.toString(); p["$n.opened"] = entry.opened.toString()
@@ -97,6 +98,7 @@ class WorkspaceStore(
     }
 
     private fun state() = workspace ?: throw WorkspaceException(Failure.Corrupt)
+    fun contains(id: String): Boolean = state().entry(id) != null
     /** Only used in a fresh, unpublished generation. No live body is overwritten. */
     fun prepare(next: Workspace, material: (Entry) -> Pair<ByteArray, ByteArray?>, check: () -> Unit = {}) {
         if (catalog.exists()) throw WorkspaceException(Failure.Conflict)
@@ -238,6 +240,26 @@ class WorkspaceStore(
         publish(next)
     }
     fun delete(id: String) = deleteAll(listOf(id))
+    /** Trash owns a verified independent copy before this single catalog publication. */
+    fun removeToTrash(ids: Collection<String>, operation: String) {
+        val removed = operationRoots(ids).flatMap { state().descendants(it.id) }.toSet()
+        publish(state().copy(entries = state().entries.filter { it.id !in removed }, trashOperation = operation))
+    }
+    fun hasMaterial(id: String) = nodeDirectory(id).exists()
+    fun restoreFromTrash(entries: List<Entry>, operation: String, material: (Entry) -> Pair<ByteArray, ByteArray?>) {
+        val next = state().copy(entries = state().entries + entries, trashOperation = operation)
+        validate(next)
+        entries.filter { !it.folder }.forEach { entry ->
+            // Never overwrite even an unindexed material left by an interrupted operation.
+            if (nodeDirectory(entry.id).exists()) throw WorkspaceException(Failure.Conflict)
+            val (bytes, previous) = material(entry)
+            TextRules.decode(bytes)
+            atomic.write(body(entry), bytes)
+            if (!body(entry).setLastModified(entry.modified)) throw WorkspaceException(Failure.Storage)
+            previous?.let { TextRules.decode(it); atomic.write(File(nodeDirectory(entry.id), "previous.txt"), it) }
+        }
+        publish(next)
+    }
     fun deleteAll(ids: Collection<String>) {
         val roots = operationRoots(ids)
         val removed = roots.flatMap { state().descendants(it.id) }.toSet()

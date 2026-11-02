@@ -37,6 +37,8 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyBackupVisual = false
     private var onlyFiles = false
     private var onlyExportDialog = false
+    private var onlyTrash = false
+    private var trashRestartPhase: String? = null
     private var currentActivity: Activity? = null
     override fun callActivityOnCreate(activity: Activity, savedInstanceState: Bundle?) { super.callActivityOnCreate(activity, savedInstanceState); currentActivity = activity }
     override fun onCreate(arguments: Bundle?) {
@@ -53,6 +55,8 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyBackupVisual = arguments?.getString("case") == "backup-visual"
         onlyFiles = arguments?.getString("case") == "files"
         onlyExportDialog = arguments?.getString("case") == "export-dialog"
+        onlyTrash = arguments?.getString("case") == "trash"
+        trashRestartPhase = arguments?.getString("case")?.takeIf { it == "trash-restart-seed" || it == "trash-restart-verify" }
         start()
     }
     override fun onStart() {
@@ -60,7 +64,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            when { onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
@@ -154,6 +158,150 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+    private fun trashRestartTest(phase: String) {
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        fun <T> disk(action: () -> T): T = runBlocking { withContext(Dispatchers.IO) { lock.withLock { action() } } }
+        val fixture = File(targetContext.cacheDir, "trash-restart-fixture.txt")
+        if (phase == "trash-restart-seed") {
+            val id = disk { currentStore().create("回收站进程重启-" + SystemClock.uptimeMillis(), Workspace.ROOT, DocumentKind.Plain, "进程重启仍完整 😀") }
+            main { model.reload() }; ready(); main { model.delete(id) }; ready()
+            val deleted = main { model.trashInventory.nodes.single { it.entry.id == id } }
+            disk { fixture.writeText("$id\n${deleted.id}", Charsets.UTF_8) }
+            verify(main { model.ui.workspace?.entry(id) == null }, "Restart fixture is committed to trash before process death")
+        } else {
+            val (original, deleted) = disk { fixture.readLines(Charsets.UTF_8) }
+            verify(main { model.trashInventory.nodes.any { it.id == deleted } && model.ui.workspace?.entry(original) == null }, "Cold process startup loads persisted trash without resurrecting draft")
+            main { model.openTrash() }; ready(); main { model.browseTrash(deleted) }; ready()
+            verify(main { model.trashText == "进程重启仍完整 😀" }, "Cold-start trash preview preserves exact Unicode body")
+            val oldTheme = main { model.ui.workspace!!.theme }
+            main { model.preferences(theme = ColorTheme.Ink) }; ready(); screenshot("trash-dark-preview")
+            main { model.preferences(theme = oldTheme) }; ready()
+            main { model.requestTrashRestore(listOf(deleted)) }; ready()
+            verify(disk { currentStore().read(original) } == "进程重启仍完整 😀" && main { model.trashInventory.nodes.none { it.id == deleted } }, "Cold-start restore commits once and removes recovered trash item")
+            main { model.go(Page.Directory) }; ready()
+            disk { currentStore().delete(original); check(fixture.delete()) }
+            main { model.reload() }; ready()
+        }
+    }
+    private fun trashTest() {
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        fun <T> disk(action: () -> T): T = runBlocking { withContext(Dispatchers.IO) { lock.withLock { action() } } }
+        val stamp = SystemClock.uptimeMillis()
+        val name = "回收站验收-$stamp"
+        val oldFont = shell("settings get system font_scale")
+        val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val originalTrash = main { model.trashInventory.nodes.map { it.id }.toSet() }
+        val ids = disk {
+            val store = currentStore()
+            val folder = store.create(name, Workspace.ROOT, DocumentKind.Folder)
+            val nested = store.create("子文件夹", folder, DocumentKind.Folder)
+            val one = store.create("单独恢复", nested, DocumentKind.Markdown, "# 单独恢复正文 😀")
+            val two = store.create("留在目录", nested, DocumentKind.Plain, "保留正文")
+            val active = store.create("编辑删除-$stamp", Workspace.ROOT, DocumentKind.Plain, "初稿")
+            listOf(folder, nested, one, two, active)
+        }
+        fun trashId(original: String) = main { model.trashInventory.nodes.single { it.entry.id == original }.id }
+        fun showPrefix(prefix: String): String {
+            repeat(24) {
+                val node = nodes().firstOrNull { it.isVisibleToUser && it.text?.toString()?.startsWith(prefix) == true }
+                if (node != null) return node.text.toString()
+                nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                SystemClock.sleep(150)
+            }
+            error("Missing $prefix")
+        }
+        try {
+            main { model.reload() }; ready()
+            main { model.go(Page.Recent) }; ready(); main { model.open(ids[4]) }; ready()
+            main { model.textState!!.edit { replace(0, length, "删除前最新输入 😀") } }
+            click("条目操作"); click("删除")
+            verify(nodes().any { it.text?.toString()?.contains("删除后可以从回收站恢复。") == true }, "Editor deletion keeps 删除 and explains trash recovery")
+            click("取消"); verify(main { model.ui.activeId == ids[4] }, "Cancel deletion preserves active editor")
+            val retainedField = main { model.textState }
+            val blockedJournal = File(targetContext.filesDir, "trash/index.properties.new")
+            disk { check(blockedJournal.mkdir()) }
+            try {
+                main { model.delete(ids[4]) }; ready()
+                verify(main { model.ui.error == Failure.Corrupt && model.ui.activeId == ids[4] && model.textState === retainedField }, "Failed trash journal blocks writing and retains active draft buffer")
+            } finally { disk { check(blockedJournal.delete()) } }
+            click("重试"); ready()
+            verify(main { model.ui.error == null && model.ui.activeId == ids[4] && model.textState === retainedField }, "Editor recovery retry reloads both catalogs without replacing input")
+            click("条目操作"); click("删除"); click("删除"); ready()
+            verify(main { model.ui.activeId == null && model.ui.page == Page.Recent }, "Deleting active draft returns to source and releases editor")
+            SystemClock.sleep(2200)
+            verify(main { model.ui.workspace?.entry(ids[4]) == null && model.trashInventory.nodes.any { it.entry.id == ids[4] } }, "Deleted editor never resurrects after autosave interval")
+            main { model.go(Page.Directory) }; ready(); main { model.startSelection(ids[0]); model.requestDelete() }
+            find("删除 1 项？")
+            verify(nodes().any { it.text?.toString()?.contains("共 2 个文件夹、2 篇文稿") == true }, "Batch deletion confirms full recursive scope")
+            click("删除"); ready()
+            main { model.exitSelection(); model.go(Page.Settings) }; ready()
+            val summary = showPrefix("回收站 · ")
+            verify(summary.count { it == '·' } == 2, "Settings trash row shows root count and disk size in data management group")
+            screenshot("trash-settings")
+            click(summary); ready()
+            verify(main { model.ui.page == Page.Trash }, "Settings trash entry opens its secondary page")
+            click("编辑删除-$stamp"); ready()
+            verify(nodes().any { it.text?.toString() == "删除前最新输入 😀" } && nodes().none { it.isEditable }, "Trash preview contains latest saved body and is read only")
+            click("恢复"); ready()
+            verify(main { model.ui.workspace?.entry(ids[4]) != null && model.trashPreview == null }, "Preview restore returns draft to original root")
+            click(name); ready(); click("子文件夹"); ready(); click("单独恢复"); ready(); click("恢复"); ready()
+            verify(main { model.trashRestoreRequest != null } && nodes().any { it.text?.toString() == "确认恢复到根目录" }, "Nested single document asks before root fallback")
+            screenshot("trash-root-confirm")
+            click("取消"); verify(main { model.ui.workspace?.entry(ids[2]) == null }, "Cancel root fallback keeps draft in trash")
+            click("恢复"); ready(); click("恢复"); ready()
+            verify(main { model.ui.workspace?.entry(ids[2])?.parent == Workspace.ROOT && model.trashInventory.nodes.any { it.entry.id == ids[3] } }, "Single draft restores independently and preserves remaining deleted tree")
+            click("恢复此文件夹"); ready()
+            verify(main { model.trashRestoreRequest != null }, "Subfolder restore also asks when original parent remains deleted")
+            click("取消")
+            main { model.back() }; ready()
+            click("恢复此文件夹"); ready()
+            verify(main { model.ui.workspace?.entry(ids[0]) != null && model.ui.workspace?.entry(ids[3])?.parent == ids[1] }, "Restoring top folder preserves remaining hierarchy")
+            verify(disk { currentStore().read(ids[2]) } == "# 单独恢复正文 😀", "Restored Markdown source remains exact")
+            main { model.go(Page.Directory) }; ready()
+            main { model.delete(ids[0]) }; ready()
+            main { model.openTrash() }; ready()
+            click(name); ready(); screenshot("trash-folder")
+            main { currentActivity?.recreate() }; ready()
+            val deletedFolder = trashId(ids[0])
+            verify(main { model.ui.page == Page.Trash && model.trashFolder == deletedFolder }, "Activity recreation preserves deleted folder browsing")
+            click("彻底删除此文件夹")
+            verify(nodes().any { it.text?.toString()?.contains("无法从回收站恢复") == true }, "Permanent deletion always warns about irreversible trash removal")
+            click("取消")
+            main { model.back() }; ready()
+            main { model.selectTrash(deletedFolder) }
+            find("已选 1 项")
+            verify(nodes().any { it.text?.toString() == "已选 1 项" }, "Trash selection exposes count and batch actions")
+            screenshot("trash-selection")
+            click("彻底删除"); click("彻底删除"); ready()
+            verify(main { model.trashInventory.nodes.none { it.entry.id == ids[0] } && model.ui.workspace?.entry(ids[2]) != null }, "Batch purge removes chosen subtree and preserves live restored draft")
+            main { model.go(Page.Directory) }; ready(); main { model.delete(ids[4]) }; ready(); main { model.openTrash() }; ready()
+            shell("wm size 840x1890"); shell("settings put system font_scale 2.0")
+            waitFor("trash narrow configuration") { main { currentActivity?.resources?.configuration?.let { it.screenWidthDp <= 320 && it.fontScale >= 1.99f } == true } }; ready()
+            screenshot("trash-200-list")
+            click("编辑删除-$stamp"); ready(); screenshot("trash-200-preview")
+            click("彻底删除"); screenshot("trash-200-purge-confirm")
+            verify(find("取消").isVisibleToUser && find("彻底删除").isVisibleToUser, "320dp and 200% font keep destructive confirmation reachable")
+            click("取消"); main { model.back() }; ready()
+            main { model.go(Page.Settings) }; ready(); showPrefix("回收站 · "); screenshot("trash-200-settings")
+            verify(nodes().any { it.text?.toString()?.startsWith("回收站 · ") == true }, "Narrow settings retains trash count and disk usage")
+            main { model.openTrash() }; ready()
+            main { model.reload() }; ready()
+            verify(main { model.trashInventory.nodes.any { it.entry.id == ids[4] } }, "Reload reads persisted trash without automatic expiry")
+        } finally {
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+            ready()
+            main { model.dismissTrashRestore(); model.exitTrashSelection(); model.exitSelection(); model.go(Page.Directory) }; ready()
+            disk {
+                val store = currentStore()
+                ids.forEach { if (store.refresh().entry(it) != null) store.delete(it) }
+                val trash = WorkspaceViewModel::class.java.getDeclaredField("trash").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.TrashStore
+                val synthetic = trash.inventory().nodes.filter { it.id !in originalTrash }.map { it.id }
+                if (synthetic.isNotEmpty()) trash.purge(synthetic)
+            }
+            main { model.reload() }; ready()
+        }
+    }
     private fun exportDialogTest() {
         val files = model.files
         fun prepared() { waitFor("export operation") { main { !files.ui.busy } }; waitForIdleSync() }

@@ -24,6 +24,30 @@ class LibraryController(
     private var pointer: Pointer? = null
     private var activeStore: WorkspaceStore? = null
     val store: WorkspaceStore get() = activeStore ?: throw WorkspaceException(Failure.Corrupt)
+    val activeId: String get() = pointer?.active ?: throw WorkspaceException(Failure.Corrupt)
+    var beforeChange: () -> Unit = {}
+
+    /** Only journaled document IDs may be cleaned, and live catalog entries always win. */
+    fun cleanTrashSource(library: String, id: String): Boolean {
+        val folder = path(library)
+        if (!folder.exists()) return true
+        if (!File(folder, "catalog.properties").isFile) throw WorkspaceException(Failure.Corrupt)
+        val inUse = if (library == activeId) store.contains(id) else makeStore(library).load().entry(id) != null
+        if (inUse) return true
+        if (!Regex("[a-f0-9-]{36}").matches(id)) throw WorkspaceException(Failure.Corrupt)
+        val target = File(folder, "documents/$id")
+        return !target.exists() || cleanup(target)
+    }
+
+    fun trashSourceBytes(library: String, id: String): Long {
+        if (!Regex("[a-f0-9-]{36}").matches(id)) throw WorkspaceException(Failure.Corrupt)
+        val folder = path(library)
+        if (!folder.exists()) return 0
+        if (!File(folder, "catalog.properties").isFile) throw WorkspaceException(Failure.Corrupt)
+        val inUse = if (library == activeId) store.contains(id) else makeStore(library).load().entry(id) != null
+        if (inUse) return 0
+        return File(folder, "documents/$id").walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }
 
     private fun path(id: String): File = when {
         id == "legacy" -> File(directory, "workspace")
@@ -89,6 +113,7 @@ class LibraryController(
     }
 
     fun prepare(plan: RestorePlan, archive: PreparedArchive, expected: String, check: () -> Unit = {}): CandidateLibrary {
+        beforeChange()
         if (!plan.resolved) throw WorkspaceException(Failure.Conflict)
         if (!plan.changed) throw WorkspaceException(Failure.NoChange)
         val p = pointer ?: throw WorkspaceException(Failure.Corrupt)
@@ -125,6 +150,7 @@ class LibraryController(
 
     /** No cancellation from this point until the new pointer is read back and the handle switched. */
     fun commit(candidate: CandidateLibrary) {
+        beforeChange()
         val p = pointer ?: throw WorkspaceException(Failure.Corrupt)
         if (p.active != candidate.baseline || fingerprint() != candidate.fingerprint) throw WorkspaceException(Failure.StaleRestore)
         val nextStore = makeStore(candidate.id)
@@ -145,6 +171,7 @@ class LibraryController(
     }
 
     fun undo() {
+        beforeChange()
         val p = pointer ?: throw WorkspaceException(Failure.Corrupt)
         val previous = p.previous ?: throw WorkspaceException(Failure.NoSnapshot)
         if (!File(path(previous), "catalog.properties").isFile) throw WorkspaceException(Failure.Corrupt)
@@ -155,6 +182,7 @@ class LibraryController(
     }
 
     fun clearSnapshot() {
+        beforeChange()
         val p = pointer ?: throw WorkspaceException(Failure.Corrupt)
         publish(p.copy(previous = null, time = 0, retired = (p.retired + listOfNotNull(p.previous)).distinct()))
         cleanRetired()

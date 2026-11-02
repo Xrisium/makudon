@@ -44,11 +44,11 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     val entry = ui.workspace?.entry(ui.activeId.orEmpty()) ?: return
     val status by session.status.collectAsState()
     val colors = MaterialTheme.colorScheme
-    val editable = !ui.busy && !ui.transitioning && ui.page == Page.Editor
+    val editable = !ui.busy && !ui.transitioning && !ui.storageBlocked && ui.page == Page.Editor
     var more by remember { mutableStateOf(false) }
     val source = field.text.toString()
     val input = remember(model) { InputTransformation {
-        if (model.ui.busy || model.ui.transitioning || model.ui.page != Page.Editor) {
+        if (model.ui.busy || model.ui.transitioning || model.ui.storageBlocked || model.ui.page != Page.Editor) {
             revertAllChanges()
             return@InputTransformation
         }

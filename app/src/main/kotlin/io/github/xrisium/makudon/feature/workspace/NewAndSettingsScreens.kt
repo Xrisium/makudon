@@ -17,6 +17,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import android.text.format.Formatter
+import androidx.compose.ui.platform.LocalContext
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
 import io.github.xrisium.makudon.ui.theme.themePalette
@@ -96,11 +98,19 @@ fun SettingsPage(model: WorkspaceViewModel) {
                 }
             }
         }
+        item { Text(stringResource(R.string.data_management), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
-            Surface(onClick = model::backups, enabled = enabled, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
-                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text(stringResource(R.string.backup_title)); Text(stringResource(R.string.backup_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    Glyph(R.drawable.ic_chevron_right)
+            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Column {
+                    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = model::backups).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) { Text(stringResource(R.string.backup_title)); Text(stringResource(R.string.backup_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Glyph(R.drawable.ic_chevron_right)
+                    }
+                    HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = model::openTrash).padding(18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.trash_settings_summary, model.trashInventory.roots.size, Formatter.formatShortFileSize(LocalContext.current, model.trashInventory.bytes)), Modifier.weight(1f))
+                        Glyph(R.drawable.ic_chevron_right)
+                    }
                 }
             }
         }
