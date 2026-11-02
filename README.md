@@ -39,4 +39,6 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Check
 
 [文档索引](docs/README.md) · [当前状态](docs/status.md) · [下一步与可复制指令](docs/roadmap.md) · [Agent 约定](AGENTS.md) · [Git 工作流](docs/git-workflow.md)
 
+本地化方案：[简体中文 / 英文与扩展设计（待实施）](docs/specs/0004-localization.md)。Translation contributors: start with the [English contribution guide](docs/localization/CONTRIBUTING.en.md).
+
 应用代码遵循 [MIT](LICENSE)。`icon.svg` 是原始图标，Android 矢量版本沿用其路径；Gradle Wrapper 文件保留自身 Apache-2.0 许可声明，见 [第三方说明](docs/third-party.md)。

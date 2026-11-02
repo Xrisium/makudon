@@ -14,6 +14,8 @@
 
 ## 当前待办
 
+中英文本地化已完成[方案](specs/0004-localization.md)与[英文贡献指南](localization/CONTRIBUTING.en.md)，应用实施未开始。建议顺序为完整双语资源与消息 / 命名边界 → 全版本语言选择 → 统一资源检查 → 模拟器与集中交付验收；本文不代表自动实施授权。见[任务 0021](tasks/0021-localization-design.md)。
+
 文件管理器优先适配已实现：四个文稿 / ZIP 出入口共用应用选择、固定分享副本与 API 29+ 下载目录保存。Check（75 项 JVM 测试、严格 Lint）、模拟器专项 37 项及工作区 29 项 / ZIP 27 项通过；华为已单次推送发起安装，系统安装阶段未返回成功，厂商交互仍待验，见[任务 0017](tasks/0017-file-manager-compatibility.md)与[验收记录](testing/2026-10-31-file-manager.md)。
 
 纯目录 ZIP 备份与三种恢复已接入，Check（70 项 JVM 测试、严格 Lint）、模拟器 ZIP 27 项 / 大字号 2 项及工作区 29 项 / 最近编辑菜单 22 项通过。交付、人工验收与真实中断 / provider / 大库边界见 [ZIP 验收记录](testing/2026-10-27-zip-backup.md)。
