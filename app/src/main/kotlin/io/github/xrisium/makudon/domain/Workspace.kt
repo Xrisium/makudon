@@ -90,7 +90,7 @@ data class Workspace(
     }
 }
 
-enum class Failure { InvalidName, Conflict, Cycle, Missing, InvalidText, TooLarge, Storage, Corrupt, NoPrevious, Cleanup, NoChange, ClipboardTooLarge, CatalogFull, InvalidArchive, ArchiveLimit, EmptyArchive, StaleRestore, NoSnapshot, Space }
+enum class Failure { InvalidName, Conflict, Cycle, Missing, InvalidText, TooLarge, Storage, Corrupt, Cleanup, NoChange, ClipboardTooLarge, CatalogFull, InvalidArchive, ArchiveLimit, EmptyArchive, StaleRestore, NoSnapshot, Space }
 class WorkspaceException(val reason: Failure, val detail: String? = null) : Exception(reason.name)
 
 object TextRules {

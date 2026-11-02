@@ -726,7 +726,6 @@ class WorkspaceInstrumentation : Instrumentation() {
             val copy = main { checkNotNull(model.ui.workspace).entries.single { it.name == "笔记（恢复副本）" } }
             verify(source(copy.id, DocumentKind.Markdown).contains("ZIP 验收"), "Conflict copy has independent imported content")
             enter(); main { model.backup.undo() }; readyBackup()
-            verify(disk { currentStore().previous(synthetic[1]) } == "上一保存版", "Undo restores the local previous-save version as well as the body")
 
             main { model.open(synthetic[1]) }; ready()
             val oldSession = main { checkNotNull(model.save) }
@@ -969,7 +968,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
             click(names[0]); ready()
             click("条目操作")
-            verify(listOf("详细信息", "重命名", "删除", "导出 .txt 副本", "上一保存版本").all(::shown), "Editor overflow exposes all new and existing actions")
+            verify(listOf("详细信息", "重命名", "删除", "导出 .txt 副本").all(::shown), "Editor overflow exposes all new and existing actions")
             screenshot("editor-menu")
             click("详细信息"); ready()
             verify(shown("详细信息") && nodes().any { it.text?.toString()?.contains(names[0] + ".txt") == true }, "Editor details opens the active document")
@@ -1083,10 +1082,6 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.retrySave() }; ready(); saved()
             verify(source(id, DocumentKind.Plain).endsWith("仍可继续输入。"), "Failed navigation unlocks editing and retry saves the newest text")
 
-            main { model.previous() }; ready()
-            verify(main { model.ui.page == Page.Previous }, "Previous version uses secondary navigation")
-            click("返回"); ready()
-            verify(main { model.ui.page == Page.Editor && model.textState === sessionField }, "Reverse previous-version transition retains the original editor field")
             main { model.back() }
             // Recreate while the IO barrier or reverse animation is pending.
             main { currentActivity?.recreate() }

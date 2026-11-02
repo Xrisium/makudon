@@ -72,7 +72,6 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
                     DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = editable, onClick = { more = false; onAction("info") })
                     DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = editable, onClick = { more = false; onAction("rename") })
                     DropdownMenuItem(text = { Text(stringResource(R.string.export_copy)) }, leadingIcon = { Glyph(R.drawable.ic_download) }, enabled = editable, onClick = { more = false; onExport() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.previous_version)) }, leadingIcon = { Glyph(R.drawable.ic_clock_3) }, enabled = editable, onClick = { more = false; model.previous() })
                     HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
                     DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = colors.error) }, leadingIcon = { Glyph(R.drawable.ic_trash_2, tint = colors.error) }, enabled = editable, onClick = { more = false; onAction("delete") })
                 }

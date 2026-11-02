@@ -184,9 +184,6 @@
   <string name="notice_lucide_description">Selected icons converted to Android VectorDrawable.</string>
   <string name="notice_fluent_description">Markdown 20 Filled file-type icon.</string>
   <string name="notice_fredoka_description">Used for the outlined wordmark only. The font is not bundled.</string>
-  <string name="previous_version">Previous saved version</string>
-  <string name="restore_previous">Restore this version</string>
-  <string name="restore_warning">Restore the previous saved version? The current file on disk will first be preserved as separate recovery material.</string>
   <string name="error_invalid_name">Use a non-empty name of at most 120 characters, without slashes, control characters, or leading or trailing spaces.</string>
   <string name="error_conflict">An item with this name already exists here. Choose another name. The existing item was not replaced.</string>
   <string name="error_cycle">Cannot paste into the item itself or its subfolders. The library root cannot be moved.</string>
@@ -194,8 +191,7 @@
   <string name="error_invalid_text">Unsupported content. Choose UTF-8 text or Markdown. Binary files, GBK and UTF-16 are not supported.</string>
   <string name="error_too_large">Content must not exceed 100,000 Unicode code points or 1 MiB. This edit or import was rejected in full.</string>
   <string name="error_storage">The local file operation failed. Existing documents and your input are preserved. Check available storage and retry.</string>
-  <string name="error_corrupt">The library or document could not be read. Writing has stopped. Retry or check the previous saved version. No empty document was substituted.</string>
-  <string name="error_no_previous">No readable previous saved version is available.</string>
+  <string name="error_corrupt">The library or document could not be read. Writing has stopped. Retry opening the document. No empty document was substituted.</string>
   <string name="error_cleanup">The items were removed from the folder, but some private files could not be cleaned up.</string>
   <string name="open_failed">Cannot read this document</string>
   <string name="loading">Opening workspace</string>
@@ -262,7 +258,7 @@
   <!-- %1$s: formatted date or cleanup notice; %2$d: document count; %3$d: KiB. -->
   <string name="backup_snapshot_details">%1$s\nDocuments: %2$d · Storage (KiB): %3$d</string>
   <string name="backup_undo">Undo last restore</string>
-  <string name="backup_undo_warning">Switch back to the complete snapshot library, including its previous saved versions? The current library and edits made since restoring will become the new snapshot, so you can switch back again.</string>
+  <string name="backup_undo_warning">Switch back to the complete snapshot library? The current library and edits made since restoring will become the new snapshot, so you can switch back again.</string>
   <string name="backup_clear_snapshot">Delete restore snapshot</string>
   <string name="backup_clear_warning">Delete the pre-restore snapshot and any old snapshot material awaiting cleanup? The current library stays unchanged. You will no longer be able to undo this restore.</string>
   <string name="backup_cleanup_pending">Old snapshot material still needs cleanup. You can retry here.</string>

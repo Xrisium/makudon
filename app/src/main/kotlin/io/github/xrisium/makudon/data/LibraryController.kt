@@ -121,7 +121,6 @@ class LibraryController(
         var required = 8L * 1024 * 1024
         plan.workspace.entries.filter { !it.folder }.forEach {
             required += it.bytes
-            if (it.id !in plan.sources) required += store.previousBytes(it.id)?.size ?: 0
         }
         if (available() < required) throw WorkspaceException(Failure.Space)
         val id = UUID.randomUUID().toString()
@@ -129,8 +128,8 @@ class LibraryController(
         try {
             candidate.prepare(plan.workspace, { entry ->
                 val incoming = plan.sources[entry.id]
-                if (incoming != null) TextRules.bytes(archive.text(incoming)) to null
-                else TextRules.bytes(store.read(entry.id)) to store.previousBytes(entry.id)
+                if (incoming != null) TextRules.bytes(archive.text(incoming))
+                else TextRules.bytes(store.read(entry.id))
             }, check)
             check()
             if (candidate.load().entries.any { it.unreadable }) throw WorkspaceException(Failure.Corrupt)

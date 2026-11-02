@@ -153,9 +153,6 @@
   <string name="notice_lucide_description">按需转换为 Android VectorDrawable。</string>
   <string name="notice_fluent_description">Markdown 20 Filled 类型图标。</string>
   <string name="notice_fredoka_description">仅生成路径字标，字体未打包。</string>
-  <string name="previous_version">上一保存版本</string>
-  <string name="restore_previous">恢复此版本</string>
-  <string name="restore_warning">将恢复为上一保存版本。当前磁盘文件会先保留为独立恢复材料。</string>
   <string name="error_invalid_name">名称不能为空、超过 120 字符，或包含斜杠、控制字符及首尾空格。</string>
   <string name="error_conflict">此位置已有同名条目，请换一个名称；未覆盖原条目。</string>
   <string name="error_cycle">不能粘贴到自身或子目录，文稿库根位置不能移动。</string>
@@ -163,8 +160,7 @@
   <string name="error_invalid_text">不支持此内容。请选择 UTF-8 纯文本或 Markdown，不支持二进制、GBK 或 UTF-16。</string>
   <string name="error_too_large">内容不能超过 10 万 Unicode 码点或 1 MiB；此次编辑或导入已完整拒绝。</string>
   <string name="error_storage">无法完成本机文件操作，现有文稿与编辑内容已保留。请检查可用空间后重试。</string>
-  <string name="error_corrupt">工作区或文稿无法读取，已停止写入。请重试或检查上一保存版本，未用空稿替换。</string>
-  <string name="error_no_previous">还没有可读取的上一保存版本。</string>
+  <string name="error_corrupt">工作区或文稿无法读取，已停止写入。请重试，未用空稿替换。</string>
   <string name="error_cleanup">条目已移出目录，但私有残留文件清理未完成。</string>
   <string name="open_failed">无法读取此文稿</string>
   <string name="loading">正在打开工作区</string>
@@ -225,7 +221,7 @@
   <string name="backup_snapshot">最近一次恢复前快照</string>
   <string name="backup_snapshot_details">%1$s\n%2$d 篇文稿 · 占用 %3$d KiB</string>
   <string name="backup_undo">撤回上次恢复</string>
-  <string name="backup_undo_warning">将切换回快照中的完整文稿库，包括当时的上一保存版本。当前文稿库及恢复后的编辑会保留为新的快照，之后可再次切换回来。</string>
+  <string name="backup_undo_warning">将切换回快照中的完整文稿库。当前文稿库及恢复后的编辑会保留为新的快照，之后可再次切换回来。</string>
   <string name="backup_clear_snapshot">清理恢复快照</string>
   <string name="backup_clear_warning">将删除恢复前快照及待清理的旧快照材料。当前文稿库保留，清理后不能撤回此次恢复。</string>
   <string name="backup_cleanup_pending">有旧快照材料尚未清理，可在此重试清理。</string>

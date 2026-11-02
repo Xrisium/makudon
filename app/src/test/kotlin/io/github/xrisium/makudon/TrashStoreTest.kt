@@ -19,7 +19,7 @@ class TrashStoreTest {
     private fun expect(reason: Failure, action: () -> Unit) {
         try { action(); fail("Expected $reason") } catch (e: WorkspaceException) { assertEquals(reason, e.reason) }
     }
-    @Test fun deleteRestartPreviewRestorePreservesBodyHistoryTimesAndEmptyFolders() {
+    @Test fun deleteRestartPreviewRestorePreservesBodyTimesAndEmptyFolders() {
         val dir = temp.newFolder(); val lib = library(dir); val trash = bin(dir, lib)
         val folder = lib.store.create("旅行笔记", Workspace.ROOT, DocumentKind.Folder)
         lib.store.create("空目录", folder, DocumentKind.Folder)
@@ -38,7 +38,6 @@ class TrashStoreTest {
         reopened.restore(reopened.inventory().roots.map { it.id }, false, ::suffix)
         val after = reopenedLib.store.refresh().entry(doc) ?: error("missing")
         assertEquals(before.created, after.created); assertEquals(before.modified, after.modified); assertEquals(before.opened, after.opened)
-        assertEquals("上一版", reopenedLib.store.previous(doc))
         assertTrue(reopened.inventory().nodes.isEmpty())
         assertTrue(reopenedLib.store.refresh().entries.any { it.name == "空目录" && it.parent == folder })
     }

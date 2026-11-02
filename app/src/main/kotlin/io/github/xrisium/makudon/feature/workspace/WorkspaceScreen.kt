@@ -112,11 +112,6 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                         Page.Licenses -> LicensesPage(model)
                         Page.UiFont -> FontSettingsPage(model, true)
                         Page.EditorFont -> FontSettingsPage(model, false)
-                        Page.Previous -> Column {
-                            PageBar(stringResource(R.string.previous_version), model::back)
-                            TextButton(onClick = { dialog = "restore" }, enabled = !ui.busy, modifier = Modifier.padding(horizontal = 12.dp)) { Text(stringResource(R.string.restore_previous)) }
-                            Text(ui.previous.orEmpty(), Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), style = EditorStyle)
-                        }
                         else -> Unit
                     }
                 }
@@ -148,8 +143,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
         }
         "info", "editor-info" -> if (entry != null && workspace != null) AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if (dialog == "editor-info") R.string.detailed_info else R.string.more_info)) }, text = {
             Text(if (entry.folder) stringResource(R.string.folder_details, entry.name, displayPath(workspace, entry.id), workspace.entries.count { it.parent == entry.id }) else stringResource(R.string.info_details, entry.filename, stringResource(kindLabel(entry.kind)), displayPath(workspace, entry.parent ?: Workspace.ROOT), entry.bytes))
-        }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.close)) } }, dismissButton = { if (!entry.folder) TextButton(onClick = { model.previous(entry.id); dialog = null }) { Text(stringResource(R.string.previous_version)) } })
-        "restore" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(R.string.restore_previous)) }, text = { Text(stringResource(R.string.restore_warning)) }, confirmButton = { TextButton(onClick = { model.restorePrevious(); dialog = null }) { Text(stringResource(R.string.confirm)) } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } })
+        }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.close)) } })
     }
 }
 
@@ -230,7 +224,7 @@ fun errorLabel(failure: Failure) = when (failure) {
     Failure.CatalogFull -> R.string.catalog_full
     Failure.InvalidName -> R.string.error_invalid_name; Failure.Conflict -> R.string.error_conflict; Failure.Cycle -> R.string.error_cycle
     Failure.Missing -> R.string.error_missing; Failure.InvalidText -> R.string.error_invalid_text; Failure.TooLarge -> R.string.error_too_large
-    Failure.Storage -> R.string.error_storage; Failure.Corrupt -> R.string.error_corrupt; Failure.NoPrevious -> R.string.error_no_previous; Failure.Cleanup -> R.string.error_cleanup
+    Failure.Storage -> R.string.error_storage; Failure.Corrupt -> R.string.error_corrupt; Failure.Cleanup -> R.string.error_cleanup
 }
 
 @Composable

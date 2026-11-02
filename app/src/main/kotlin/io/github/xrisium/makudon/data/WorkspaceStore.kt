@@ -100,24 +100,18 @@ class WorkspaceStore(
     private fun state() = workspace ?: throw WorkspaceException(Failure.Corrupt)
     fun contains(id: String): Boolean = state().entry(id) != null
     /** Only used in a fresh, unpublished generation. No live body is overwritten. */
-    fun prepare(next: Workspace, material: (Entry) -> Pair<ByteArray, ByteArray?>, check: () -> Unit = {}) {
+    fun prepare(next: Workspace, material: (Entry) -> ByteArray, check: () -> Unit = {}) {
         if (catalog.exists()) throw WorkspaceException(Failure.Conflict)
         validate(next)
         next.entries.filter { !it.folder }.forEach { entry ->
             check()
-            val (bytes, previous) = material(entry)
+            val bytes = material(entry)
             TextRules.decode(bytes)
             atomic.write(body(entry), bytes)
             if (entry.modified > 0 && !body(entry).setLastModified(entry.modified)) throw WorkspaceException(Failure.Storage)
-            if (previous != null) atomic.write(File(nodeDirectory(entry.id), "previous.txt"), previous)
         }
         check()
         publish(next)
-    }
-    fun previousBytes(id: String): ByteArray? {
-        find(id)
-        val file = File(nodeDirectory(id), "previous.txt")
-        return if (file.exists()) atomic.read(file, TextRules.MAX_BYTES) else null
     }
     private fun find(id: String) = state().entry(id) ?: throw WorkspaceException(Failure.Missing)
     private fun parent(id: String) { if (!find(id).folder) throw WorkspaceException(Failure.Missing) }
@@ -140,11 +134,6 @@ class WorkspaceStore(
         return dated
     }
     fun read(id: String): String { val entry = find(id); if (entry.folder) throw WorkspaceException(Failure.Missing); return TextRules.decode(atomic.read(body(entry), TextRules.MAX_BYTES)) }
-    fun previous(id: String): String {
-        val file = File(nodeDirectory(id), "previous.txt")
-        if (!file.isFile) throw WorkspaceException(Failure.NoPrevious)
-        return TextRules.decode(atomic.read(file, TextRules.MAX_BYTES))
-    }
     fun save(id: String, text: String) {
         val entry = find(id)
         val target = TextRules.bytes(text)
@@ -154,7 +143,6 @@ class WorkspaceStore(
         if (baselineId == id && confirmedBody?.contentEquals(baseline) == false && uncertainBody?.contentEquals(baseline) != true) throw WorkspaceException(Failure.Corrupt)
         baselineId = id; confirmedBody = baseline; uncertainBody = null
         if (baseline.contentEquals(target)) return
-        atomic.write(File(nodeDirectory(id), "previous.txt"), baseline)
         uncertainBody = target
         atomic.write(file, target)
         confirmedBody = target; uncertainBody = null
@@ -245,17 +233,16 @@ class WorkspaceStore(
         publish(state().copy(entries = state().entries.filter { it.id !in removed }, trashOperation = operation))
     }
     fun hasMaterial(id: String) = nodeDirectory(id).exists()
-    fun restoreFromTrash(entries: List<Entry>, operation: String, material: (Entry) -> Pair<ByteArray, ByteArray?>) {
+    fun restoreFromTrash(entries: List<Entry>, operation: String, material: (Entry) -> ByteArray) {
         val next = state().copy(entries = state().entries + entries, trashOperation = operation)
         validate(next)
         entries.filter { !it.folder }.forEach { entry ->
             // Never overwrite even an unindexed material left by an interrupted operation.
             if (nodeDirectory(entry.id).exists()) throw WorkspaceException(Failure.Conflict)
-            val (bytes, previous) = material(entry)
+            val bytes = material(entry)
             TextRules.decode(bytes)
             atomic.write(body(entry), bytes)
             if (!body(entry).setLastModified(entry.modified)) throw WorkspaceException(Failure.Storage)
-            previous?.let { TextRules.decode(it); atomic.write(File(nodeDirectory(entry.id), "previous.txt"), it) }
         }
         publish(next)
     }
@@ -275,21 +262,6 @@ class WorkspaceStore(
     }
     fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont) {
         publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont))
-    }
-    fun restore(id: String): String {
-        val entry = find(id)
-        val old = previous(id)
-        val source = nodeDirectory(id)
-        val material = File(directory, "recovery/${UUID.randomUUID()}")
-        if (!source.copyRecursively(material)) throw WorkspaceException(Failure.Storage)
-        source.listFiles().orEmpty().filter { it.isFile }.forEach { original ->
-            val copy = File(material, original.name)
-            FileOutputStream(copy, true).use { it.fd.sync() }
-            if (!original.readBytes().contentEquals(copy.readBytes())) throw WorkspaceException(Failure.Storage)
-        }
-        atomic.write(body(entry), TextRules.bytes(old))
-        baselineId = id; confirmedBody = TextRules.bytes(old); uncertainBody = null
-        return old
     }
 }
 

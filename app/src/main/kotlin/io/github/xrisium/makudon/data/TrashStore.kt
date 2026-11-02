@@ -157,7 +157,6 @@ class TrashStore(
         publish(s.copy(garbage = s.garbage + mapping.values))
         nodes.filter { !it.entry.folder }.forEach { node ->
             atomic.write(File(material(node.id), "body"), TextRules.bytes(library.store.read(node.entry.id)))
-            library.store.previousBytes(node.entry.id)?.let { previous -> TextRules.decode(previous); atomic.write(File(material(node.id), "previous"), previous) }
         }
         val token = UUID.randomUUID().toString()
         val documents = nodes.filter { !it.entry.folder }.map { it.entry.id }
@@ -203,8 +202,7 @@ class TrashStore(
         try {
             library.store.restoreFromTrash(additions, token) { e ->
                 val source = material(sources.getValue(e.id).id)
-                val previous = File(source, "previous")
-                atomic.read(File(source, "body"), TextRules.MAX_BYTES) to if (previous.exists()) atomic.read(previous, TextRules.MAX_BYTES) else null
+                atomic.read(File(source, "body"), TextRules.MAX_BYTES)
             }
         } catch (e: Exception) { state = null; throw e }
         reconcile(); retryCleanup()

@@ -82,7 +82,6 @@ class WorkspaceStoreTest {
         store.save(a, "")
         val reopened = store(dir)
         assertEquals("", reopened.read(a)); assertEquals("独立内容", reopened.read(b))
-        assertEquals("中文 👩🏽‍💻\n\n无末尾换行", reopened.previous(a))
     }
     @Test fun renameAndMovePreserveSourceBodyAndStableIds() {
         val store = store()
@@ -138,21 +137,18 @@ class WorkspaceStoreTest {
         assertEquals("应保留", next.read(peer))
         assertFalse(File(dir, "documents/$doc").exists())
     }
-    @Test fun previousWriteFailureCannotChangePrimaryAndRetryUsesLatest() {
-        var fail = false
-        val disk = object : AtomicDisk() {
-            override fun write(file: File, bytes: ByteArray) {
-                if (fail && file.name == "previous.txt") throw IOException("injected")
-                super.write(file, bytes)
-            }
-        }
-        val store = store(disk = disk)
-        val id = store.create("测试", Workspace.ROOT, DocumentKind.Plain, "完整基线")
-        fail = true
-        try { store.save(id, "失败的新稿"); fail() } catch (_: IOException) { /* injected */ }
-        assertEquals("完整基线", store.read(id))
-        fail = false; store.save(id, "最终新稿")
-        assertEquals("最终新稿", store.read(id)); assertEquals("完整基线", store.previous(id))
+    @Test fun savesDoNotDependOnOrGenerateDocumentHistory() {
+        val dir = temp.newFolder(); val store = store(dir)
+        val id = store.create("测试", Workspace.ROOT, DocumentKind.Plain, "初始正文")
+        val material = File(dir, "documents/$id")
+        store.save(id, "第二版本")
+        assertEquals(setOf("body.txt"), material.list()?.toSet())
+        // A legacy history path cannot block a new save, and is never read or replaced.
+        val legacy = File(material, "previous.txt").apply { mkdir() }
+        store.save(id, "最终正文")
+        assertTrue(legacy.isDirectory)
+        assertEquals("最终正文", store(dir).read(id))
+        assertFalse(File(dir, "recovery").exists())
     }
     @Test fun partialPrimaryWritePreservesOldCompleteVersion() {
         val dir = temp.newFolder(); var fail = false
@@ -186,7 +182,7 @@ class WorkspaceStoreTest {
         val next = store(dir)
         assertEquals(1, next.refresh().entries.count { !it.folder }); assertEquals("原稿", next.read(id))
     }
-    @Test fun corruptBodyCannotBeReplacedWithEmptyAndPreviousCanBeRecovered() {
+    @Test fun corruptBodyCannotBeReplacedWithEmpty() {
         val dir = temp.newFolder(); val store = store(dir)
         val id = store.create("文稿", Workspace.ROOT, DocumentKind.Plain, "初始正文")
         store.save(id, "第二版本")
@@ -194,10 +190,7 @@ class WorkspaceStoreTest {
         val reopened = store(dir)
         assertTrue(reopened.refresh().entry(id)?.unreadable == true)
         expect(Failure.InvalidText) { reopened.save(id, "") }
-        assertEquals("初始正文", reopened.restore(id))
-        assertEquals("初始正文", reopened.read(id))
-        val material = File(dir, "recovery").listFiles().orEmpty().single()
-        assertArrayEquals(byteArrayOf(0xFF.toByte()), File(material, "body.txt").readBytes())
+        assertArrayEquals(byteArrayOf(0xFF.toByte()), File(dir, "documents/$id/body.txt").readBytes())
     }
     @Test fun corruptCatalogStopsInitializationWithoutOverwritingEvidence() {
         val dir = temp.newFolder(); val store = store(dir)

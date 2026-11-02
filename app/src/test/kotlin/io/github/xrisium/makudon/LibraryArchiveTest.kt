@@ -61,7 +61,6 @@ class LibraryArchiveTest {
         restore(target, source, RestoreMode.Replace)
         val text = target.store.refresh().entries.single { it.kind == DocumentKind.Markdown }
         assertEquals(lib.store.read(md), target.store.read(text.id))
-        expect(Failure.NoPrevious) { target.store.previous(text.id) }
         assertTrue(target.store.refresh().entries.any { it.name == "空目录" })
     }
 
@@ -135,7 +134,6 @@ class LibraryArchiveTest {
         lib.undo()
         lib = library(dir)
         assertEquals("恢复前", lib.store.read(id))
-        assertEquals("上一版", lib.store.previous(id))
         lib.store.save(id, "撤回后新编辑")
         lib.undo()
         lib = library(dir)

@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.first
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Previous, Backup, UiFont, EditorFont, Trash }
+enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Backup, UiFont, EditorFont, Trash }
 val MainPages = listOf(Page.Directory, Page.Recent, Page.Settings)
 
 data class WorkspaceUi(
@@ -38,7 +38,6 @@ data class WorkspaceUi(
     val origin: Page = Page.Recent,
     val activeId: String? = null,
     val typeset: Boolean = true,
-    val previous: String? = null,
     val mainTab: Page = Page.Recent,
     val navigationId: Long = 0,
     val backwards: Boolean = false,
@@ -114,7 +113,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         paragraphFields.clear(); departingSession = null; sessionId++
         selection = null; clipboard = null; pasteRequest = null; deleteRequest = null
         canUndo = false; canRedo = false; history = EditHistory(); blocks = emptyList()
-        ui = ui.copy(workspace = current, activeId = null, previous = null, selected = Workspace.ROOT, newParent = Workspace.ROOT,
+        ui = ui.copy(workspace = current, activeId = null, selected = Workspace.ROOT, newParent = Workspace.ROOT,
             revealFolder = null, directoryRevision = ui.directoryRevision + 1, message = R.string.backup_library_changed, error = null)
         navigate(Page.Directory, backwards = true)
     }
@@ -162,7 +161,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
                 if (ui.activeId != null && current.entry(ui.activeId.orEmpty()) == null) {
                     observer?.cancel(); observer = null; save = null; textState = null; paragraphFields.clear(); departingSession = null
                     ui = ui.copy(activeId = null)
-                    if (ui.page == Page.Editor || ui.page == Page.Previous) navigate(ui.origin, backwards = true)
+                    if (ui.page == Page.Editor) navigate(ui.origin, backwards = true)
                 }
             }
             catch (e: CancellationException) { throw e }
@@ -276,9 +275,8 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         textState = field; save = session
         history = EditHistory(); historySource = text; canUndo = false; canRedo = false
         blocks = markdownBlocks(text); blockEpoch++
-        val previousPage = ui.page
         ui = ui.copy(activeId = id, origin = origin, typeset = true, workspace = refreshed)
-        navigate(Page.Editor, backwards = previousPage == Page.Previous)
+        navigate(Page.Editor)
         observer = viewModelScope.launch { snapshotFlow { field.text.toString() }.collect { recordEdit(it); session.changed(it) } }
     }
     fun back() {
@@ -299,7 +297,6 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             Page.Editor -> go(ui.origin)
             Page.New -> navigate(ui.origin, backwards = true)
             Page.Licenses, Page.UiFont, Page.EditorFont -> navigate(Page.Settings, backwards = true)
-            Page.Previous -> navigate(if (textState != null) Page.Editor else ui.origin, backwards = true)
             else -> Unit
         }
     }
@@ -439,7 +436,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             activeId = if (ui.activeId in removed) null else ui.activeId)
         acceptWorkspace(disk { store.refresh() })
         deleteRequest = null
-        if (deletedActive && (ui.page == Page.Editor || ui.page == Page.Previous)) navigate(ui.origin, backwards = true)
+        if (deletedActive && ui.page == Page.Editor) navigate(ui.origin, backwards = true)
         ui = ui.copy(message = R.string.trash_deleted)
     } }
     private fun acceptTrash(inventory: TrashInventory) {
@@ -589,15 +586,4 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
-    fun previous(id: String? = ui.activeId) { if (id == null) return; launchWork {
-        if (!barrier()) return@launchWork
-        val text = disk { store.previous(id) }
-        ui = ui.copy(previous = text, activeId = id, origin = if (ui.page == Page.Directory) Page.Directory else ui.origin)
-        navigate(Page.Previous)
-    } }
-    fun restorePrevious() { val id = ui.activeId ?: return; launchWork {
-        disk { store.restore(id) }
-        observer?.cancel(); save = null; textState = null
-        openInternal(id, ui.origin)
-    } }
 }
