@@ -40,6 +40,21 @@ class WorkspaceStoreTest {
         assertEquals(Workspace.ROOT, next.refresh().entry(id)?.parent)
         assertEquals("# 根目录正文", next.read(id))
     }
+    @Test fun editorTextSizeSurvivesRestartAndOtherSettingsWithoutChangingBody() {
+        val dir = temp.newFolder()
+        val original = store(dir)
+        val id = original.create("字号", Workspace.ROOT, DocumentKind.Markdown, "# 标题\n\n原始正文")
+        original.settings(ColorTheme.System, SortKey.Name, false, true, editorTextSize = EditorTextSize.Large)
+        val reopened = store(dir)
+        assertEquals(EditorTextSize.Large, reopened.refresh().editorTextSize)
+        reopened.settings(ColorTheme.Ink, SortKey.Size, true, false)
+        val final = store(dir)
+        assertEquals(EditorTextSize.Large, final.refresh().editorTextSize)
+        assertEquals("# 标题\n\n原始正文", final.read(id))
+        val catalog = File(dir, "catalog.properties")
+        catalog.writeText(catalog.readText().lineSequence().filterNot { it.startsWith("editorTextSize=") }.joinToString("\n"))
+        assertEquals(EditorTextSize.Medium, store(dir).refresh().editorTextSize)
+    }
     @Test fun legacyInboxKeepsItsBodyAndBehavesAsAnOrdinaryFolderWithoutRecreation() {
         val dir = temp.newFolder()
         val catalog = File(dir, "catalog.properties")

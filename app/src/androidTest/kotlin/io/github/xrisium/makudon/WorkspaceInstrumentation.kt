@@ -34,6 +34,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlySelectionVisual = false
     private var onlyRecent = false
     private var onlyDetails = false
+    private var onlyTextSize = false
     private var onlyBackup = false
     private var onlyBackupVisual = false
     private var onlyFiles = false
@@ -55,6 +56,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlySelectionVisual = arguments?.getString("case") == "selection-visual"
         onlyRecent = arguments?.getString("case") == "recent"
         onlyDetails = arguments?.getString("case") == "details"
+        onlyTextSize = arguments?.getString("case") == "text-size"
         onlyBackup = arguments?.getString("case") == "backup"
         onlyBackupVisual = arguments?.getString("case") == "backup-visual"
         onlyFiles = arguments?.getString("case") == "files"
@@ -79,7 +81,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -178,6 +180,91 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+
+    private fun textSizeTest() {
+        val oldSize = main { checkNotNull(model.ui.workspace).editorTextSize }
+        val oldFont = shell("settings get system font_scale")
+        val oldAnimation = shell("settings get global animator_duration_scale")
+        val oldScreen = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val ids = mutableListOf<String>()
+        fun menu() { click(main { model.languages.context().getString(R.string.item_actions) }) }
+        fun bounds(label: String) = Rect().also { find(label).getBoundsInScreen(it) }
+        fun equalWidths(labels: List<String>) {
+            val boxes = labels.map(::bounds)
+            verify(boxes.maxOf { it.width() } - boxes.minOf { it.width() } <= 1, "Equal final segment widths: $labels")
+            verify(boxes.zipWithNext().all { (a, b) -> a.right <= b.left }, "Non-overlapping segments: $labels")
+        }
+        try {
+            runBlocking { withContext(Dispatchers.IO) {
+                val store = currentStore()
+                ids += store.create("字号测试", Workspace.ROOT, DocumentKind.Plain, "午后，阳光落在窗边。\n\n这样的日子适合慢慢写字。😀")
+                ids += store.create("排版字号", Workspace.ROOT, DocumentKind.Markdown, "# 标题\n\n正文段落\n\n## 次级标题")
+            } }
+            main { model.reload() }; ready(); main { model.open(ids[0]) }; ready(); menu()
+            equalWidths(listOf("正文大小: 小", "正文大小: 中", "正文大小: 大"))
+            click("正文大小: 小"); ready()
+            val smallBox = bounds("正文大小: 小")
+            val largeBox = bounds("正文大小: 大")
+            val density = targetContext.resources.displayMetrics.density
+            val sampleY = smallBox.top + (8 * density).toInt()
+            val baseline = checkNotNull(uiAutomation.takeScreenshot())
+            val highlightColor = baseline.getPixel(smallBox.centerX(), sampleY)
+            baseline.recycle()
+            shell("settings put global animator_duration_scale 5")
+            var largeAction = find("正文大小: 大")
+            while (!largeAction.isClickable) largeAction = checkNotNull(largeAction.parent)
+            check(largeAction.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            waitFor("large size committed") { main { model.ui.workspace?.editorTextSize == EditorTextSize.Large } }
+            SystemClock.sleep(300)
+            val middle = checkNotNull(uiAutomation.takeScreenshot())
+            val matching = (smallBox.left + 4 until largeBox.right - 4).filter { middle.getPixel(it, sampleY) == highlightColor }
+            middle.recycle()
+            verify(matching.isNotEmpty() && matching.average() > smallBox.centerX() + smallBox.width() * .1 && matching.average() < largeBox.centerX() - largeBox.width() * .1,
+                "Single highlight visibly crosses intermediate positions from small directly to large")
+            screenshot("text-size-slide-mid")
+            SystemClock.sleep(1500); screenshot("text-size-slide-end")
+            shell("settings put global animator_duration_scale 0")
+            click("正文大小: 中"); ready()
+            verify(main { model.ui.workspace?.editorTextSize == EditorTextSize.Medium }, "Zero animation scale settles selection normally")
+            shell("settings put global animator_duration_scale $oldAnimation")
+            val field = main { model.textState }
+            for ((label, size) in listOf("小" to EditorTextSize.Small, "大" to EditorTextSize.Large, "中" to EditorTextSize.Medium)) {
+                click("正文大小: $label"); ready()
+                verify(main { model.ui.workspace?.editorTextSize == size && model.textState === field }, "Size $label applies without replacing the input buffer")
+                verify(nodes().any { it.text?.toString() == "正文大小" }, "Menu remains open after choosing $label")
+            }
+            screenshot("text-size-zh")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+            setText("编辑正文", "字号切换后继续输入😀"); saved()
+            main { model.back() }; ready(); main { model.open(ids[1]) }; ready()
+            menu(); click("正文大小: 大"); ready()
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+            click("排版"); ready(); screenshot("text-size-typeset-large")
+            verify(main { model.ui.typeset && model.textState?.text?.toString() == "# 标题\n\n正文段落\n\n## 次级标题" }, "Typeset size preserves exact Markdown source")
+            main { currentActivity?.recreate() }; ready()
+            verify(main { model.ui.workspace?.editorTextSize == EditorTextSize.Large }, "Size survives Activity recreation")
+            main { model.back() }; ready(); main { model.reload() }; ready(); main { model.open(ids[0]) }; ready()
+            verify(main { model.ui.workspace?.editorTextSize == EditorTextSize.Large && model.textState?.text?.toString() == "字号切换后继续输入😀" }, "Reload preserves global size and saved text")
+            shell("wm size 840x1890"); shell("settings put system font_scale 2.0"); SystemClock.sleep(1200); ready()
+            menu(); equalWidths(listOf("正文大小: 小", "正文大小: 中", "正文大小: 大")); screenshot("text-size-zh-200")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+            main { model.changeLanguage("en") }; SystemClock.sleep(1200); ready(); menu()
+            equalWidths(listOf("Text size: Small", "Text size: Medium", "Text size: Large"))
+            verify(listOf("S", "M", "L").all { label -> nodes().any { it.text?.toString() == label } }, "English uses compact S M L labels with full accessible descriptions")
+            click("Text size: Small"); ready(); screenshot("text-size-en-200")
+            verify(main { model.ui.workspace?.editorTextSize == EditorTextSize.Small }, "English selector applies size at 200% font scale")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+        } finally {
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            shell(if (oldAnimation == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $oldAnimation")
+            shell(if (oldScreen == null) "wm size reset" else "wm size $oldScreen")
+            SystemClock.sleep(700); ready()
+            main { model.back() }; ready()
+            main { model.preferences(editorTextSize = oldSize) }; ready()
+            runBlocking { withContext(Dispatchers.IO) { ids.forEach { currentStore().removeToTrash(listOf(it), java.util.UUID.randomUUID().toString()) } } }
+            main { model.reload() }; ready()
+        }
+    }
 
     private fun localizationTest() {
         val original = main { androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags() }

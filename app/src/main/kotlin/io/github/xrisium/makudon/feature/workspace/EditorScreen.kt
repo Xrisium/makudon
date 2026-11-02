@@ -45,6 +45,9 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     val entry = ui.workspace?.entry(ui.activeId.orEmpty()) ?: return
     val status by session.status.collectAsState()
     val colors = MaterialTheme.colorScheme
+    val textSize = ui.workspace?.editorTextSize ?: EditorTextSize.Medium
+    val scale = textSize.sp / 18f
+    val bodyStyle = EditorStyle.copy(fontSize = textSize.sp.sp, lineHeight = (33 * scale).sp)
     val editable = !ui.busy && !ui.transitioning && !ui.storageBlocked && ui.page == Page.Editor
     var more by remember { mutableStateOf(false) }
     val source = field.text.toString()
@@ -68,7 +71,9 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = editable && model.canRedo, onClick = { model.undo(true) })
             Box {
                 Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = editable, onClick = { more = !more })
-                DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = colors.surface) {
+                DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 260.dp, max = 300.dp)) {
+                    EditorTextSizePicker(textSize, enabled = editable) { model.preferences(editorTextSize = it) }
+                    HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
                     DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = editable, onClick = { more = false; onAction("info") })
                     DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = editable, onClick = { more = false; onAction("rename") })
                     DropdownMenuItem(text = { Text(stringResource(R.string.export_copy)) }, leadingIcon = { Glyph(R.drawable.ic_download) }, enabled = editable, onClick = { more = false; onExport() })
@@ -111,8 +116,8 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         val description = stringResource(R.string.edit_body)
         if (entry.kind != DocumentKind.Markdown || !ui.typeset) {
             BasicTextField(state = field, modifier = Modifier.weight(1f).fillMaxWidth().padding(24.dp).testTag("source-editor").semantics { contentDescription = description },
-                readOnly = !editable, textStyle = EditorStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
-                decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = EditorStyle, color = colors.onSurfaceVariant); inner() } },
+                readOnly = !editable, textStyle = bodyStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
+                decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = bodyStyle, color = colors.onSurfaceVariant); inner() } },
             )
         } else {
             val blocks = model.blocks
@@ -121,11 +126,11 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
                     val label = stringResource(R.string.edit_block, index + 1)
                     if (!block.editable) {
                         Column(Modifier.fillMaxWidth().background(colors.surface, RoundedCornerShape(12.dp)).clickable { model.typeset(false) }.padding(12.dp)) {
-                            Text(block.text, style = EditorStyle.copy(color = colors.onBackground))
+                            Text(block.text, style = bodyStyle.copy(color = colors.onBackground))
                             Text(stringResource(R.string.unsupported_markdown), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                         }
                     } else {
-                        val style = when (block.heading) { 1 -> EditorStyle.copy(fontSize = 26.sp, lineHeight = 38.sp, fontWeight = FontWeight.Medium); 2 -> EditorStyle.copy(fontSize = 21.sp, lineHeight = 33.sp, fontWeight = FontWeight.Medium); else -> EditorStyle }
+                        val style = when (block.heading) { 1 -> bodyStyle.copy(fontSize = (26 * scale).sp, lineHeight = (38 * scale).sp, fontWeight = FontWeight.Medium); 2 -> bodyStyle.copy(fontSize = (21 * scale).sp, lineHeight = (33 * scale).sp, fontWeight = FontWeight.Medium); else -> bodyStyle }
                         val local = remember(entry.id, model.blockEpoch, index) { TextFieldState(block.text) }
                         DisposableEffect(local) {
                             model.registerParagraph(index, local)

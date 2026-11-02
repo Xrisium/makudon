@@ -492,7 +492,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(selected = restored.parent ?: Workspace.ROOT, revealFolder = restored.parent ?: Workspace.ROOT, directoryRevision = ui.directoryRevision + 1)
         navigate(Page.Directory, backwards = true)
     }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null) {
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme
         val nextSort = sort ?: w.sort
@@ -501,9 +501,10 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         // A repeated selection must not write the catalog or flash disabled colors.
         val nextUiFont = uiFont ?: w.uiFont
         val nextEditorFont = editorFont ?: w.editorFont
-        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont) return
+        val nextEditorTextSize = editorTextSize ?: w.editorTextSize
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize) return
         launchWork(savingPreferences = true) {
-            disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont) }
+            disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize) }
             ui = ui.copy(workspace = disk { store.refresh() })
         }
     }

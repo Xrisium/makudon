@@ -8,6 +8,7 @@ enum class SortKey { Name, Modified, Created, Type, Size }
 enum class ColorTheme { System, Paper, Cream, Mist, Sage, Ink }
 enum class FontChoice { Sans, Serif, WenKai, System }
 enum class FontThickness { Light, Normal, Bold }
+enum class EditorTextSize(val sp: Int) { Small(16), Medium(18), Large(20) }
 data class FontPreference(val choice: FontChoice = FontChoice.Sans, val thickness: FontThickness = FontThickness.Normal)
 
 data class Entry(
@@ -37,6 +38,7 @@ data class Workspace(
     val uiFont: FontPreference = FontPreference(),
     val editorFont: FontPreference = FontPreference(),
     val trashOperation: String? = null,
+    val editorTextSize: EditorTextSize = EditorTextSize.Medium,
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {

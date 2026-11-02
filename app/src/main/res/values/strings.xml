@@ -357,4 +357,11 @@
   <!-- Generated filename suffix; %1$d is an ASCII disambiguation number. -->
   <string name="restore_copy_suffix_number">&quot; (restored copy %1$d)&quot;</string>
   <string name="font_summary">%1$s · %2$s</string>
+  <string name="editor_text_size">Text size</string>
+  <string name="editor_size_small_short">S</string>
+  <string name="editor_size_medium_short">M</string>
+  <string name="editor_size_large_short">L</string>
+  <string name="editor_size_small">Small</string>
+  <string name="editor_size_medium">Medium</string>
+  <string name="editor_size_large">Large</string>
 </resources>

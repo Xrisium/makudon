@@ -314,4 +314,11 @@
   <!-- Generated filename suffix; %1$d is an ASCII disambiguation number. -->
   <string name="restore_copy_suffix_number">（恢复副本 %1$d）</string>
   <string name="font_summary">%1$s · %2$s</string>
+  <string name="editor_text_size">正文大小</string>
+  <string name="editor_size_small_short">小</string>
+  <string name="editor_size_medium_short">中</string>
+  <string name="editor_size_large_short">大</string>
+  <string name="editor_size_small">小</string>
+  <string name="editor_size_medium">中</string>
+  <string name="editor_size_large">大</string>
 </resources>
