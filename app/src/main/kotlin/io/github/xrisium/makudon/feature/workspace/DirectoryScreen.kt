@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.xrisium.makudon.R
@@ -98,7 +99,7 @@ fun DirectoryPage(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit, 
         if (selecting) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).heightIn(min = 56.dp).testTag("selection-header"), verticalAlignment = Alignment.CenterVertically) {
                 Tool(R.drawable.ic_x, stringResource(R.string.exit_selection), enabled = !busy, onClick = model::exitSelection)
-                Text(stringResource(R.string.selected_count, checked.size), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.titleLarge)
+                Text(pluralStringResource(R.plurals.selected_count, checked.size, checked.size), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = model::clearSelection, enabled = !busy && checked.isNotEmpty()) { Text(stringResource(R.string.clear_selection)) }
             }
         } else {
@@ -141,12 +142,13 @@ fun DirectoryPage(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit, 
             Text(stringResource(R.string.directory_hint), Modifier.padding(start = 20.dp, end = 16.dp, top = 5.dp, bottom = 13.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (ui.page == Page.Directory) WorkspaceNotice(model)
         }
+        val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
         val rows = buildList<Pair<Entry, Int>> {
             fun append(item: Entry, depth: Int) {
                 add(item to depth)
-                if (item.folder && item.id in expanded) workspace.sorted(workspace.entries.filter { it.parent == item.id }).forEach { append(it, depth + 1) }
+                if (item.folder && item.id in expanded) workspace.sorted(workspace.entries.filter { it.parent == item.id }, locale).forEach { append(it, depth + 1) }
             }
-            if (!selecting && query.isNotBlank()) workspace.sorted(workspace.entries.filter { !it.folder && it.filename.contains(query.trim(), ignoreCase = true) }).forEach { add(it to 0) }
+            if (!selecting && query.isNotBlank()) workspace.sorted(workspace.entries.filter { !it.folder && it.filename.contains(query.trim(), ignoreCase = true) }, locale).forEach { add(it to 0) }
             else workspace.entry(Workspace.ROOT)?.let { append(it, 0) }
         }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -156,10 +158,10 @@ fun DirectoryPage(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit, 
                     placementSpec = if (!search) tween(180, easing = FastOutSlowInEasing) else null,
                     fadeOutSpec = if (!search) tween(180) else null)) {
                     val selection = checked?.let { workspace.selectionOf(it, entry.id) }
-                    EntryRow(entry, depth, expanded.contains(entry.id), if (selecting) selection == ItemSelection.Direct else entry.folder && ui.selected == entry.id, busy,
+                    EntryRow(if (entry.id == Workspace.ROOT) entry.copy(name = stringResource(R.string.library)) else entry, depth, expanded.contains(entry.id), if (selecting) selection == ItemSelection.Direct else entry.folder && ui.selected == entry.id, busy,
                         model.clipboard?.let { clip -> clip.cut && clip.ids.any { workspace.isWithin(entry.id, it) } } == true,
-                        path = if (!selecting && query.isNotBlank()) workspace.path(entry.parent ?: Workspace.ROOT) else null,
-                        pasteLocation = workspace.path(if (entry.folder) entry.id else entry.parent ?: Workspace.ROOT),
+                        path = if (!selecting && query.isNotBlank()) displayPath(workspace, entry.parent ?: Workspace.ROOT) else null,
+                        pasteLocation = displayPath(workspace, if (entry.folder) entry.id else entry.parent ?: Workspace.ROOT),
                         onClick = {
                             if (selecting && entry.id != Workspace.ROOT) model.toggleChecked(entry.id)
                             else if (entry.folder) {
@@ -214,7 +216,7 @@ private fun EntryRow(entry: Entry, depth: Int, expanded: Boolean, selected: Bool
             }
         }
         DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(20.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 240.dp, max = 290.dp)) {
-            Text(if (selection != null) stringResource(R.string.selected_count, selectionCount) else entry.filename, Modifier.padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.titleSmall)
+            Text(if (selection != null) pluralStringResource(R.plurals.selected_count, selectionCount, selectionCount) else entry.filename, Modifier.padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.titleSmall)
             HorizontalDivider(Modifier.padding(horizontal = 12.dp))
             val actions = buildList {
                 if (selection == null) {
@@ -231,7 +233,7 @@ private fun EntryRow(entry: Entry, depth: Int, expanded: Boolean, selected: Bool
                     (selection != null && selectionCount == 0 && action in listOf("copy", "cut", "delete")) || (action == "paste" && clipboard == null)
                 DropdownMenuItem(text = { Text(stringResource(label), color = if (action == "delete" && !disabled) colors.error else Color.Unspecified) }, leadingIcon = { Glyph(icon, tint = if (action == "delete" && !disabled) colors.error else colors.onSurfaceVariant) }, enabled = !disabled, onClick = { menu = false; onAction(action) })
             }
-            Text(if (clipboard == null) stringResource(R.string.clipboard_empty) else if (selection != null) stringResource(if (clipboard.cut) R.string.clipboard_cut_count else R.string.clipboard_copy_count, clipboard.items.size) else stringResource(R.string.paste_location, pasteLocation), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+            Text(if (clipboard == null) stringResource(R.string.clipboard_empty) else if (selection != null) pluralStringResource(if (clipboard.cut) R.plurals.clipboard_cut_count else R.plurals.clipboard_copy_count, clipboard.items.size, clipboard.items.size) else stringResource(R.string.paste_location, pasteLocation), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
             if (selection == null && entry.id == Workspace.ROOT) Text(stringResource(R.string.root_protected), Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
         }
     }
@@ -244,7 +246,7 @@ private fun SelectionActions(model: WorkspaceViewModel) {
     val count = model.selection?.size ?: 0
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp)) {
-        Text(ui.error?.let { stringResource(errorLabel(it)) } ?: if (ui.message == R.string.paste_done) stringResource(R.string.paste_done) else if (clip == null) stringResource(R.string.clipboard_empty) else stringResource(if (clip.cut) R.string.clipboard_cut_count else R.string.clipboard_copy_count, clip.items.size),
+        Text(ui.error?.let { stringResource(errorLabel(it)) } ?: if (ui.message == R.string.paste_done) stringResource(R.string.paste_done) else if (clip == null) stringResource(R.string.clipboard_empty) else pluralStringResource(if (clip.cut) R.plurals.clipboard_cut_count else R.plurals.clipboard_copy_count, clip.items.size, clip.items.size),
             Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.labelSmall, color = if (ui.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         if (ui.error != null) TextButton(onClick = model::reload, enabled = !ui.busy) { Text(stringResource(R.string.reload_directory)) }
     }

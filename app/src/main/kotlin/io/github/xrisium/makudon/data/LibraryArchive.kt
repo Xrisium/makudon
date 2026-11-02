@@ -51,7 +51,7 @@ object LibraryArchive {
         }
     }
 
-    fun read(file: File, destination: File, check: () -> Unit = {}, allowEmpty: Boolean = false, imported: Boolean = true): PreparedArchive {
+    fun read(file: File, destination: File, check: () -> Unit = {}, allowEmpty: Boolean = false, imported: Boolean = true, naming: NameSuffix = NameSuffix.Numeric): PreparedArchive {
         if (file.length() > MAX_BYTES) throw WorkspaceException(Failure.ArchiveLimit)
         checkDirectory(file)
         if (!destination.mkdirs() && !destination.isDirectory) throw WorkspaceException(Failure.Storage)
@@ -144,8 +144,7 @@ object LibraryArchive {
             var name = node.name
             var n = 1
             while (normalized.any { it.parent == node.parent && it.kind == node.kind && it.name.equals(name, true) }) {
-                val suffix = if (n == 1) "（恢复副本）" else "（恢复副本 $n）"
-                name = safeNamePrefix(node.name, 120 - suffix.length) + suffix
+                name = naming.append(node.name, n)
                 n++
             }
             val item = node.copy(name = name)
@@ -190,7 +189,7 @@ object LibraryArchive {
         }
     }
 
-    fun exportPlan(workspace: Workspace): ArchiveExport {
+    fun exportPlan(workspace: Workspace, naming: NameSuffix = NameSuffix.Numeric): ArchiveExport {
         val children = workspace.entries.filter { it.id != Workspace.ROOT }.groupBy { it.parent }
         val items = mutableListOf<ExportItem>()
         val renames = mutableListOf<ArchiveRename>()
@@ -203,8 +202,7 @@ object LibraryArchive {
                 var segment = entry.filename
                 var n = 1
                 while (!used.add(segment.lowercase(Locale.ROOT))) {
-                    val suffix = if (n == 1) "（副本）" else "（副本 $n）"
-                    segment = safeNamePrefix(entry.name, 120 - suffix.length) + suffix + if (entry.folder) "" else ".${entry.kind.extension}"
+                    segment = naming.append(entry.name, n) + if (entry.folder) "" else ".${entry.kind.extension}"
                     n++
                 }
                 val path = prefix + segment

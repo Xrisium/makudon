@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -124,7 +125,7 @@ fun BackupPage(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                         items(inventory.renames) { Text(stringResource(R.string.backup_rename_item, it.from, it.to), style = MaterialTheme.typography.bodySmall) }
                     }
                     if (inventory.skipped.isNotEmpty()) {
-                        item { Text(stringResource(R.string.backup_skipped_count, inventory.skipped.size), style = MaterialTheme.typography.titleSmall) }
+                        item { Text(pluralStringResource(R.plurals.backup_skipped_count, inventory.skipped.size, inventory.skipped.size), style = MaterialTheme.typography.titleSmall) }
                         items(inventory.skipped) { Text(it, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
@@ -136,7 +137,7 @@ fun BackupPage(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                         HorizontalDivider()
                         Text(stringResource(R.string.backup_snapshot), Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
                         Text(stringResource(R.string.backup_snapshot_details,
-                            if (snapshot.time > 0) DateFormat.getDateTimeInstance().format(Date(snapshot.time)) else stringResource(R.string.backup_cleanup_pending),
+                            if (snapshot.time > 0) displayDate(snapshot.time) else stringResource(R.string.backup_cleanup_pending),
                             snapshot.documents, snapshot.bytes / 1024), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall)
                         if (snapshot.retired > 0) Text(stringResource(R.string.backup_cleanup_pending), color = MaterialTheme.colorScheme.error)
                         if (snapshot.time > 0) OutlinedButton(onClick = { confirm = "undo" }, enabled = !backup.locked) { Text(stringResource(R.string.backup_undo)) }
@@ -157,7 +158,8 @@ fun BackupPage(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                 else -> if (plan != null) {
                     Text(stringResource(restoreModeLabel(plan.mode)), style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(restoreModeDescription(plan.mode)), color = if (plan.mode == RestoreMode.Replace) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                    Text(stringResource(R.string.backup_replace_count, if (plan.mode == RestoreMode.Replace) model.ui.workspace?.entries?.count { !it.folder } ?: 0 else 0))
+                    val replaced = if (plan.mode == RestoreMode.Replace) model.ui.workspace?.entries?.count { !it.folder } ?: 0 else 0
+                    Text(pluralStringResource(R.plurals.backup_replace_count, replaced, replaced))
                     Text(stringResource(R.string.backup_confirm_summary, plan.added, plan.updated, inventory?.skipped?.size ?: 0))
                     Text(stringResource(R.string.backup_snapshot_hint), style = MaterialTheme.typography.bodySmall)
                 }
@@ -179,8 +181,8 @@ private fun ConflictCard(conflict: RestoreConflict, index: Int, total: Int, busy
             Text(stringResource(R.string.backup_conflict_number, index, total), style = MaterialTheme.typography.titleSmall)
             Text(conflict.path)
             Text(stringResource(R.string.backup_content_differs), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.backup_local_info, conflict.local.bytes, DateFormat.getDateTimeInstance().format(Date(conflict.local.modified))), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.backup_archive_info, conflict.source.bytes, DateFormat.getDateTimeInstance().format(Date(conflict.source.modified))), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.backup_local_info, conflict.local.bytes, displayDate(conflict.local.modified)), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.backup_archive_info, conflict.source.bytes, displayDate(conflict.source.modified)), style = MaterialTheme.typography.bodySmall)
             ConflictChoice.entries.forEach { choice ->
                 Row(Modifier.fillMaxWidth().selectable(selected == choice, enabled = !busy, role = Role.RadioButton, onClick = { selected = choice }).heightIn(min = 48.dp)) {
                     RadioButton(selected == choice, onClick = null)

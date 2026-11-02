@@ -22,7 +22,8 @@ data class FileExchangeUi(
     val apps: List<FileApp> = emptyList(),
     val export: ExportFile? = null,
     val error: Int? = null,
-    val message: String? = null,
+    val message: Int? = null,
+    val messageArgument: String? = null,
 )
 
 /** One active file operation. Saved instance state never contains manuscript text or file bodies. */
@@ -113,7 +114,7 @@ class FileExchange(private val application: Application, private val scope: Coro
         if (export == null) { ui = ui.copy(visible = true, error = R.string.file_request_expired); return }
         work {
             withContext(Dispatchers.IO) { AndroidFileAccess.write(application.contentResolver, export, uri) }
-            ui = ui.copy(message = application.getString(R.string.file_saved_location))
+            ui = ui.copy(message = R.string.file_saved_location)
         }
     }
 
@@ -141,7 +142,7 @@ class FileExchange(private val application: Application, private val scope: Coro
         if (!AndroidFileAccess.supportsDownloads) return
         work {
             val name = withContext(Dispatchers.IO) { AndroidFileAccess.download(application.contentResolver, export) }
-            ui = ui.copy(message = application.getString(R.string.file_download_saved, name))
+            ui = ui.copy(message = R.string.file_download_saved, messageArgument = name)
         }
     }
 
@@ -166,7 +167,7 @@ class FileExchange(private val application: Application, private val scope: Coro
             withContext(Dispatchers.IO) { check(checkNotNull(export.file.parentFile).setLastModified(System.currentTimeMillis())) }
             try {
                 val intent = AndroidFileAccess.shareIntent(application, export)
-                launch(if (app == null) Intent.createChooser(intent, application.getString(R.string.file_share_other)) else intent.setComponent(app.component))
+                launch(if (app == null) Intent.createChooser(intent, (application as io.github.xrisium.makudon.app.MakudonApplication).languages.context().getString(R.string.file_share_other)) else intent.setComponent(app.component))
             } catch (_: android.content.ActivityNotFoundException) { launchFailed(false) }
             catch (_: SecurityException) { launchFailed(false) }
             catch (_: IllegalArgumentException) { ui = ui.copy(error = R.string.file_operation_error) }

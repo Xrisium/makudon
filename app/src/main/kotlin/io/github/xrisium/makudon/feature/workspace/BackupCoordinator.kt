@@ -52,10 +52,12 @@ class BackupCoordinator(
     private var exportFile: File? = null
     private var exportName: String? = null
     private var decisions = emptyMap<String, ConflictChoice>()
+    private fun localized() = (application as io.github.xrisium.makudon.app.MakudonApplication).languages.context()
+    private var restoreNaming = NameSuffix.Numeric
     private var restoreFolder = ""
     private var restoreTime = 0L
     val locked: Boolean get() = ui.busy || stage != null || ui.needsReload
-    val pendingExportName: String get() = exportName ?: application.getString(R.string.backup_filename, SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()))
+    val pendingExportName: String get() = exportName ?: localized().getString(R.string.backup_filename, SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()))
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { lock.withLock { block() } }
     private fun run(progress: Int, action: suspend () -> Unit) {
@@ -91,6 +93,9 @@ class BackupCoordinator(
         if (uri == null || locked) return
         run(R.string.backup_reading) {
             if (!barrier()) throw WorkspaceException(Failure.Storage)
+            val context = localized()
+            restoreNaming = context.restoreNaming()
+            val folderName = context.getString(R.string.backup_folder_name, SimpleDateFormat("yyyy-MM-dd HHmm", Locale.ROOT).format(Date()))
             val currentJob = currentCoroutineContext().job
             val prepared = io {
                 if (uri.scheme != "content") throw WorkspaceException(Failure.InvalidArchive)
@@ -98,12 +103,12 @@ class BackupCoordinator(
                 val zip = File(folder, "source.zip")
                 val input = application.contentResolver.openInputStream(uri) ?: throw WorkspaceException(Failure.Storage)
                 input.use { LibraryArchive.copySource(it, zip) { currentJob.ensureActive() } }
-                LibraryArchive.read(zip, File(folder, "contents"), { currentJob.ensureActive() })
+                LibraryArchive.read(zip, File(folder, "contents"), { currentJob.ensureActive() }, naming = restoreNaming)
             }
             archive = prepared
             baseline = io { library.fingerprint { currentJob.ensureActive() } }
             restoreTime = System.currentTimeMillis()
-            restoreFolder = application.getString(R.string.backup_folder_name, SimpleDateFormat("yyyy-MM-dd HHmm", Locale.ROOT).format(Date(restoreTime)))
+            restoreFolder = folderName
             decisions = emptyMap()
             ui = ui.copy(inventory = prepared.inventory, mode = RestoreMode.Separate, plan = null)
         }
@@ -113,7 +118,7 @@ class BackupCoordinator(
         val currentJob = currentCoroutineContext().job
         val planned = io {
             if (library.fingerprint { currentJob.ensureActive() } != baseline) throw WorkspaceException(Failure.StaleRestore)
-            RestorePlanner.plan(library.store.refresh(), source.inventory, ui.mode, decisions, restoreFolder, restoreTime) { local, incoming ->
+            RestorePlanner.plan(library.store.refresh(), source.inventory, ui.mode, decisions, restoreFolder, restoreTime, restoreNaming) { local, incoming ->
                 currentJob.ensureActive()
                 library.store.read(local) == source.text(incoming)
             }
@@ -161,9 +166,10 @@ class BackupCoordinator(
     fun prepareExport() {
         if (locked) return
         run(R.string.backup_preparing_export) {
-            exportName = application.getString(R.string.backup_filename, SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()))
+            exportName = localized().getString(R.string.backup_filename, SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()))
             if (!barrier()) throw WorkspaceException(Failure.Storage)
-            val plan = io { newStage(); LibraryArchive.exportPlan(library.store.refresh()) }
+            val naming = localized().copyNaming()
+            val plan = io { newStage(); LibraryArchive.exportPlan(library.store.refresh(), naming) }
             exporting = plan
             if (plan.renames.isNotEmpty()) ui = ui.copy(exportRenames = plan.renames)
             else generateExport()

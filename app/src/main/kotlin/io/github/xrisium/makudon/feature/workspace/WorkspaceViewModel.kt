@@ -81,8 +81,11 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     var deleteRequest by mutableStateOf<List<String>?>(null)
         private set
     private var clipboardToken = 0L
+    val languages = (application as io.github.xrisium.makudon.app.MakudonApplication).languages
+    private fun localized() = languages.context()
+    fun changeLanguage(tag: String) { launchWork { if (barrier()) languages.change(tag) } }
     private val ioLock = Mutex()
-    private val library = LibraryController(application.filesDir, application.getString(R.string.library), available = {
+    private val library = LibraryController(application.filesDir, localized().getString(R.string.library), available = {
         application.getSystemService(android.os.storage.StorageManager::class.java).let { storage ->
             storage.getAllocatableBytes(storage.getUuidForPath(application.filesDir))
         }
@@ -244,8 +247,9 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     }
     fun chooseNewParent(id: String) { if (ui.workspace?.entry(id)?.folder == true) ui = ui.copy(newParent = id) }
     fun create(kind: DocumentKind) { launchWork {
-        val name = getApplication<Application>().getString(R.string.untitled)
-        val id = disk { store.create(name, ui.newParent, kind) }
+        val name = localized().getString(R.string.untitled)
+        val naming = localized().copyNaming()
+        val id = disk { store.create(name, ui.newParent, kind, naming = naming) }
         openInternal(id, ui.origin)
     } }
     fun createFolder(name: String, parent: String, onSuccess: () -> Unit = {}) { launchWork {
@@ -403,7 +407,8 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun paste(destination: String, expectedToken: Long? = null) { val clip = clipboard ?: return; launchWork {
         if (expectedToken != null && expectedToken != clip.token) throw WorkspaceException(Failure.Missing)
         if (!barrier()) return@launchWork
-        disk { if (clip.cut) store.moveAll(clip.ids, destination) else store.pasteAll(clip.copies, destination) }
+        val naming = localized().copyNaming()
+        disk { if (clip.cut) store.moveAll(clip.ids, destination) else store.pasteAll(clip.copies, destination, naming) }
         if (clip.cut) clipboard = null
         acceptWorkspace(disk { store.refresh() })
         pasteRequest = null
@@ -469,8 +474,9 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun confirmTrashRestore() { val ids = trashRestoreRequest ?: return; launchWork { restoreTrashInternal(ids, true) } }
     private suspend fun restoreTrashInternal(ids: List<String>, allowRoot: Boolean) {
         if (!barrier()) return
-        val app = getApplication<Application>()
-        trashRestored = disk { trash.restore(ids, allowRoot) { n -> app.getString(if (n == 1) R.string.trash_restore_suffix else R.string.trash_restore_suffix_number, n) } }
+        val context = localized()
+        val naming = NameSuffix(context.getString(R.string.trash_restore_suffix), context.getString(R.string.trash_restore_suffix_number))
+        trashRestored = disk { trash.restore(ids, allowRoot, naming::suffix) }
         acceptWorkspace(disk { store.refresh() }); acceptTrash(disk { trash.inventory() })
         trashRestoreRequest = null; trashSelection = null
     }
@@ -504,7 +510,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         flushParagraphs()
         val text = textState?.text?.toString() ?: return false
         exportText = text
-        exportName = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty().ifBlank { getApplication<Application>().getString(R.string.untitled) } + ".txt"
+        exportName = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty().ifBlank { localized().getString(R.string.untitled) } + ".txt"
         return true
     }
     fun exportCopy() {
@@ -546,10 +552,13 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             val target = targetParent ?: if (ui.page == Page.New) ui.newParent else Workspace.ROOT
             launchWork {
                 if (!barrier()) { if (requestId != null) externalRequests.remove(requestId); return@launchWork }
+                val context = localized()
+                val defaultName = context.getString(R.string.untitled)
+                val naming = context.copyNaming()
                 val imported = disk {
                     if (uri.scheme != "content") throw WorkspaceException(Failure.InvalidText)
                     val resolver = getApplication<Application>().contentResolver
-                    var name = getApplication<Application>().getString(R.string.untitled)
+                    var name = defaultName
                     try {
                         resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                             val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -570,10 +579,10 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
                             if (output.size() > TextRules.MAX_BYTES) throw WorkspaceException(Failure.TooLarge)
                         }; output.toByteArray()
                     }
-                    name = name.replace(Regex("(?i)\\.(?:txt|md)$"), "").map { if (it.isISOControl() || it == '/' || it == '\\') '_' else it }.joinToString("").trim().take(120).ifBlank { getApplication<Application>().getString(R.string.untitled) }
+                    name = safeNamePrefix(name.replace(Regex("(?i)\\.(?:txt|md)$"), "").map { if (it.isISOControl() || it == '/' || it == '\\') '_' else it }.joinToString("").trim(), 120).ifBlank { defaultName }
                     Triple(name, kind, TextRules.decode(bytes, imported = true))
                 }
-                val id = disk { store.create(imported.first, target, imported.second, imported.third, requestId) }
+                val id = disk { store.create(imported.first, target, imported.second, imported.third, requestId, naming) }
                 if (requestId != null) externalRequests.add(requestId)
                 openInternal(id, if (ui.page == Page.New) ui.origin else Page.Recent)
                 ui = ui.copy(message = R.string.import_done)

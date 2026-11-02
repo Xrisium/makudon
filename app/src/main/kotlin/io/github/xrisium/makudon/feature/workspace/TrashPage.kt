@@ -10,18 +10,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.xrisium.makudon.R
+import io.github.xrisium.makudon.domain.Workspace
 import io.github.xrisium.makudon.data.TrashNode
 import io.github.xrisium.makudon.ui.theme.EditorStyle
 import java.text.DateFormat
@@ -36,14 +39,14 @@ internal fun TrashPage(model: WorkspaceViewModel) {
     val preview = inventory.nodes.firstOrNull { it.id == model.trashPreview }
     val selection = model.trashSelection
     var menu by remember { mutableStateOf(false) }
-    var purge by remember { mutableStateOf<List<String>?>(null) }
+    var purge by rememberSaveable { mutableStateOf<List<String>?>(null) }
     val visible = inventory.nodes.filter { it.parent == folder?.id }.sortedByDescending { it.deleted }
     BackHandler(purge != null) { if (!busy) purge = null }
     Column(Modifier.fillMaxSize()) {
         PageBar(preview?.entry?.name ?: folder?.entry?.name ?: stringResource(R.string.trash_title), model::back)
         if (preview == null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (selection != null) stringResource(R.string.selected_count, selection.size) else stringResource(R.string.trash_summary, inventory.roots.size, Formatter.formatShortFileSize(LocalContext.current, inventory.bytes)), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                Text(if (selection != null) pluralStringResource(R.plurals.selected_count, selection.size, selection.size) else pluralStringResource(R.plurals.trash_summary, inventory.roots.size, inventory.roots.size, Formatter.formatShortFileSize(LocalContext.current, inventory.bytes)), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 if (selection != null) TextButton(onClick = model::exitTrashSelection, enabled = !busy) { Text(stringResource(R.string.exit_selection)) }
                 else Box {
                     Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = !busy) { menu = true }
@@ -66,7 +69,7 @@ internal fun TrashPage(model: WorkspaceViewModel) {
             model.trashRestored?.let { result -> item {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                     Column(Modifier.padding(14.dp)) {
-                        result.entries.forEachIndexed { i, entry -> Text(stringResource(R.string.trash_restored_item, entry.name, result.locations[i]), style = MaterialTheme.typography.bodySmall) }
+                        result.entries.forEachIndexed { i, entry -> Text(stringResource(R.string.trash_restored_item, entry.name, if (entry.parent == Workspace.ROOT) stringResource(R.string.library) else result.locations[i]), style = MaterialTheme.typography.bodySmall) }
                         TextButton(onClick = model::viewRestored, enabled = !busy) { Text(stringResource(R.string.trash_view_restored)) }
                     }
                 }
@@ -137,7 +140,7 @@ internal fun TrashPage(model: WorkspaceViewModel) {
         val removed = roots.flatMap { inventory.descendants(it.id) }.toSet()
         val cancelFocus = remember { FocusRequester() }
         LaunchedEffect(ids) { cancelFocus.requestFocus() }
-        AlertDialog(onDismissRequest = { if (!busy) purge = null }, title = { Text(stringResource(R.string.trash_purge_title, roots.size)) },
+        AlertDialog(onDismissRequest = { if (!busy) purge = null }, title = { Text(pluralStringResource(R.plurals.trash_purge_title, roots.size, roots.size)) },
             text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 roots.forEach { Text(it.entry.name) }
                 Text(stringResource(R.string.trash_purge_warning, inventory.nodes.count { it.id in removed && it.entry.folder }, inventory.nodes.count { it.id in removed && !it.entry.folder }))
@@ -159,8 +162,8 @@ private fun TrashActions(disabled: Boolean, restore: () -> Unit, purge: () -> Un
 @Composable
 private fun TrashMetadata(node: TrashNode, model: WorkspaceViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.trash_original_location, node.location), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(R.string.trash_deleted_time, DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(node.deleted))), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.trash_original_location, if (node.entry.parent == Workspace.ROOT) stringResource(R.string.library) else node.location), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.trash_deleted_time, displayDate(node.deleted)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (node.entry.folder) {
             val children = model.trashInventory.descendants(node.id) - node.id
             Text(stringResource(R.string.trash_folder_count, model.trashInventory.nodes.count { it.id in children && it.entry.folder }, model.trashInventory.nodes.count { it.id in children && !it.entry.folder }), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

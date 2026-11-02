@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
   <queries>
     <intent>
       <action android:name="android.intent.action.GET_CONTENT" />
@@ -19,7 +19,16 @@
     android:icon="@mipmap/ic_launcher"
     android:label="@string/app_name"
     android:supportsRtl="true"
+    android:localeConfig="@xml/locales_config"
+    tools:targetApi="33"
     android:theme="@style/Theme.Makudon">
+    <!-- Startup is a runtime-only transitive dependency and its provider exists in the merged APK.
+         Keep lifecycle/profile initializers, but prevent automatic downloadable emoji font requests. -->
+    <provider android:name="androidx.startup.InitializationProvider"
+      android:authorities="${applicationId}.androidx-startup" android:exported="false"
+      tools:node="merge" tools:ignore="MissingClass">
+      <meta-data android:name="androidx.emoji2.text.EmojiCompatInitializer" tools:node="remove" />
+    </provider>
     <provider
       android:name="androidx.core.content.FileProvider"
       android:authorities="${applicationId}.exports"

@@ -44,6 +44,7 @@ object RestorePlanner {
         decisions: Map<String, ConflictChoice> = emptyMap(),
         folderName: String,
         now: Long,
+        naming: NameSuffix = NameSuffix.Numeric,
         sameBody: (String, String) -> Boolean,
     ): RestorePlan {
         if (archive.documents == 0) throw WorkspaceException(Failure.EmptyArchive)
@@ -55,18 +56,17 @@ object RestorePlanner {
         var updated = 0
         var unchanged = 0
         var separateName: String? = null
-        fun unique(name: String, parent: String, kind: DocumentKind, suffix: String): String {
+        fun unique(name: String, parent: String, kind: DocumentKind): String {
             var candidate = name
             var n = 1
             while (TextRules.conflicts(entries, candidate, parent, kind)) {
-                val tail = if (n == 1) "（$suffix）" else "（$suffix $n）"
-                candidate = safeNamePrefix(name, 120 - tail.length) + tail
+                candidate = naming.append(name, n)
                 n++
             }
             return candidate
         }
         if (mode == RestoreMode.Separate) {
-            separateName = unique(folderName, Workspace.ROOT, DocumentKind.Folder, "恢复副本")
+            separateName = unique(folderName, Workspace.ROOT, DocumentKind.Folder)
             val folder = Entry(UUID.randomUUID().toString(), separateName, Workspace.ROOT, DocumentKind.Folder, now)
             entries += folder
             mapping[null] = folder.id
@@ -90,7 +90,7 @@ object RestorePlanner {
                 sources[match.id] = node.id
                 updated++
             } else {
-                val name = unique(node.name, parent, node.kind, "恢复副本")
+                val name = unique(node.name, parent, node.kind)
                 val entry = Entry(UUID.randomUUID().toString(), name, parent, node.kind, now, modified = node.modified, bytes = node.bytes)
                 entries += entry
                 mapping[node.id] = entry.id

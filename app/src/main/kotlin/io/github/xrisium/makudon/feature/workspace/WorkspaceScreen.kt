@@ -68,8 +68,8 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
     val ui = model.ui
     val workspace = ui.workspace
     val screens = rememberSaveableStateHolder()
-    var dialog by remember { mutableStateOf<String?>(null) }
-    var target by remember { mutableStateOf<Entry?>(null) }
+    var dialog by rememberSaveable { mutableStateOf<String?>(null) }
+    var targetId by rememberSaveable { mutableStateOf<String?>(null) }
     fun export() { model.exportCopy() }
     fun importDocument() {
         model.files.import(ImportKind.Text, ui.newParent)
@@ -87,7 +87,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                     }
                 } else WorkspacePages(model, screens,
                     onAction = { item, action ->
-                        target = item
+                        targetId = item.id
                         when (action) {
                             "select" -> model.startSelection(item.id)
                             "info", "rename" -> dialog = action
@@ -99,14 +99,14 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                             "document" -> model.newDocument(Page.Directory, item.id)
                         }
                     },
-                    onNewFolder = { target = workspace.entry(ui.selected); dialog = "folder" },
+                    onNewFolder = { targetId = ui.selected; dialog = "folder" },
                 ) { page ->
                     when (page) {
                         Page.New -> NewPage(model, ::importDocument)
                         Page.Backup -> BackupPage(model)
                         Page.Trash -> TrashPage(model)
                         Page.Editor -> EditorScreen(model, onExport = ::export, onAction = { action ->
-                            target = workspace.entry(ui.activeId.orEmpty())
+                            targetId = ui.activeId
                             if (action == "info") model.inspect { dialog = "editor-info" } else dialog = action
                         })
                         Page.Licenses -> LicensesPage(model)
@@ -126,7 +126,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
     }
     ClipboardDialogs(model)
     FileExchangeDialog(model)
-    val entry = target?.id?.let { workspace?.entry(it) }
+    val entry = targetId?.let { workspace?.entry(it) }
     when (dialog) {
         "folder", "rename" -> if (entry != null && workspace != null) NameDialog(
             entry, workspace, dialog == "folder", ui.busy, ui.error,
@@ -141,13 +141,13 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
             val documents = workspace.entries.count { !it.folder && it.id in descendants }
             AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if (entry.folder) R.string.delete_folder_title else R.string.delete_file_title)) }, text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(stringResource(R.string.location, workspace.path(entry.parent ?: Workspace.ROOT)), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.location, displayPath(workspace, entry.parent ?: Workspace.ROOT)), style = MaterialTheme.typography.bodySmall)
                     Text(if (entry.folder) stringResource(R.string.delete_folder_warning, entry.name, folders, documents) else stringResource(R.string.delete_file_warning, entry.filename))
                 }
             }, confirmButton = { TextButton(onClick = { model.delete(entry.id); dialog = null }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.delete)) } }, dismissButton = { TextButton(onClick = { dialog = null }, modifier = Modifier.focusRequester(cancelFocus)) { Text(stringResource(R.string.cancel)) } })
         }
         "info", "editor-info" -> if (entry != null && workspace != null) AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if (dialog == "editor-info") R.string.detailed_info else R.string.more_info)) }, text = {
-            Text(if (entry.folder) stringResource(R.string.folder_details, entry.name, workspace.path(entry.id), workspace.entries.count { it.parent == entry.id }) else stringResource(R.string.info_details, entry.filename, stringResource(kindLabel(entry.kind)), workspace.path(entry.parent ?: Workspace.ROOT), entry.bytes))
+            Text(if (entry.folder) stringResource(R.string.folder_details, entry.name, displayPath(workspace, entry.id), workspace.entries.count { it.parent == entry.id }) else stringResource(R.string.info_details, entry.filename, stringResource(kindLabel(entry.kind)), displayPath(workspace, entry.parent ?: Workspace.ROOT), entry.bytes))
         }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.close)) } }, dismissButton = { if (!entry.folder) TextButton(onClick = { model.previous(entry.id); dialog = null }) { Text(stringResource(R.string.previous_version)) } })
         "restore" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(R.string.restore_previous)) }, text = { Text(stringResource(R.string.restore_warning)) }, confirmButton = { TextButton(onClick = { model.restorePrevious(); dialog = null }) { Text(stringResource(R.string.confirm)) } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } })
     }
@@ -185,7 +185,7 @@ internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) ->
                             Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text(item.name, style = MaterialTheme.typography.titleMedium)
                                 Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(workspace.path(item.parent ?: Workspace.ROOT) + "  ·  " + recentDate(item.modified, calendar) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(displayPath(workspace, item.parent ?: Workspace.ROOT) + "  ·  " + recentDate(item.modified, calendar) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(20.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 240.dp, max = 290.dp)) {
@@ -235,11 +235,11 @@ fun errorLabel(failure: Failure) = when (failure) {
 
 @Composable
 private fun NameDialog(entry: Entry, workspace: Workspace, create: Boolean, busy: Boolean, failure: Failure?, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var name by remember(entry.id, create) { mutableStateOf(if (create) "" else entry.name) }
+    var name by rememberSaveable(entry.id, create) { mutableStateOf(if (create) "" else entry.name) }
     var localError by remember { mutableStateOf<Failure?>(null) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(if (create) R.string.new_folder else R.string.rename)) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.location, workspace.path(if (create) entry.id else entry.parent ?: Workspace.ROOT)), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.location, displayPath(workspace, if (create) entry.id else entry.parent ?: Workspace.ROOT)), style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(name, { name = it; localError = null }, label = { Text(stringResource(R.string.name)) }, singleLine = true, enabled = !busy, shape = RoundedCornerShape(14.dp), suffix = { if (!create && !entry.folder) Text("." + entry.kind.extension) }, modifier = Modifier.fillMaxWidth().testTag("entry-name"))
             if (!create && !entry.folder) Text(stringResource(R.string.type_unchanged), style = MaterialTheme.typography.bodySmall)
             (localError ?: failure)?.let { Text(stringResource(errorLabel(it)), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }

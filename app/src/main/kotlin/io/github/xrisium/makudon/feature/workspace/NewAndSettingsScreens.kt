@@ -9,12 +9,14 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import android.text.format.Formatter
@@ -27,14 +29,14 @@ import io.github.xrisium.makudon.ui.theme.themePalette
 fun NewPage(model: WorkspaceViewModel, import: () -> Unit) {
     val ui = model.ui
     val workspace = ui.workspace ?: return
-    var locations by remember { mutableStateOf(false) }
+    var locations by rememberSaveable { mutableStateOf(false) }
     Column {
         PageBar(stringResource(R.string.new_document), model::back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             OutlinedCard(onClick = { locations = true }, shape = RoundedCornerShape(18.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.background), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Glyph(R.drawable.ic_folder); Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) { Text(stringResource(R.string.new_location), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(workspace.path(ui.newParent)) }
+                    Column(Modifier.weight(1f)) { Text(stringResource(R.string.new_location), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(displayPath(workspace, ui.newParent)) }
                     Glyph(R.drawable.ic_chevron_right)
                 }
             }
@@ -51,7 +53,7 @@ fun NewPage(model: WorkspaceViewModel, import: () -> Unit) {
     }
     if (locations) AlertDialog(onDismissRequest = { locations = false }, title = { Text(stringResource(R.string.new_location)) }, text = {
         LazyColumn { items(workspace.entries.filter { it.folder }, key = { it.id }) { item ->
-            TextButton(onClick = { model.chooseNewParent(item.id); locations = false }, modifier = Modifier.fillMaxWidth()) { Text(workspace.path(item.id), Modifier.weight(1f)); if (item.id == ui.newParent) Glyph(R.drawable.ic_check) }
+            TextButton(onClick = { model.chooseNewParent(item.id); locations = false }, modifier = Modifier.fillMaxWidth()) { Text(displayPath(workspace, item.id), Modifier.weight(1f)); if (item.id == ui.newParent) Glyph(R.drawable.ic_check) }
         } }
     }, confirmButton = { TextButton(onClick = { locations = false }) { Text(stringResource(R.string.cancel)) } })
 }
@@ -69,6 +71,7 @@ fun SettingsPage(model: WorkspaceViewModel) {
     val enabled = !ui.busy || ui.savingPreferences
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Text(stringResource(R.string.settings), Modifier.padding(start = 4.dp, bottom = 6.dp), style = MaterialTheme.typography.headlineMedium) }
+        item { LanguageSetting(model, enabled && !model.backup.locked) }
         item { Text(stringResource(R.string.theme), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
             Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -90,7 +93,7 @@ fun SettingsPage(model: WorkspaceViewModel) {
                     listOf(true, false).forEach { uiFont ->
                         val preference = if (uiFont) workspace.uiFont else workspace.editorFont
                         Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { model.fontSettings(uiFont) }.padding(vertical = 14.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text(stringResource(if (uiFont) R.string.ui_font else R.string.editor_font)); Text(stringResource(fontLabel(preference.choice)) + " · " + stringResource(thicknessLabel(preference.thickness)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Column(Modifier.weight(1f)) { Text(stringResource(if (uiFont) R.string.ui_font else R.string.editor_font)); Text(stringResource(R.string.font_summary, stringResource(fontLabel(preference.choice)), stringResource(thicknessLabel(preference.thickness))), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             Glyph(R.drawable.ic_chevron_right)
                         }
                         if (uiFont) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -110,7 +113,7 @@ fun SettingsPage(model: WorkspaceViewModel) {
                     Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = model::openTrash).padding(18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(stringResource(R.string.trash_title))
-                            Text(stringResource(R.string.trash_settings_summary, model.trashInventory.roots.size, Formatter.formatShortFileSize(LocalContext.current, model.trashInventory.bytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(pluralStringResource(R.plurals.trash_settings_summary, model.trashInventory.roots.size, model.trashInventory.roots.size, Formatter.formatShortFileSize(LocalContext.current, model.trashInventory.bytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Glyph(R.drawable.ic_chevron_right)
                     }

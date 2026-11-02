@@ -165,22 +165,21 @@ class WorkspaceStore(
         publish(state().copy(entries = state().entries.map { if (it.id == id) it.copy(opened = System.currentTimeMillis()) else it }))
         return text
     }
-    private fun availableName(name: String, parent: String, kind: DocumentKind, entries: List<Entry> = state().entries): String {
+    private fun availableName(name: String, parent: String, kind: DocumentKind, entries: List<Entry> = state().entries, naming: NameSuffix = NameSuffix.Numeric): String {
         if (!TextRules.conflicts(entries, name, parent, kind)) return name
         var n = 1
         while (true) {
-            val suffix = if (n == 1) "（副本）" else "（副本 $n）"
-            val candidate = name.take(120 - suffix.length) + suffix
+            val candidate = naming.append(name, n)
             if (!TextRules.conflicts(entries, candidate, parent, kind)) return candidate
             n++
         }
     }
-    fun create(name: String, parent: String, kind: DocumentKind, text: String = "", importRequestId: String? = null): String {
+    fun create(name: String, parent: String, kind: DocumentKind, text: String = "", importRequestId: String? = null, naming: NameSuffix = NameSuffix.Numeric): String {
         if (importRequestId != null) state().entries.firstOrNull { it.importRequestId == importRequestId }?.let { return it.id }
         if (importRequestId != null && state().lastImportRequestId == importRequestId) throw WorkspaceException(Failure.Missing)
         parent(parent); TextRules.checkName(name)
         if (kind == DocumentKind.Folder && TextRules.conflicts(state().entries, name, parent, kind)) throw WorkspaceException(Failure.Conflict)
-        val entry = Entry(UUID.randomUUID().toString(), availableName(name, parent, kind), parent, kind, System.currentTimeMillis(), if (kind == DocumentKind.Folder) 0 else System.currentTimeMillis(), importRequestId = importRequestId)
+        val entry = Entry(UUID.randomUUID().toString(), availableName(name, parent, kind, naming = naming), parent, kind, System.currentTimeMillis(), if (kind == DocumentKind.Folder) 0 else System.currentTimeMillis(), importRequestId = importRequestId)
         if (!entry.folder) atomic.write(body(entry), TextRules.bytes(text))
         publish(state().copy(entries = state().entries + entry, lastImportRequestId = importRequestId ?: state().lastImportRequestId))
         return entry.id
@@ -218,7 +217,7 @@ class WorkspaceStore(
         return roots.map(::captureNode)
     }
     fun paste(snapshot: Copy, destination: String) = pasteAll(listOf(snapshot), destination)
-    fun pasteAll(snapshots: List<Copy>, destination: String) {
+    fun pasteAll(snapshots: List<Copy>, destination: String, naming: NameSuffix = NameSuffix.Numeric) {
         parent(destination)
         if (snapshots.isEmpty()) throw WorkspaceException(Failure.Missing)
         state().pasteFailure(snapshots.map { it.entry.id }, false, destination)?.let { throw WorkspaceException(it) }
@@ -232,7 +231,7 @@ class WorkspaceStore(
             copy.children.forEach { clone(it, id, it.entry.name) }
         }
         snapshots.forEach { snapshot ->
-            clone(snapshot, destination, availableName(snapshot.entry.name, destination, snapshot.entry.kind, state().entries + additions))
+            clone(snapshot, destination, availableName(snapshot.entry.name, destination, snapshot.entry.kind, state().entries + additions, naming))
         }
         val next = state().copy(entries = state().entries + additions)
         validate(next)

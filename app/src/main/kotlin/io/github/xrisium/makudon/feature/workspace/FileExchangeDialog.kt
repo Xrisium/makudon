@@ -46,7 +46,7 @@ fun FileExchangeDialog(model: WorkspaceViewModel) {
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                val body = state.error?.let { stringResource(it) } ?: state.message ?: state.export?.name
+                val body = state.error?.let { stringResource(it) } ?: state.message?.let { if (state.messageArgument == null) stringResource(it) else stringResource(it, state.messageArgument) } ?: state.export?.name
                 body?.let {
                     Text(it, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }

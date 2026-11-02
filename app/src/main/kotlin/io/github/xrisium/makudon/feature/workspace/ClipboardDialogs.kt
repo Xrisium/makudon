@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -35,7 +36,7 @@ internal fun ClipboardDialogs(model: WorkspaceViewModel) {
             title = { Text(stringResource(if (request.targets.related.size > 1) R.string.paste_choose_one else R.string.paste_confirm_location)) },
             text = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(stringResource(if (clip.cut) R.string.clipboard_cut_source else R.string.clipboard_copy_source, clip.items.size), style = MaterialTheme.typography.titleSmall)
+                    Text(pluralStringResource(if (clip.cut) R.plurals.clipboard_cut_source else R.plurals.clipboard_copy_source, clip.items.size, clip.items.size), style = MaterialTheme.typography.titleSmall)
                     clip.items.forEach { source ->
                         val current = if (clip.cut) workspace.entry(source.entry.id) else null
                         Column {
@@ -68,12 +69,12 @@ internal fun ClipboardDialogs(model: WorkspaceViewModel) {
         val cancelFocus = remember { FocusRequester() }
         LaunchedEffect(ids) { cancelFocus.requestFocus() }
         AlertDialog(onDismissRequest = model::dismissDelete,
-            title = { Text(stringResource(R.string.delete_many_title, roots.size)) },
+            title = { Text(pluralStringResource(R.plurals.delete_many_title, roots.size, roots.size)) },
             text = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     roots.forEach { entry -> Column {
                         Text(entry.filename)
-                        Text(workspace.path(entry.parent ?: Workspace.ROOT), style = MaterialTheme.typography.labelSmall)
+                        Text(displayPath(workspace, entry.parent ?: Workspace.ROOT), style = MaterialTheme.typography.labelSmall)
                         if (entry.folder) Text(stringResource(R.string.includes_children), style = MaterialTheme.typography.labelSmall)
                     } }
                     Text(stringResource(R.string.delete_many_warning, workspace.entries.count { it.folder && it.id in removed }, workspace.entries.count { !it.folder && it.id in removed }))
@@ -92,7 +93,7 @@ private fun FolderChoice(workspace: Workspace, clip: WorkspaceViewModel.Clipboar
     Row(Modifier.fillMaxWidth().selectable(selected == id, enabled = enabled && failure == null, role = Role.RadioButton, onClick = choose).padding(vertical = 6.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
         RadioButton(selected == id, onClick = null, enabled = enabled && failure == null)
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(workspace.path(id), style = MaterialTheme.typography.bodyMedium)
+            Text(displayPath(workspace, id), style = MaterialTheme.typography.bodyMedium)
             if (failure != null || reason != null) Text(stringResource(failure?.let(::errorLabel) ?: reason ?: R.string.folder), style = MaterialTheme.typography.labelSmall, color = if (failure != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

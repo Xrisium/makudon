@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
+  <string name="recent">最近</string>
+  <string name="date_today">今天</string>
+  <string name="date_yesterday">昨天</string>
+  <string name="date_day_before_yesterday">前天</string>
+  <string name="recent_three_days">3天内</string>
+  <string name="recent_seven_days">7天内</string>
+  <string name="recent_earlier">更早以前</string>
+  <string name="recent_date_time">%1$s %2$s</string>
+  <string name="detailed_info">详细信息</string>
+  <string name="directory">目录</string>
+  <string name="settings">设置</string>
+  <string name="library">文稿库</string>
+  <string name="new_document">新建文稿</string>
+  <string name="new_folder">新建文件夹</string>
+  <string name="untitled">未命名文稿</string>
+  <string name="plain_text">纯文本</string>
+  <string name="import_document">导入</string>
+  <string name="import_hint">选择 UTF-8 纯文本或 Markdown 文件，创建独立副本，不修改原文件。</string>
+  <string name="import_done">已导入独立副本，修改不会影响原文件</string>
+  <string name="export_copy">导出 .txt 副本</string>
+  <string name="export_done">副本已写入所选位置；若中断请检查文件，主文稿保存状态不变</string>
+  <string name="directory_hint">选择文件夹可更改新建位置，长按显示更多</string>
+  <string name="empty_recent">还没有最近打开的文稿</string>
+  <string name="empty_excerpt">还没有写下文字。</string>
+  <string name="search">搜索文稿</string>
+  <string name="search_hint">搜索文稿名称</string>
+  <string name="search_empty">没有匹配的文稿</string>
+  <string name="close">关闭</string>
+  <string name="back">返回</string>
+  <string name="name">名称</string>
+  <string name="sort">排序方式</string>
+  <string name="sort_modified">修改时间</string>
+  <string name="sort_created">创建时间</string>
+  <string name="sort_type">文件类型</string>
+  <string name="sort_size">文件大小</string>
+  <string name="ascending">升序</string>
+  <string name="descending">降序</string>
+  <string name="folders_first">文件夹优先</string>
+  <string name="sort_description">排序：%1$s，%2$s</string>
+  <string name="expand_all">展开全部文件夹</string>
+  <string name="collapse_all">收起全部文件夹</string>
+  <string name="expand_folder">展开 %1$s</string>
+  <string name="collapse_folder">收起 %1$s</string>
+  <string name="item_actions">条目操作</string>
+  <string name="more_info">更多信息</string>
+  <string name="rename">重命名</string>
+  <string name="delete">删除</string>
+  <string name="delete_file_title">删除文稿？</string>
+  <string name="delete_folder_title">删除文件夹？</string>
+  <string name="delete_file_warning">确认删除“%1$s”？\n删除后可以从回收站恢复。</string>
+  <string name="delete_folder_warning">确认删除“%1$s”及其中的 %2$d 个文件夹、%3$d 篇文稿？\n删除后可以从回收站恢复。</string>
+  <string name="root_protected">文稿库是根位置，不能重命名或删除。</string>
+  <string name="copy">复制</string>
+  <string name="cut">剪切</string>
+  <string name="paste">粘贴</string>
+  <string name="multiselect">复选</string>
+  <string name="exit_selection">退出复选</string>
+  <string name="clear_selection">清空选择</string>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="selected_count">
+    <item quantity="other">已选 %1$d 项</item>
+  </plurals>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="clipboard_copy_count">
+    <item quantity="other">已复制 %1$d 项</item>
+  </plurals>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="clipboard_cut_count">
+    <item quantity="other">已剪切 %1$d 项，成功粘贴前原条目仍保留</item>
+  </plurals>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="clipboard_copy_source">
+    <item quantity="other">剪贴板 · 复制 %1$d 项</item>
+  </plurals>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="clipboard_cut_source">
+    <item quantity="other">剪贴板 · 剪切 %1$d 项</item>
+  </plurals>
+  <string name="paste_choose_one">选择一个粘贴位置</string>
+  <string name="paste_confirm_location">确认粘贴位置</string>
+  <string name="paste_multiple_locations">勾选项涉及多个目录，请选择一个目标。本次只粘贴到一个位置。</string>
+  <string name="paste_related_folder">由当前目标归并</string>
+  <string name="paste_common_parent">共同上级</string>
+  <string name="paste_other_folders">其他文件夹</string>
+  <string name="paste_change_location">更改位置</string>
+  <string name="paste_here">粘贴到这里</string>
+  <string name="paste_copy_note">同名内容创建独立副本，不覆盖已有文稿。</string>
+  <string name="paste_cut_note">成功后清空剪贴板；已在目标目录的条目保持原位。</string>
+  <string name="paste_already_here">这些条目已在该目录中，无需移动。</string>
+  <string name="clipboard_too_large">复制内容合计超过 8 MiB，请分批复制；原剪贴板和文稿均保留。</string>
+  <string name="catalog_full">目录条目或索引已达到本机支持的大小，请先整理后再重试。</string>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="delete_many_title">
+    <item quantity="other">删除 %1$d 项？</item>
+  </plurals>
+  <string name="delete_many_warning">确认删除以上条目及其中的全部内容（共 %1$d 个文件夹、%2$d 篇文稿）？\n删除后可以从回收站恢复。</string>
+  <string name="includes_children">包含全部子项</string>
+  <string name="reload_directory">重新读取目录</string>
+  <string name="selection_inherited">随父文件夹一起选中</string>
+  <string name="copy_ready">已复制，长按目标位置粘贴</string>
+  <string name="cut_ready">已剪切，成功粘贴前原条目仍保留</string>
+  <string name="paste_done">已粘贴到目标目录</string>
+  <string name="clipboard_empty">剪贴板为空</string>
+  <string name="paste_location">粘贴到：%1$s</string>
+  <string name="cancel">取消</string>
+  <string name="confirm">确认</string>
+  <string name="create">创建</string>
+  <string name="location">位置：%1$s</string>
+  <string name="new_location">新建位置</string>
+  <string name="type_unchanged">文件类型保持不变</string>
+  <string name="info_details">%1$s\n\n类型：%2$s\n位置：%3$s\nUTF-8 大小：%4$d 字节</string>
+  <string name="folder_details">%1$s\n\n位置：%2$s\n直接包含 %3$d 个子项</string>
+  <string name="folder">文件夹</string>
+  <string name="source_view">源码</string>
+  <string name="typeset_view">排版</string>
+  <string name="edit_body">编辑正文</string>
+  <string name="edit_block">排版编辑第 %1$d 段</string>
+  <string name="unsupported_markdown">此片段保留源码，点此切换源码编辑</string>
+  <string name="save_saved">已保存到本机</string>
+  <string name="save_waiting">等待自动保存</string>
+  <string name="save_saving">正在自动保存</string>
+  <string name="save_failed">修改尚未保存</string>
+  <string name="save_failure_help">保存失败，当前输入仍在编辑器中。请重试或导出副本后再离开。</string>
+  <string name="retry">重试</string>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="document_count">
+    <item quantity="other">%1$d 字符</item>
+  </plurals>
+  <string name="theme">颜色主题</string>
+  <string name="theme_system">跟随系统</string>
+  <string name="theme_paper">纸白</string>
+  <string name="theme_cream">米杏</string>
+  <string name="theme_mist">雾蓝</string>
+  <string name="theme_sage">鼠尾草</string>
+  <string name="theme_ink">夜墨</string>
+  <string name="font">字体</string>
+  <string name="ui_font">界面字体</string>
+  <string name="editor_font">正文字体</string>
+  <string name="font_wenkai">霞鹜文楷</string>
+  <string name="font_system">系统字体</string>
+  <string name="font_thickness">字体粗细</string>
+  <string name="font_light">较细</string>
+  <string name="font_normal">标准</string>
+  <string name="font_bold">较粗</string>
+  <string name="font_preview">预览</string>
+  <string name="font_preview_title">一级标题</string>
+  <string name="font_preview_date">• %1$s</string>
+  <string name="licenses">开源许可与素材致谢</string>
+  <string name="notice_wenkai">霞鹜文楷</string>
+  <string name="notice_noto_description">本地完整可变字体，UI 500 / 编辑 450。</string>
+  <string name="notice_lucide_description">按需转换为 Android VectorDrawable。</string>
+  <string name="notice_fluent_description">Markdown 20 Filled 类型图标。</string>
+  <string name="notice_fredoka_description">仅生成路径字标，字体未打包。</string>
+  <string name="previous_version">上一保存版本</string>
+  <string name="restore_previous">恢复此版本</string>
+  <string name="restore_warning">将恢复为上一保存版本。当前磁盘文件会先保留为独立恢复材料。</string>
+  <string name="error_invalid_name">名称不能为空、超过 120 字符，或包含斜杠、控制字符及首尾空格。</string>
+  <string name="error_conflict">此位置已有同名条目，请换一个名称；未覆盖原条目。</string>
+  <string name="error_cycle">不能粘贴到自身或子目录，文稿库根位置不能移动。</string>
+  <string name="error_missing">条目或任务已不可用，请返回重试。</string>
+  <string name="error_invalid_text">不支持此内容。请选择 UTF-8 纯文本或 Markdown，不支持二进制、GBK 或 UTF-16。</string>
+  <string name="error_too_large">内容不能超过 10 万 Unicode 码点或 1 MiB；此次编辑或导入已完整拒绝。</string>
+  <string name="error_storage">无法完成本机文件操作，现有文稿与编辑内容已保留。请检查可用空间后重试。</string>
+  <string name="error_corrupt">工作区或文稿无法读取，已停止写入。请重试或检查上一保存版本，未用空稿替换。</string>
+  <string name="error_no_previous">还没有可读取的上一保存版本。</string>
+  <string name="error_cleanup">条目已移出目录，但私有残留文件清理未完成。</string>
+  <string name="open_failed">无法读取此文稿</string>
+  <string name="loading">正在打开工作区</string>
+  <string name="undo">撤销</string>
+  <string name="redo">重做</string>
+  <string name="editor_placeholder">在这里，写下第一句话。</string>
+  <string name="backup_title">备份与恢复</string>
+  <string name="backup_summary">卸载应用会导致文稿丢失，请定期导出备份</string>
+  <string name="backup_separate">单独保存</string>
+  <string name="backup_incremental">增量更新</string>
+  <string name="backup_replace">完全覆盖</string>
+  <string name="backup_separate_description">将备份恢复到根目录中新建的单独文件夹，留待后续手动移动文件位置。</string>
+  <string name="backup_incremental_description">保留本机文档库，并仅增加备份中的新文件。如果存在文件冲突（新旧版本不一），需依次手动进行处理。</string>
+  <string name="backup_replace_description">破坏性操作，会导致当前本机文稿库被清空并替换为备份文件中的内容，慎重选择！</string>
+  <string name="backup_format_hint">ZIP 仅需普通目录结构及 UTF-8 编码的 .md / .txt 文稿，无需清单文件。可导入在电脑上自行创建的 ZIP。其他类型文件会列出并跳过。</string>
+  <string name="backup_export">打包导出整个文稿库</string>
+  <string name="backup_import">从 ZIP 恢复</string>
+  <string name="backup_filename">Makudon-备份-%1$s.zip</string>
+  <string name="backup_folder_name">恢复 %1$s</string>
+  <string name="backup_checking">正在读取恢复快照</string>
+  <string name="backup_reading">正在校验 ZIP 与文稿内容</string>
+  <string name="backup_planning">正在比较文稿与规划恢复</string>
+  <string name="backup_preparing">正在准备完整文稿库</string>
+  <string name="backup_committing">正在切换文稿库，请稍候</string>
+  <string name="backup_preparing_export">正在生成并校验 ZIP</string>
+  <string name="backup_writing">正在保存 ZIP</string>
+  <string name="backup_cleaning">正在清理恢复快照</string>
+  <string name="backup_preview">预览恢复结果</string>
+  <string name="backup_execute">确认恢复方式</string>
+  <string name="backup_change_mode">重新选择模式</string>
+  <string name="backup_archive_count">可恢复 %1$d 篇文稿、%2$d 个文件夹</string>
+  <string name="backup_plan_counts">新增 %1$d 项 · 替换 %2$d 篇 · 保留 / 跳过 %3$d 项 · 移除本地 %4$d 项</string>
+  <string name="backup_target_folder">目标文件夹：%1$s</string>
+  <string name="backup_rename_notice">以下路径需要使用副本名，请核对后继续：</string>
+  <string name="backup_rename_item">%1$s → %2$s</string>
+  <string name="backup_confirm_names">确认名称并生成 ZIP</string>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="backup_skipped_count">
+    <item quantity="other">将跳过 %1$d 个不支持的文件</item>
+  </plurals>
+  <string name="backup_keep_local">保留本地</string>
+  <string name="backup_use_archive">采用备份</string>
+  <string name="backup_keep_both">保留双方</string>
+  <string name="backup_content_differs">同一路径的正文不同，请手动选择；不会按修改时间自动覆盖。</string>
+  <string name="backup_conflict_number">冲突 %1$d / %2$d</string>
+  <string name="backup_local_info">本地：%1$d 字节 · %2$s</string>
+  <string name="backup_archive_info">备份：%1$d 字节 · %2$s</string>
+  <string name="backup_confirm_conflict">确认此项选择</string>
+  <string name="backup_resolved_choice">%1$s：%2$s</string>
+  <string name="backup_edit_choice">修改此项选择</string>
+  <string name="backup_confirm_restore">确认恢复</string>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="backup_replace_count">
+    <item quantity="other">本次将移除并替换 %1$d 篇本地文稿。</item>
+  </plurals>
+  <string name="backup_confirm_summary">新增 %1$d 项、替换 %2$d 篇、跳过 %3$d 个不支持的文件。是否继续？</string>
+  <string name="backup_snapshot_hint">恢复前的完整本地文稿库会保留为最近一次恢复快照。</string>
+  <string name="backup_snapshot">最近一次恢复前快照</string>
+  <string name="backup_snapshot_details">%1$s\n%2$d 篇文稿 · 占用 %3$d KiB</string>
+  <string name="backup_undo">撤回上次恢复</string>
+  <string name="backup_undo_warning">将切换回快照中的完整文稿库，包括当时的上一保存版本。当前文稿库及恢复后的编辑会保留为新的快照，之后可再次切换回来。</string>
+  <string name="backup_clear_snapshot">清理恢复快照</string>
+  <string name="backup_clear_warning">将删除恢复前快照及待清理的旧快照材料。当前文稿库保留，清理后不能撤回此次恢复。</string>
+  <string name="backup_cleanup_pending">有旧快照材料尚未清理，可在此重试清理。</string>
+  <string name="backup_cancel">取消本次操作</string>
+  <string name="backup_export_ready">完整 ZIP 已生成并校验，请选择保存位置。</string>
+  <string name="backup_save_zip">选择保存位置</string>
+  <string name="backup_export_retry_hint">未完成导出，目标位置可能存在不完整 ZIP。完整私有 ZIP 仍保留，可选择新位置重试。</string>
+  <string name="backup_exported">整库 ZIP 已保存。</string>
+  <string name="backup_restored">文稿库恢复完成，可在设置中撤回上次恢复。</string>
+  <string name="backup_library_changed">文稿库已切换。可在设置 → 备份与恢复中查看恢复快照。</string>
+  <string name="backup_undone">已切换文稿库，切换前的现场已保留为新快照。</string>
+  <string name="backup_snapshot_cleared">恢复快照已清理。</string>
+  <string name="backup_unchanged">没有需要更改的文稿，当前库与原恢复快照保持不变。</string>
+  <string name="backup_done_cleanup">操作已提交，但部分私有材料清理未完成。可返回备份与恢复页面重试清理。</string>
+  <string name="backup_invalid_archive">ZIP 损坏、加密或目录结构异常，无法恢复。请检查重复路径、文件与目录重名、绝对路径及路径穿越。</string>
+  <string name="backup_limit">ZIP 文件或展开内容不能超过 512 MiB，条目不能超过 20,000，目录深度不能超过 128，ZIP 目录元数据不能超过 16 MiB；此次操作已停止。</string>
+  <string name="backup_empty">ZIP 中没有可恢复的 .md / .txt 文稿，未改变本地文稿库。</string>
+  <string name="backup_stale">本地文稿库已改变，此次预览已失效。请取消后重新选择 ZIP。</string>
+  <string name="backup_no_snapshot">没有可撤回的恢复快照。</string>
+  <string name="backup_space">可用空间不足，无法同时保留当前库、恢复前快照及完整候选库。</string>
+  <string name="file_select_app">选择用于选取文件的应用</string>
+  <string name="file_export_method">选择导出方式</string>
+  <string name="file_system_picker">安卓原生文件选择器</string>
+  <string name="file_system_save">选择保存位置</string>
+  <string name="file_save_downloads">保存到下载目录</string>
+  <string name="file_share_other">通过其他应用分享</string>
+  <string name="file_download_saved">已保存到 Download/Makudon/%1$s</string>
+  <string name="file_saved_location">已写入所选位置。</string>
+  <string name="file_app_unavailable">无法打开所选应用。请选择其他应用或系统入口。</string>
+  <string name="file_invalid_selection">未取得可读取的单个文件，请重新选择。</string>
+  <string name="file_request_expired">此次文件操作已失效，请关闭后重新发起。</string>
+  <string name="file_operation_error">文件操作未完成，请重试或选择其他方式。原文稿和待导出副本仍保留；目标位置可能有不完整文件。</string>
+  <string name="file_download_cleanup_error">保存未完成，且下载目录中的不完整文件未能清理。请在文件管理中检查；可使用同一副本重试。</string>
+  <string name="data_management">数据管理</string>
+  <string name="trash_title">回收站</string>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="trash_settings_summary">
+    <item quantity="other">%1$d项，%2$s</item>
+  </plurals>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="trash_summary">
+    <item quantity="other">%1$d 项 · %2$s</item>
+  </plurals>
+  <string name="trash_empty">回收站为空</string>
+  <string name="trash_folder_empty">此文件夹已没有内容</string>
+  <string name="trash_original_location">原位置：%1$s</string>
+  <string name="trash_deleted_time">删除于 %1$s</string>
+  <string name="trash_folder_count">包含 %1$d 个文件夹、%2$d 篇文稿</string>
+  <string name="trash_select">选择</string>
+  <string name="trash_restore">恢复</string>
+  <string name="trash_restore_folder">恢复此文件夹</string>
+  <string name="trash_purge_folder">彻底删除此文件夹</string>
+  <string name="trash_purge">彻底删除</string>
+  <string name="trash_clear">清空回收站</string>
+  <string name="trash_root_warning">部分条目的原位置已不可用。是否将这些条目恢复到文稿库根目录？其他条目仍恢复到有效原位置。</string>
+  <string name="trash_restore_confirm">确认恢复到根目录</string>
+  <string name="trash_conflict_hint">同名条目使用恢复名称，不覆盖现有内容。</string>
+  <!-- %1$d: raw count; pass it as both quantity and format argument. -->
+  <plurals name="trash_purge_title">
+    <item quantity="other">彻底删除 %1$d 项？</item>
+  </plurals>
+  <string name="trash_purge_warning">共 %1$d 个文件夹、%2$d 篇文稿，包含全部子项。彻底删除后无法从回收站恢复。</string>
+  <string name="trash_copies_hint">以前导出的 ZIP 或整库恢复快照可能仍保留副本。</string>
+  <string name="trash_preview_hint">只读预览，恢复后可以编辑。</string>
+  <string name="trash_deleted">已删除，可从设置中的回收站恢复。</string>
+  <string name="trash_purged">已从回收站移除所选内容。</string>
+  <string name="trash_cleanup_pending">操作已提交，部分私有材料尚未清理；占用空间包含待清理材料，可在此重试。</string>
+  <string name="trash_retry_cleanup">重试清理</string>
+  <string name="trash_restored_item">已恢复“%1$s”至：%2$s</string>
+  <string name="trash_view_restored">查看恢复位置</string>
+  <!-- Generated filename suffix; preserve safe characters and %1$d where present. -->
+  <string name="trash_restore_suffix">（恢复）</string>
+  <!-- Generated filename suffix; preserve safe characters and %1$d where present. -->
+  <string name="trash_restore_suffix_number">（恢复 %1$d）</string>
+  <string name="trash_item_open">查看“%1$s”</string>
+  <string name="trash_item_select">选择“%1$s”</string>
+  <string name="language_title">语言</string>
+  <string name="language_native_name">简体中文</string>
+  <string name="language_system">跟随系统</string>
+  <string name="language_error">无法保存语言设置，文稿未受影响，请重试。</string>
+  <string name="language_load_error">无法读取原语言偏好，已采用系统当前的应用语言设置。</string>
+  <string name="language_migration">是否沿用 Android 升级前的应用语言？</string>
+  <string name="language_keep_previous">沿用之前的语言</string>
+  <!-- Generated filename suffix; %1$d is an ASCII disambiguation number. -->
+  <string name="copy_suffix">（副本）</string>
+  <!-- Generated filename suffix; %1$d is an ASCII disambiguation number. -->
+  <string name="copy_suffix_number">（副本 %1$d）</string>
+  <!-- Generated filename suffix; %1$d is an ASCII disambiguation number. -->
+  <string name="restore_copy_suffix">（恢复副本）</string>
+  <!-- Generated filename suffix; %1$d is an ASCII disambiguation number. -->
+  <string name="restore_copy_suffix_number">（恢复副本 %1$d）</string>
+  <string name="font_summary">%1$s · %2$s</string>
+</resources>

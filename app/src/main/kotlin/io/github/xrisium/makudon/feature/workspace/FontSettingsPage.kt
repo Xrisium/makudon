@@ -36,7 +36,9 @@ internal fun thicknessLabel(value: FontThickness) = when (value) {
 internal fun FontSettingsPage(model: WorkspaceViewModel, isUi: Boolean) {
     val workspace = model.ui.workspace ?: return
     val selected = if (isUi) workspace.uiFont else workspace.editorFont
-    val date = remember { Calendar.getInstance().let { String.format(Locale.ROOT, "%04d.%02d.%02d", it.get(Calendar.YEAR), it.get(Calendar.MONTH) + 1, it.get(Calendar.DAY_OF_MONTH)) } }
+    val previewTime = androidx.compose.runtime.saveable.rememberSaveable { System.currentTimeMillis() }
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val date = java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, "yMd"), locale).format(java.util.Date(previewTime))
     val enabled = !model.ui.busy && !model.ui.transitioning
     fun change(next: FontPreference) { if (isUi) model.preferences(uiFont = next) else model.preferences(editorFont = next) }
     val sampleStyle = TextStyle(fontFamily = remember(selected, isUi) { fontFamily(selected, isUi) }, fontWeight = fontWeight(selected, isUi), fontSize = 16.sp, lineHeight = 27.sp)

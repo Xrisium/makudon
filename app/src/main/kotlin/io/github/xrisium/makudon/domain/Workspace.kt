@@ -53,8 +53,8 @@ data class Workspace(
         } while (changed)
         return result
     }
-    fun sorted(items: List<Entry>): List<Entry> {
-        val collator = Collator.getInstance(Locale.SIMPLIFIED_CHINESE)
+    fun sorted(items: List<Entry>, locale: Locale = Locale.ROOT): List<Entry> {
+        val collator = Collator.getInstance(locale)
         fun natural(a: String, b: String): Int {
             val parts = Regex("\\d+|\\D+")
             val left = parts.findAll(a).map { it.value }.toList()
