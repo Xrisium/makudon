@@ -79,6 +79,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
 
 ## 常见问题
 
+正文字号专项使用 `-e case text-size`：真实菜单选择，检查等宽 / 无重叠、单个高亮跨档的中间位置像素、零动画倍率、原输入缓冲保留、继续编辑保存、Markdown 源码保真、Activity 重建 / 索引重读，以及真实 320dp / 200% 字号中英文标签。临时系统字号、屏幕尺寸、动画倍率与语言恢复；只创建和清理本轮合成资料。验收与 APK 身份见[任务 0025](tasks/0025-editor-text-size.md)。
+
 条目信息专项使用 `-e case details`：真实目录 / 最近长按及编辑菜单，验证历史入口移除、保存屏障与失败保护、创建 / 修改秒级时间、递归磁盘大小和重新打开刷新、Activity 重建，以及真实 320dp / 200% 字号长信息滚动与英文显示。仅修改本轮合成文稿；屏幕 / 字号 / 主题 / 语言在测试后恢复，见[本轮记录](testing/2026-11-02-entry-details.md)。
 
 本地化专项为 `-e case localization`，覆盖中英文字体自称选择、Activity 重建、编辑 / 重命名缓冲、原生复数、命名快照、导出消息、VIEW 去重及 320dp / 200% 字号和伪语言；临时语言 / 屏幕设置在 finally 恢复。`localization-restart-seed` → 模拟器 force-stop → `localization-restart-verify` 验证冷进程语言和正文恢复，第二阶段恢复原偏好并清理本次合成资料。仅在模拟器执行，见[本轮记录](testing/2026-11-02-localization.md)。资源校验包含在既有 JVM 测试与 Check / CI 中，单独命令见[英文贡献指南](localization/CONTRIBUTING.en.md)。
