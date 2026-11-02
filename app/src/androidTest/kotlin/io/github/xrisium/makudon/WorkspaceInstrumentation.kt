@@ -200,9 +200,38 @@ class WorkspaceInstrumentation : Instrumentation() {
                 ids += store.create("字号测试", Workspace.ROOT, DocumentKind.Plain, "午后，阳光落在窗边。\n\n这样的日子适合慢慢写字。😀")
                 ids += store.create("排版字号", Workspace.ROOT, DocumentKind.Markdown, "# 标题\n\n正文段落\n\n## 次级标题")
             } }
-            main { model.reload() }; ready(); main { model.open(ids[0]) }; ready(); menu()
+            main { model.reload() }; ready(); main { model.open(ids[0]) }; ready()
+            main { model.preferences(editorTextSize = EditorTextSize.Medium) }; ready(); menu()
             equalWidths(listOf("正文大小: 小", "正文大小: 中", "正文大小: 大"))
-            click("正文大小: 小"); ready()
+            val actionLabels = listOf("详细信息", "重命名", "导出 .txt 副本", "删除")
+            val actionBounds = actionLabels.map(::bounds)
+            val ioLock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+            val beforePreference = checkNotNull(uiAutomation.takeScreenshot())
+            runBlocking { ioLock.lock() }
+            try {
+                click("正文大小: 小")
+                verify(main { model.ui.busy && model.ui.savingPreferences }, "Delayed text-size write exercises the real preferences gate")
+                val duringPreference = checkNotNull(uiAutomation.takeScreenshot())
+                try {
+                    verify(actionBounds.all { rect ->
+                        val before = android.graphics.Bitmap.createBitmap(beforePreference, rect.left, rect.top, rect.width(), rect.height())
+                        val during = android.graphics.Bitmap.createBitmap(duringPreference, rect.left, rect.top, rect.width(), rect.height())
+                        try { before.sameAs(during) } finally { before.recycle(); during.recycle() }
+                    }, "Pending text-size persistence keeps unrelated menu text pixels unchanged")
+                } finally { duringPreference.recycle() }
+                verify(actionLabels.all { label ->
+                    var node: AccessibilityNodeInfo? = find(label)
+                    var enabled = true
+                    while (node != null) { enabled = enabled && node.isEnabled; node = node.parent }
+                    enabled
+                }, "Pending text-size persistence keeps menu appearance enabled")
+                click("重命名")
+                verify(nodes().any { it.text?.toString() == "正文大小" }, "Pending preferences still gate menu actions without closing the menu")
+            } finally { ioLock.unlock(); beforePreference.recycle() }
+            ready()
+            screenshot("text-size-pending-complete")
+            verify(main { model.ui.workspace?.editorTextSize == EditorTextSize.Small } && nodes().any { it.text?.toString() == "正文大小" },
+                "Preference completion retains the selected size and open menu")
             val smallBox = bounds("正文大小: 小")
             val largeBox = bounds("正文大小: 大")
             val density = targetContext.resources.displayMetrics.density
@@ -211,17 +240,25 @@ class WorkspaceInstrumentation : Instrumentation() {
             val highlightColor = baseline.getPixel(smallBox.centerX(), sampleY)
             baseline.recycle()
             shell("settings put global animator_duration_scale 5")
+            SystemClock.sleep(300)
             var largeAction = find("正文大小: 大")
             while (!largeAction.isClickable) largeAction = checkNotNull(largeAction.parent)
             check(largeAction.performAction(AccessibilityNodeInfo.ACTION_CLICK))
             waitFor("large size committed") { main { model.ui.workspace?.editorTextSize == EditorTextSize.Large } }
-            SystemClock.sleep(300)
-            val middle = checkNotNull(uiAutomation.takeScreenshot())
-            val matching = (smallBox.left + 4 until largeBox.right - 4).filter { middle.getPixel(it, sampleY) == highlightColor }
-            middle.recycle()
-            verify(matching.isNotEmpty() && matching.average() > smallBox.centerX() + smallBox.width() * .1 && matching.average() < largeBox.centerX() - largeBox.width() * .1,
+            var crossedIntermediate = false
+            repeat(6) {
+                val middle = checkNotNull(uiAutomation.takeScreenshot())
+                try {
+                    val matching = (smallBox.left + 4 until largeBox.right - 4).filter { middle.getPixel(it, sampleY) == highlightColor }
+                    if (matching.isNotEmpty() && matching.average() > smallBox.centerX() + smallBox.width() * .1 && matching.average() < largeBox.centerX() - largeBox.width() * .1) {
+                        crossedIntermediate = true
+                        File(targetContext.cacheDir, "workspace-test-text-size-slide-mid.png").outputStream().use { middle.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                    }
+                } finally { middle.recycle() }
+                SystemClock.sleep(70)
+            }
+            verify(crossedIntermediate,
                 "Single highlight visibly crosses intermediate positions from small directly to large")
-            screenshot("text-size-slide-mid")
             SystemClock.sleep(1500); screenshot("text-size-slide-end")
             shell("settings put global animator_duration_scale 0")
             click("正文大小: 中"); ready()

@@ -49,6 +49,8 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     val scale = textSize.sp / 18f
     val bodyStyle = EditorStyle.copy(fontSize = textSize.sp.sp, lineHeight = (33 * scale).sp)
     val editable = !ui.busy && !ui.transitioning && !ui.storageBlocked && ui.page == Page.Editor
+    // Preference I/O still gates actions, but must not flash disabled text or icons.
+    val controlsEnabled = (!ui.busy || ui.savingPreferences) && !ui.transitioning && !ui.storageBlocked && ui.page == Page.Editor
     var more by remember { mutableStateOf(false) }
     val source = field.text.toString()
     val input = remember(model) { InputTransformation {
@@ -66,19 +68,19 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         } catch (e: WorkspaceException) { revertAllChanges(); model.inputRejected(e.reason) }
     } }
     Column(Modifier.fillMaxSize()) {
-        PageBar(entry.name, model::back, onTitleClick = { onAction("rename") }, titleEnabled = editable) {
-            Tool(R.drawable.ic_undo_2, stringResource(R.string.undo), enabled = editable && model.canUndo, onClick = { model.undo() })
-            Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = editable && model.canRedo, onClick = { model.undo(true) })
+        PageBar(entry.name, model::back, onTitleClick = { if (editable) onAction("rename") }, titleEnabled = controlsEnabled) {
+            Tool(R.drawable.ic_undo_2, stringResource(R.string.undo), enabled = controlsEnabled && model.canUndo, onClick = { model.undo() })
+            Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = controlsEnabled && model.canRedo, onClick = { model.undo(true) })
             Box {
-                Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = editable, onClick = { more = !more })
+                Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = controlsEnabled, onClick = { if (editable) more = !more })
                 DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 260.dp, max = 300.dp)) {
-                    EditorTextSizePicker(textSize, enabled = editable) { model.preferences(editorTextSize = it) }
+                    EditorTextSizePicker(textSize, enabled = controlsEnabled) { if (editable) model.preferences(editorTextSize = it) }
                     HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
-                    DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = editable, onClick = { more = false; onAction("info") })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = editable, onClick = { more = false; onAction("rename") })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.export_copy)) }, leadingIcon = { Glyph(R.drawable.ic_download) }, enabled = editable, onClick = { more = false; onExport() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("info") } })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("rename") } })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.export_copy)) }, leadingIcon = { Glyph(R.drawable.ic_download) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onExport() } })
                     HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
-                    DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = colors.error) }, leadingIcon = { Glyph(R.drawable.ic_trash_2, tint = colors.error) }, enabled = editable, onClick = { more = false; onAction("delete") })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = colors.error) }, leadingIcon = { Glyph(R.drawable.ic_trash_2, tint = colors.error) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("delete") } })
                 }
             }
         }
@@ -92,7 +94,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
                     }
                     Row {
                         listOf(false to R.string.source_view, true to R.string.typeset_view).forEach { (typeset, label) ->
-                            TextButton(onClick = { model.typeset(typeset) }, enabled = editable, shape = RoundedCornerShape(11.dp)) { Text(stringResource(label), style = MaterialTheme.typography.labelMedium) }
+                            TextButton(onClick = { model.typeset(typeset) }, enabled = controlsEnabled, shape = RoundedCornerShape(11.dp)) { Text(stringResource(label), style = MaterialTheme.typography.labelMedium) }
                         }
                     }
                 }
