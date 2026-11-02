@@ -37,6 +37,8 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyBackupVisual = false
     private var onlyFiles = false
     private var onlyExportDialog = false
+    private var onlyLocalization = false
+    private var localizationRestartPhase: String? = null
     private var onlyTrash = false
     private var trashRestartPhase: String? = null
     private var currentActivity: Activity? = null
@@ -55,6 +57,8 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyBackupVisual = arguments?.getString("case") == "backup-visual"
         onlyFiles = arguments?.getString("case") == "files"
         onlyExportDialog = arguments?.getString("case") == "export-dialog"
+        onlyLocalization = arguments?.getString("case") == "localization"
+        localizationRestartPhase = arguments?.getString("case")?.takeIf { it == "localization-restart-seed" || it == "localization-restart-verify" }
         onlyTrash = arguments?.getString("case") == "trash"
         trashRestartPhase = arguments?.getString("case")?.takeIf { it == "trash-restart-seed" || it == "trash-restart-verify" }
         start()
@@ -62,9 +66,19 @@ class WorkspaceInstrumentation : Instrumentation() {
     override fun onStart() {
         try {
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            waitFor("language bootstrap and first workspace frame") {
+                val label = main { currentActivity?.getString(R.string.recent) }
+                label != null && nodes().any { it.text?.toString() == label }
+            }
             model = (targetContext.applicationContext as MakudonApplication).workspace
             ready()
-            when { trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            val originalLanguage = main { androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags() }
+            if (!onlyLocalization && localizationRestartPhase == null) {
+                main { model.changeLanguage("zh-Hans") }; ready()
+                waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
+            }
+            when { localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
             screenshot("failure")
@@ -149,6 +163,10 @@ class WorkspaceInstrumentation : Instrumentation() {
         waitFor("context menu") { nodes().any { it.text?.toString() == "重命名" } }
         find(label)
     }
+    private fun fileResult(): String? = main {
+        val state = model.files.ui
+        state.message?.let { if (state.messageArgument == null) model.languages.context().getString(it) else model.languages.context().getString(it, state.messageArgument) }
+    }
     private fun screenshot(name: String) { uiAutomation.takeScreenshot()?.let { bitmap -> File(targetContext.cacheDir, "workspace-test-$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle() } }
     private fun saved(timeoutMs: Long = 12_000) = waitFor("current revision saved", timeoutMs) { main { model.save?.status?.value?.phase == SavePhase.Saved && model.save?.latest == model.textState?.text?.toString() } }
     private fun workspaceDirectory(): File {
@@ -158,6 +176,135 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+
+    private fun localizationTest() {
+        val original = main { androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags() }
+        val previousFont = shell("settings get system font_scale")
+        val previousSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val ids = mutableListOf<String>()
+        fun setLocale(tag: String) {
+            val old = currentActivity
+            val changed = main { androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags() != tag }
+            main { androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(androidx.core.os.LocaleListCompat.forLanguageTags(tag)) }
+            waitFor("language configuration $tag") { main {
+                androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags() == tag && (!changed || old !== currentActivity)
+            } }
+            SystemClock.sleep(700); ready()
+        }
+        try {
+            @Suppress("DEPRECATION")
+            val startup = targetContext.packageManager.getProviderInfo(android.content.ComponentName(targetContext.packageName, "androidx.startup.InitializationProvider"), android.content.pm.PackageManager.GET_META_DATA)
+            verify(targetContext.classLoader.loadClass(startup.name) != null && startup.metaData?.containsKey("androidx.emoji2.text.EmojiCompatInitializer") != true, "Runtime startup provider exists without automatic downloadable emoji initialization")
+            setLocale("en")
+            main { model.go(Page.Settings) }; ready()
+            verify(nodes().any { it.text?.toString() == "Settings" } && nodes().any { it.text?.toString() == "Language" }, "English settings resolve in the actual Activity")
+            val previousModel = main { (targetContext.applicationContext as MakudonApplication).workspace }
+            click("Language"); click("简体中文")
+            waitFor("Chinese picker choice") { main { model.languages.selected == "zh-Hans" } }; SystemClock.sleep(700); ready()
+            verify(nodes().any { it.text?.toString() == "设置" } && previousModel === main { (targetContext.applicationContext as MakudonApplication).workspace }, "Native-language picker recreates UI and retains the single workspace owner")
+            screenshot("locale-settings-zh")
+            click("语言"); click("English"); SystemClock.sleep(700); ready()
+            verify(main { model.languages.selected == "en" && model.ui.page == Page.Settings }, "Picker preserves the current page across recreation")
+            screenshot("locale-settings-en")
+            val english = main { model.languages.context().resources }
+            verify(english.getQuantityString(R.plurals.selected_count, 0, 0) == "0 items selected" && english.getQuantityString(R.plurals.selected_count, 1, 1) == "1 item selected" && english.getQuantityString(R.plurals.selected_count, 2, 2) == "2 items selected", "English zero, singular and plural forms carry their counts")
+            main { model.go(Page.Recent) }; ready(); main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Plain) }; ready()
+            val id = main { checkNotNull(model.ui.activeId) }; ids += id
+            verify(main { checkNotNull(model.ui.workspace).entry(id)?.name == "Untitled document" }, "New English default name is chosen at creation")
+            val field = main { checkNotNull(model.textState) }
+            val input = "# Existing 中文 name and 😀 body\n\nPending input survives locale recreation."
+            val oldActivity = currentActivity
+            main {
+                field.edit { replace(0, length, input) }
+                androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(androidx.core.os.LocaleListCompat.forLanguageTags("zh-Hans"))
+            }
+            waitFor("editor locale recreation") { currentActivity !== oldActivity }; ready(); saved()
+            verify(main { model.textState === field && field.text.toString() == input && model.ui.activeId == id }, "External language change retains the same editor field, buffer and active document")
+            verify(source(id, DocumentKind.Plain) == input && main { checkNotNull(model.ui.workspace).entry(id)?.name == "Untitled document" }, "Pending input is saved without translating existing names or bodies")
+            click("Untitled document"); setText("名称", "Pending rename 中文")
+            setLocale("en")
+            verify(nodes().any { it.text?.toString() == "Pending rename 中文" } && nodes().any { it.text?.toString() == "Rename" }, "Unsubmitted rename text and dialog survive an external locale change")
+            click("Cancel")
+            main { model.copy(id, false) }; ready(); main { model.paste(Workspace.ROOT) }; ready()
+            val copied = main { checkNotNull(model.ui.workspace).entries.single { it.name == "Untitled document (copy)" } }; ids += copied.id
+            verify(source(copied.id, copied.kind) == input && copied.id != id, "Android naming resources preserve the copy suffix space and independent body")
+            main { model.back() }; ready(); main { model.go(Page.Settings) }; ready()
+            main { model.files.text("既有名称.txt", "independent fixed export") }
+            waitFor("fixed export prepared") { main { !model.files.ui.busy && model.files.ui.export != null } }
+            val export = main { checkNotNull(model.files.ui.export) }
+            main { model.files.saveTo(android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/export")) }
+            waitFor("export result") { main { !model.files.ui.busy && model.files.ui.message != null } }
+            setLocale("zh-Hans")
+            verify(main { model.files.ui.export === export && export.name == "既有名称.txt" } && export.file.readText() == "independent fixed export", "A prepared export retains its identity, original name and bytes after changing language")
+            verify(nodes().any { it.text?.toString() == "已写入所选位置。" }, "An existing export result is resolved again in the new language")
+            main { model.files.close() }
+            setLocale("en")
+            main { model.backup.prepareExport() }
+            waitFor("ZIP prepared") { main { !model.backup.ui.busy && model.backup.ui.exportReady } }
+            val zipName = main { model.backup.pendingExportName }
+            setLocale("zh-Hans")
+            verify(zipName.startsWith("Makudon-backup-") && main { model.backup.pendingExportName == zipName }, "ZIP retry uses the operation's original language and filename")
+            main { model.backup.cancel() }; waitFor("ZIP stage released") { main { !model.backup.locked } }
+            val before = main { checkNotNull(model.ui.workspace).entries.map { it.id }.toSet() }
+            main { currentActivity!!.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse("content://io.github.xrisium.makudon.debug.test.fixtures/markdown"), "text/markdown").setClass(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
+            waitFor("VIEW import") { main { model.ui.page == Page.Editor && model.ui.activeId !in before } }; ready()
+            val imported = main { checkNotNull(model.ui.activeId) }; ids += imported
+            setLocale("en")
+            verify(main { checkNotNull(model.ui.workspace).entries.count { it.id !in before } == 1 && model.ui.activeId == imported }, "Activity recreation does not replay an external VIEW import")
+            main { model.back() }; ready(); main { model.go(Page.Settings) }; ready()
+            shell("wm size 840x1890"); shell("settings put system font_scale 2.0"); SystemClock.sleep(900); ready()
+            verify(nodes().any { it.text?.toString() == "Language" }, "Language entry stays reachable at 320dp and 200% font size")
+            click("Language")
+            verify(nodes().any { it.text?.toString() == "English" } && nodes().any { it.text?.toString() == "简体中文" }, "Both self-names remain available in the enlarged picker")
+            screenshot("locale-picker-large-en"); click("Close")
+            shell(if (previousFont == "null") "settings delete system font_scale" else "settings put system font_scale $previousFont")
+            shell(if (previousSize == null) "wm size reset" else "wm size $previousSize")
+            setLocale("en-XA"); screenshot("locale-pseudo-expanded")
+            verify(main { currentActivity!!.resources.getString(R.string.settings) != "Settings" }, "Debug expanded pseudolocale is generated")
+            setLocale("ar-XB"); screenshot("locale-pseudo-rtl")
+            verify(main { currentActivity!!.resources.configuration.layoutDirection == android.view.View.LAYOUT_DIRECTION_RTL }, "Debug RTL pseudolocale exercises layout direction")
+            setLocale("en")
+            click("Language"); click("System default"); SystemClock.sleep(700); ready()
+            verify(main { androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().isEmpty && model.languages.selected.isEmpty() }, "System default clears the explicit platform preference")
+            val unsupported = targetContext.createConfigurationContext(android.content.res.Configuration(targetContext.resources.configuration).apply { setLocale(java.util.Locale.FRENCH) })
+            verify(unsupported.getString(R.string.settings) == "Settings", "Unsupported language has a complete English resource fallback")
+        } finally {
+            shell(if (previousFont == "null") "settings delete system font_scale" else "settings put system font_scale $previousFont")
+            shell(if (previousSize == null) "wm size reset" else "wm size $previousSize")
+            main { model.files.close(); model.backup.cancel() }; SystemClock.sleep(400); ready()
+            main { model.go(Page.Directory) }; ready()
+            ids.forEach { id -> if (main { model.ui.workspace?.entry(id) != null }) { main { model.delete(id) }; ready() } }
+            val discarded = main { model.trashInventory.nodes.filter { it.entry.id in ids }.map { it.id } }
+            if (discarded.isNotEmpty()) { main { model.purgeTrash(discarded) }; ready() }
+            setLocale(original)
+        }
+    }
+
+    private fun localizationRestartTest(phase: String) {
+        val fixture = File(targetContext.cacheDir, "localization-restart.txt")
+        if (phase == "localization-restart-seed") {
+            val previous = main { androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags() }
+            main { model.changeLanguage("en") }; SystemClock.sleep(700); ready()
+            main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Plain) }; ready()
+            val id = main { checkNotNull(model.ui.activeId) }
+            main { model.textState!!.edit { replace(0, length, "locale restart 中文 😀") } }; saved()
+            fixture.writeText("$id\n$previous")
+            verify(main { model.languages.selected == "en" }, "Seed explicit English platform preference before a cold restart")
+            verify(source(id, DocumentKind.Plain) == "locale restart 中文 😀", "Seed complete synthetic document before a cold restart")
+        } else {
+            val values = fixture.readText().split('\n')
+            val id = values[0]
+            waitFor("cold English workspace rendered") { main { model.languages.selected == "en" } && nodes().any { it.text?.toString() == "Recent" } }
+            verify(main { model.languages.selected == "en" } && nodes().any { it.text?.toString() == "Recent" }, "Cold process restores explicit English without overriding it from app storage")
+            verify(source(id, DocumentKind.Plain) == "locale restart 中文 😀", "Cold language initialization preserves committed document bytes")
+            main { model.delete(id) }; ready()
+            val removed = main { model.trashInventory.nodes.filter { it.entry.id == id }.map { it.id } }
+            if (removed.isNotEmpty()) { main { model.purgeTrash(removed) }; ready() }
+            runBlocking { withContext(Dispatchers.Main) { model.languages.change(values.getOrElse(1) { "" }) } }
+            fixture.delete()
+        }
+    }
+
     private fun trashRestartTest(phase: String) {
         val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
         fun <T> disk(action: () -> T): T = runBlocking { withContext(Dispatchers.IO) { lock.withLock { action() } } }
@@ -255,7 +402,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("恢复"); ready()
             verify(main { model.ui.workspace?.entry(ids[4]) != null && model.trashPreview == null }, "Preview restore returns draft to original root")
             val restored = main { checkNotNull(model.trashRestored) }
-            val restoredText = targetContext.getString(R.string.trash_restored_item, restored.entries.single().name, restored.locations.single())
+            val restoredText = model.languages.context().getString(R.string.trash_restored_item, restored.entries.single().name, restored.locations.single())
             val restoredBounds = Rect(); find(restoredText).getBoundsInScreen(restoredBounds)
             val restoredShot = checkNotNull(uiAutomation.takeScreenshot())
             val inset = (24 * targetContext.resources.displayMetrics.density).toInt()
@@ -329,11 +476,11 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { files.text("弹窗测试.txt", "export dialog test") }; prepared()
             verify(visibleText("弹窗测试.txt") && visibleText("保存到下载目录") && visibleText("通过其他应用分享") && visibleText("选择保存位置") && nodes().none { it.text?.toString()?.startsWith("这是开始导出时的副本") == true || it.text?.toString()?.startsWith("通过保存至云空间分享") == true }, "Initial export shows only the filename and requested actions")
             main { files.saveTo(destination) }; prepared()
-            verify(visibleText(targetContext.getString(R.string.file_saved_location)) && !visibleText("弹窗测试.txt"), "Chosen location result replaces the filename")
+            verify(visibleText(model.languages.context().getString(R.string.file_saved_location)) && !visibleText("弹窗测试.txt"), "Chosen location result replaces the filename")
             main { files.share(null) { } }; prepared()
-            verify(visibleText("弹窗测试.txt") && !visibleText(targetContext.getString(R.string.file_saved_location)), "Share returns to filename without claiming a save")
+            verify(visibleText("弹窗测试.txt") && !visibleText(model.languages.context().getString(R.string.file_saved_location)), "Share returns to filename without claiming a save")
             main { files.download() }; prepared()
-            val saved = main { files.ui.message }
+            val saved = fileResult()
             verify(saved != null && visibleText(saved) && !visibleText("弹窗测试.txt"), "Downloads result replaces the filename")
             val name = saved!!.substringAfterLast('/')
             val downloads = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
@@ -417,7 +564,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { files.ui.export == snapshot && files.ui.visible }, "Cancelled save retains the same export session")
             main { files.saveTo(uri("export")) }; prepared()
             verify(resolver.openInputStream(uri("export"))!!.bufferedReader().use { it.readText() } == "captured before edits 😀", "Retry writes original snapshot bytes")
-            verify(main { files.ui.message == targetContext.getString(R.string.file_saved_location) } && nodes().none { it.text?.toString() == snapshot.name }, "Direct write replaces the filename with the save result")
+            verify(main { files.ui.message == R.string.file_saved_location } && nodes().none { it.text?.toString() == snapshot.name }, "Direct write replaces the filename with the save result")
             screenshot("files-export-options")
             val share = access.shareIntent(targetContext, snapshot)
             val sharedUri = share.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)!!
@@ -444,11 +591,11 @@ class WorkspaceInstrumentation : Instrumentation() {
                 else verify(try { resolver.openInputStream(uri(failure))?.close(); false } catch (_: java.io.FileNotFoundException) { true }, "Failed publication removes pending download")
             }
             main { files.text("同名验收.txt", "download one") }; prepared(); main { files.download() }; prepared()
-            val savedOne = main { files.ui.message }
+            val savedOne = fileResult()
             verify(savedOne?.startsWith("已保存到 Download/Makudon/") == true && nodes().none { it.text?.toString() == "同名验收.txt" }, "Downloads save result replaces the filename")
             val firstName = savedOne!!.substringAfterLast('/')
             main { files.close(); files.text("同名验收.txt", "download two") }; prepared(); main { files.download() }; prepared()
-            val secondName = main { files.ui.message!!.substringAfterLast('/') }
+            val secondName = main { checkNotNull(files.ui.messageArgument) }
             verify(firstName != secondName, "Repeated Downloads filename creates independent file rather than overwrite")
             val downloads = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
             resolver.query(downloads, arrayOf("_id", "_display_name"), "_display_name IN (?,?)", arrayOf(firstName, secondName), null)!!.use { cursor ->
@@ -528,7 +675,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.backup.read(sourceUri) }; readyBackup()
             verify(main { model.backup.ui.mode == RestoreMode.Separate }, "Separate is the default restore mode")
             if (mode != RestoreMode.Separate) {
-                val label = targetContext.getString(restoreModeLabel(mode)); reveal(label); click(label)
+                val label = model.languages.context().getString(restoreModeLabel(mode)); reveal(label); click(label)
             }
             reveal("预览恢复结果"); click("预览恢复结果"); readyBackup()
         }
@@ -551,7 +698,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             val radioLabels = nodes().filter { it.text?.toString() in listOf("单独保存", "增量更新", "完全覆盖") }.map { it.text.toString() }
             verify(radioLabels.take(2) == listOf("单独保存", "增量更新"), "Restore modes start with Separate then Incremental")
             verify(main { model.backup.ui.inventory?.documents == 2 && model.backup.ui.inventory?.skipped == listOf("附件.png") }, "Computer ZIP without manifest validates and lists unsupported files")
-            find(targetContext.getString(R.string.backup_separate_description))
+            find(model.languages.context().getString(R.string.backup_separate_description))
             currentActivity?.let { activity -> main { activity.recreate() } }; ready()
             verify(main { model.backup.ui.inventory != null && model.backup.ui.mode == RestoreMode.Separate }, "Activity recreation preserves the disk-backed restore preview")
             reveal("预览恢复结果"); click("预览恢复结果"); readyBackup()
@@ -580,7 +727,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.backups() }; readyBackup()
             selectArchive(RestoreMode.Replace)
             reveal("确认恢复方式"); click("确认恢复方式")
-            find(targetContext.getString(R.string.backup_replace_description))
+            find(model.languages.context().getString(R.string.backup_replace_description))
             verify(nodes().any { it.text?.toString()?.startsWith("本次将移除并替换") == true }, "Full replacement repeats the destructive warning and local document count")
             click("取消")
             verify(main { model.ui.workspace?.entry(synthetic[1]) != null }, "Cancel replacement confirmation leaves the current library intact")
@@ -974,8 +1121,8 @@ class WorkspaceInstrumentation : Instrumentation() {
         val oldScale = shell("settings get global animator_duration_scale")
         val display = targetContext.resources.displayMetrics
         val density = display.density
-        val licenses = targetContext.getString(R.string.licenses)
-        val paper = targetContext.getString(R.string.theme_paper)
+        val licenses = model.languages.context().getString(R.string.licenses)
+        val paper = model.languages.context().getString(R.string.theme_paper)
         fun enabled(label: String): Boolean {
             var node: AccessibilityNodeInfo? = find(label)
             while (node != null) {
@@ -1071,9 +1218,9 @@ class WorkspaceInstrumentation : Instrumentation() {
         val oldTheme = main { checkNotNull(model.ui.workspace).theme }
         val oldScale = shell("settings get global animator_duration_scale")
         val density = targetContext.resources.displayMetrics.density
-        val paper = targetContext.getString(R.string.theme_paper)
-        val cream = targetContext.getString(R.string.theme_cream)
-        val licenses = targetContext.getString(R.string.licenses)
+        val paper = model.languages.context().getString(R.string.theme_paper)
+        val cream = model.languages.context().getString(R.string.theme_cream)
+        val licenses = model.languages.context().getString(R.string.licenses)
         val catalog = File(workspaceDirectory(), "catalog.properties")
         // Hold the real disk gate to make even a slow preferences write observable.
         // This reproduces the disabled-color flash independently of device speed.

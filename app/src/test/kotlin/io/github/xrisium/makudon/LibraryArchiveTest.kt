@@ -71,7 +71,7 @@ class LibraryArchiveTest {
         val id = lib.store.create("同名", Workspace.ROOT, DocumentKind.Plain, "正文")
         val plan = LibraryArchive.exportPlan(lib.store.refresh())
         assertEquals(1, plan.renames.size)
-        assertEquals("同名（副本）.txt", plan.items.single { it.entry.id == id }.path)
+        assertEquals("同名 (1).txt", plan.items.single { it.entry.id == id }.path)
         LibraryArchive.write(temp.newFile(), plan, lib.store::read)
         assertEquals("同名", lib.store.refresh().entry(id)?.name)
     }
@@ -93,7 +93,7 @@ class LibraryArchiveTest {
             assertEquals("保留", lib.store.read(localOnly))
             assertEquals("相同正文", lib.store.read(same))
             assertEquals(if (choice == ConflictChoice.Backup) "备份" else "本地", lib.store.read(conflict))
-            val copies = lib.store.refresh().entries.filter { it.name.startsWith("冲突（恢复副本") }
+            val copies = lib.store.refresh().entries.filter { it.name.startsWith("冲突 (") }
             assertEquals(if (choice == ConflictChoice.Both) 1 else 0, copies.size)
             copies.firstOrNull()?.let { assertEquals("备份", lib.store.read(it.id)); assertNotEquals(conflict, it.id) }
             assertTrue(lib.store.refresh().entries.any { it.name == "新增" && it.parent == folder })

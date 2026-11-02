@@ -78,7 +78,7 @@ class WorkspaceStoreTest {
         val a = store.create("记事", Workspace.ROOT, DocumentKind.Plain, "中文 👩🏽‍💻\n\n无末尾换行")
         val b = store.create("记事", Workspace.ROOT, DocumentKind.Plain, "独立内容")
         assertNotEquals(a, b)
-        assertEquals("记事（副本）", store.refresh().entry(b)?.name)
+        assertEquals("记事 (1)", store.refresh().entry(b)?.name)
         store.save(a, "")
         val reopened = store(dir)
         assertEquals("", reopened.read(a)); assertEquals("独立内容", reopened.read(b))
@@ -117,7 +117,7 @@ class WorkspaceStoreTest {
         val snapshot = store.capture(folder)
         store.save(doc, "复制之后的修改")
         store.paste(snapshot, Workspace.ROOT)
-        val copiedFolder = store.refresh().entries.single { it.name == "原目录（副本）" }
+        val copiedFolder = store.refresh().entries.single { it.name == "原目录 (1)" }
         val copiedChild = store.refresh().entries.single { it.parent == copiedFolder.id }
         val copiedDoc = store.refresh().entries.single { it.parent == copiedChild.id }
         assertNotEquals(child, copiedChild.id); assertNotEquals(doc, copiedDoc.id)

@@ -29,11 +29,11 @@ class BatchWorkspaceStoreTest {
         store.pasteAll(snapshot, Workspace.ROOT)
         assertEquals(before + 1, publications)
         val copies = store.refresh().entries.filter { it.parent == Workspace.ROOT && it.id !in setOf(a, b) }
-        assertEquals(setOf("甲（副本）", "稿"), copies.map { it.name }.toSet())
+        assertEquals(setOf("甲 (1)", "稿"), copies.map { it.name }.toSet())
         val flat = store.captureAll(listOf(one, two))
         store.pasteAll(flat, Workspace.ROOT)
         val docs = store.refresh().entries.filter { !it.folder && it.parent == Workspace.ROOT }
-        assertEquals(setOf("稿", "稿（副本）", "稿（副本 2）"), docs.map { it.name }.toSet())
+        assertEquals(setOf("稿", "稿 (1)", "稿 (2)"), docs.map { it.name }.toSet())
         assertEquals("第一篇 👩🏽‍💻", store.read(one))
         store.deleteAll(listOf(a, b))
         store.pasteAll(flat, Workspace.ROOT)
