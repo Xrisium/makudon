@@ -19,6 +19,7 @@ android {
 
     buildTypes {
         debug {
+            isPseudoLocalesEnabled = true
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-dev"
         }
@@ -28,6 +29,8 @@ android {
     }
 
     buildFeatures { compose = true }
+    // Every supported language must be available for offline, in-app switching.
+    bundle { language { enableSplit = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -48,6 +51,7 @@ kotlin {
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.lifecycle.viewmodel)
