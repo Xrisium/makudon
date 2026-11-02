@@ -110,8 +110,8 @@
   <string name="location">位置：%1$s</string>
   <string name="new_location">新建位置</string>
   <string name="type_unchanged">文件类型保持不变</string>
-  <string name="info_details">%1$s\n\n类型：%2$s\n位置：%3$s\nUTF-8 大小：%4$d 字节</string>
-  <string name="folder_details">%1$s\n\n位置：%2$s\n直接包含 %3$d 个子项</string>
+  <string name="info_details">%1$s\n\n类型：%2$s\n位置：%3$s\nUTF-8 大小：%4$d 字节\n创建时间：%5$s\n最近修改时间：%6$s</string>
+  <string name="folder_details">%1$s\n\n位置：%2$s\n直接包含 %3$d 个子项\n总磁盘大小：%4$s\n创建时间：%5$s\n最近修改时间：%6$s</string>
   <string name="folder">文件夹</string>
   <string name="source_view">源码</string>
   <string name="typeset_view">排版</string>

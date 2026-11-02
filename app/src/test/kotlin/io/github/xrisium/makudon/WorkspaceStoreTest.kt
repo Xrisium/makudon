@@ -137,6 +137,42 @@ class WorkspaceStoreTest {
         assertEquals("应保留", next.read(peer))
         assertFalse(File(dir, "documents/$doc").exists())
     }
+    @Test fun folderDetailsIncludeNestedDiskMaterialAndLatestDescendantTime() {
+        val dir = temp.newFolder(); val store = store(dir)
+        val folder = store.create("父目录", Workspace.ROOT, DocumentKind.Folder)
+        val nested = store.create("子目录", folder, DocumentKind.Folder)
+        val empty = store.create("空目录", nested, DocumentKind.Folder)
+        val first = store.create("第一篇", folder, DocumentKind.Plain, "中😀")
+        val second = store.create("第二篇", nested, DocumentKind.Markdown, "# 正文")
+        val peer = store.create("外部", Workspace.ROOT, DocumentKind.Plain, "不计入")
+        val pending = File(dir, "documents/$second/body.md.new").apply { writeBytes(ByteArray(37)) }
+        val legacy = File(dir, "documents/$first/previous.txt").apply { writeText("旧材料") }
+        File(dir, "recovery/legacy").apply { mkdirs(); resolve("body.txt").writeText("不计入") }
+        val latest = System.currentTimeMillis() + 60_000
+        assertTrue(File(dir, "documents/$second/body.md").setLastModified(latest))
+        val refreshed = store.refresh()
+        val bodySize = TextRules.bytes("中😀").size.toLong() + TextRules.bytes("# 正文").size
+        assertEquals(bodySize + pending.length() + legacy.length(), store.diskBytes(folder))
+        assertEquals(0L, store.diskBytes(empty))
+        assertEquals(latest, refreshed.entry(folder)?.modified)
+        assertEquals(latest, refreshed.entry(nested)?.modified)
+        assertEquals(refreshed.entry(empty)?.created, refreshed.entry(empty)?.modified)
+        val created = refreshed.entry(first)?.created
+        store.save(first, "更长的正文😀")
+        val reopened = store(dir)
+        assertEquals(created, reopened.refresh().entry(first)?.created)
+        assertEquals(store.diskBytes(folder), reopened.diskBytes(folder))
+        reopened.move(second, Workspace.ROOT)
+        assertEquals(TextRules.bytes("更长的正文😀").size + legacy.length(), reopened.diskBytes(folder))
+        assertEquals("不计入", reopened.read(peer))
+    }
+    @Test fun diskDetailsFailForMissingMaterialInsteadOfReportingZero() {
+        val dir = temp.newFolder(); val store = store(dir)
+        val id = store.create("测试", Workspace.ROOT, DocumentKind.Plain, "正文")
+        File(dir, "documents/$id/body.txt").delete()
+        File(dir, "documents/$id").delete()
+        try { store.diskBytes(id); fail("missing material must fail") } catch (_: IOException) { /* reported to UI */ }
+    }
     @Test fun savesDoNotDependOnOrGenerateDocumentHistory() {
         val dir = temp.newFolder(); val store = store(dir)
         val id = store.create("测试", Workspace.ROOT, DocumentKind.Plain, "初始正文")

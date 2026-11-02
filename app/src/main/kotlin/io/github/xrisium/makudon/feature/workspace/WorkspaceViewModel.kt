@@ -37,6 +37,7 @@ data class WorkspaceUi(
     val newParent: String = Workspace.ROOT,
     val origin: Page = Page.Recent,
     val activeId: String? = null,
+    val infoDiskBytes: Long? = null,
     val typeset: Boolean = true,
     val mainTab: Page = Page.Recent,
     val navigationId: Long = 0,
@@ -343,11 +344,15 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         recordEdit(next); save?.changed(next)
         return true
     }
-    fun inspect(onSuccess: () -> Unit) { launchWork {
-        if (!barrier()) return@launchWork
-        ui = ui.copy(workspace = disk { store.refresh() })
-        onSuccess()
-    } }
+    fun inspect(id: String? = ui.activeId, onSuccess: () -> Unit) {
+        if (id == null) return
+        launchWork {
+            if (!barrier()) return@launchWork
+            val (workspace, bytes) = disk { store.refresh() to store.diskBytes(id) }
+            ui = ui.copy(workspace = workspace, infoDiskBytes = bytes)
+            onSuccess()
+        }
+    }
     fun rename(id: String, name: String, onSuccess: () -> Unit = {}) { launchWork {
         if (!barrier()) return@launchWork
         disk { store.rename(id, name) }

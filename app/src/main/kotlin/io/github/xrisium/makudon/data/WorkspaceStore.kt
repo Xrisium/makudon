@@ -6,7 +6,9 @@ import java.io.FileOutputStream
 import java.io.StringReader
 import java.io.StringWriter
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.Properties
 import java.util.UUID
 
@@ -115,6 +117,20 @@ class WorkspaceStore(
     }
     private fun find(id: String) = state().entry(id) ?: throw WorkspaceException(Failure.Missing)
     private fun parent(id: String) { if (!find(id).folder) throw WorkspaceException(Failure.Missing) }
+    /** Logical folders have no physical directory; sum material files for their reachable documents. */
+    fun diskBytes(id: String): Long {
+        find(id)
+        val descendants = state().descendants(id)
+        return state().entries.filter { it.id in descendants && !it.folder }.sumOf { entry ->
+            Files.walk(nodeDirectory(entry.id).toPath()).use { paths ->
+                paths.mapToLong { path ->
+                    val attributes = Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+                    if (attributes.isSymbolicLink) throw WorkspaceException(Failure.Corrupt)
+                    if (attributes.isRegularFile) attributes.size() else 0L
+                }.sum()
+            }
+        }
+    }
     fun refresh(): Workspace {
         val next = state().copy(entries = state().entries.map { e ->
             if (e.folder) e else try {

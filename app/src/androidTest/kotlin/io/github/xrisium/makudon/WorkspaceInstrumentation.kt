@@ -33,6 +33,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlySelection = false
     private var onlySelectionVisual = false
     private var onlyRecent = false
+    private var onlyDetails = false
     private var onlyBackup = false
     private var onlyBackupVisual = false
     private var onlyFiles = false
@@ -53,6 +54,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlySelection = arguments?.getString("case") == "selection"
         onlySelectionVisual = arguments?.getString("case") == "selection-visual"
         onlyRecent = arguments?.getString("case") == "recent"
+        onlyDetails = arguments?.getString("case") == "details"
         onlyBackup = arguments?.getString("case") == "backup"
         onlyBackupVisual = arguments?.getString("case") == "backup-visual"
         onlyFiles = arguments?.getString("case") == "files"
@@ -77,7 +79,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -876,6 +878,94 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
         }
         ready()
+    }
+
+    private fun detailsTest() {
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        fun <T> disk(block: () -> T): T = runBlocking { withContext(Dispatchers.IO) { lock.withLock { block() } } }
+        val store = currentStore()
+        val suffix = SystemClock.uptimeMillis()
+        var folderName = "信息目录-$suffix"
+        val docName = "信息正文-$suffix"
+        val ids = disk {
+            val folder = store.create(folderName, Workspace.ROOT, DocumentKind.Folder)
+            val nested = store.create("子目录", folder, DocumentKind.Folder)
+            val empty = store.create("空目录", folder, DocumentKind.Folder)
+            val doc = store.create(docName, folder, DocumentKind.Plain, "中😀")
+            store.create("深层文稿", nested, DocumentKind.Markdown, "# 深层正文")
+            listOf(folder, doc, empty)
+        }
+        val oldFont = shell("settings get system font_scale")
+        val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val oldTheme = main { checkNotNull(model.ui.workspace).theme }
+        fun shown(label: String) = nodes().any { it.text?.toString() == label || it.contentDescription?.toString() == label }
+        fun detailText() = nodes().mapNotNull { it.text?.toString() }.first { it.contains("创建时间：") || it.contains("Created:") }
+        fun expectedTime(timestamp: Long) = java.text.SimpleDateFormat("yyyy/MM/dd HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date(timestamp))
+        fun openFolder() { longPress(folderName); click("更多信息"); ready() }
+        try {
+            main { model.reload() }; ready(); main { model.go(Page.Directory) }; ready()
+            openFolder()
+            val entry = main { checkNotNull(model.ui.workspace?.entry(ids[0])) }
+            val expectedBytes = TextRules.bytes("中😀").size.toLong() + TextRules.bytes("# 深层正文").size
+            verify(main { model.ui.infoDiskBytes == expectedBytes } && detailText().contains("总磁盘大小："), "Folder information totals all nested UTF-8 material bytes")
+            verify(detailText().contains("创建时间：${expectedTime(entry.created)}") && detailText().contains("最近修改时间：${expectedTime(entry.modified)}"), "Folder information displays exact creation and recursive modification timestamps")
+            verify(!shown("上一保存版本") && !shown("恢复此版本"), "Folder information contains no document-history action")
+            screenshot("details-folder")
+            main { currentActivity?.recreate() }; ready()
+            verify(shown("更多信息") && detailText().contains(expectedTime(entry.created)), "Information dialog survives Activity recreation with its inspected data")
+            click("关闭")
+            main { model.open(ids[1]) }; ready()
+            click("条目操作")
+            verify(!shown("上一保存版本") && shown("详细信息"), "Editor overflow removes previous-version navigation")
+            click("详细信息"); ready()
+            verify(detailText().contains(docName + ".txt") && !shown("恢复此版本"), "Editor detail panel identifies its document without a history action")
+            screenshot("details-document")
+            click("关闭")
+            setText("编辑正文", "最新输入😀\n第二行")
+            click("条目操作"); click("详细信息"); ready()
+            val doc = main { checkNotNull(model.ui.workspace?.entry(ids[1])) }
+            verify(source(ids[1], DocumentKind.Plain) == "最新输入😀\n第二行" && detailText().contains("UTF-8 大小：${TextRules.bytes("最新输入😀\n第二行").size} 字节"), "Editor information saves and refreshes the latest body before displaying size")
+            verify(detailText().contains("创建时间：${expectedTime(doc.created)}") && detailText().contains("最近修改时间：${expectedTime(doc.modified)}"), "Document timestamps retain creation and refresh modification to the second")
+            click("关闭")
+            val pending = File(workspaceDirectory(), "documents/${ids[1]}/body.txt.new")
+            check(pending.mkdir())
+            try {
+                setText("编辑正文", "保存失败仍保留缓冲")
+                click("条目操作"); click("详细信息"); ready()
+                verify(!shown("详细信息") && main { model.save?.status?.value?.phase == SavePhase.Failed && model.textState?.text?.toString() == "保存失败仍保留缓冲" }, "Failed save prevents opening stale editor information and preserves input")
+            } finally { check(pending.delete()) }
+            main { model.retrySave() }; ready(); saved()
+            main { model.back() }; ready(); main { model.go(Page.Recent) }; ready()
+            longPress(docName); click("更多信息"); ready()
+            verify(detailText().contains(docName + ".txt") && !shown("上一保存版本"), "Recent long-press information uses the same refreshed timestamp panel")
+            click("关闭"); main { model.go(Page.Directory) }; ready()
+            openFolder()
+            verify(main { model.ui.infoDiskBytes == TextRules.bytes("保存失败仍保留缓冲").size.toLong() + TextRules.bytes("# 深层正文").size }, "Reopening folder information recalculates disk size after editing a descendant")
+            click("关闭")
+            main { model.preferences(theme = ColorTheme.Ink) }; ready()
+            openFolder()
+            folderName += "用于验证长名称和窄屏滚动".repeat(5)
+            disk { store.rename(ids[0], folderName) }
+            main { model.reload() }; ready()
+            shell("wm size 840x1890"); shell("settings put system font_scale 2.0")
+            waitFor("320dp and 200% details") { main { currentActivity?.resources?.configuration?.let { it.screenWidthDp <= 320 && it.fontScale >= 1.99f } == true } }
+            ready(); screenshot("details-folder-200")
+            val close = find("关闭"); val bounds = Rect(); close.getBoundsInScreen(bounds)
+            val scrollable = nodes().firstOrNull { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD } }
+            verify(!bounds.isEmpty && bounds.top >= 0 && scrollable?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) == true, "Narrow 200% folder dialog keeps close visible and long information scrollable")
+            SystemClock.sleep(500); screenshot("details-folder-200-scrolled")
+            main { model.changeLanguage("en") }; ready()
+            verify(detailText().contains("Total disk size:") && detailText().contains("Last modified:"), "English information panel includes recursive disk size and timestamps")
+            screenshot("details-folder-en-200"); click("Close")
+        } finally {
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+            ready(); main { model.changeLanguage("zh-Hans") }; ready()
+            main { model.go(Page.Directory) }; ready()
+            disk { store.delete(ids[0]) }
+            main { model.reload() }; ready(); main { model.preferences(theme = oldTheme) }; ready()
+        }
     }
 
     private fun recentTest() {

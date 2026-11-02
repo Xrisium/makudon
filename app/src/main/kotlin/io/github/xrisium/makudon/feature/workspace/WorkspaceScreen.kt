@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
@@ -90,7 +91,8 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                         targetId = item.id
                         when (action) {
                             "select" -> model.startSelection(item.id)
-                            "info", "rename" -> dialog = action
+                            "info" -> model.inspect(item.id) { dialog = "info" }
+                            "rename" -> dialog = action
                             "delete" -> if (model.selection != null) model.requestDelete() else dialog = action
                             "copy" -> if (model.selection != null) model.copySelection(false) else model.copy(item.id, false)
                             "cut" -> if (model.selection != null) model.copySelection(true) else model.copy(item.id, true)
@@ -142,7 +144,15 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
             }, confirmButton = { TextButton(onClick = { model.delete(entry.id); dialog = null }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.delete)) } }, dismissButton = { TextButton(onClick = { dialog = null }, modifier = Modifier.focusRequester(cancelFocus)) { Text(stringResource(R.string.cancel)) } })
         }
         "info", "editor-info" -> if (entry != null && workspace != null) AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if (dialog == "editor-info") R.string.detailed_info else R.string.more_info)) }, text = {
-            Text(if (entry.folder) stringResource(R.string.folder_details, entry.name, displayPath(workspace, entry.id), workspace.entries.count { it.parent == entry.id }) else stringResource(R.string.info_details, entry.filename, stringResource(kindLabel(entry.kind)), displayPath(workspace, entry.parent ?: Workspace.ROOT), entry.bytes))
+            val calendar = rememberRecentCalendar()
+            val created = detailTimestamp(entry.created, calendar.zone)
+            val modified = detailTimestamp(entry.modified, calendar.zone)
+            Text(
+                if (entry.folder) stringResource(R.string.folder_details, entry.name, displayPath(workspace, entry.id), workspace.entries.count { it.parent == entry.id },
+                    android.text.format.Formatter.formatFileSize(LocalContext.current, ui.infoDiskBytes ?: 0L), created, modified)
+                else stringResource(R.string.info_details, entry.filename, stringResource(kindLabel(entry.kind)), displayPath(workspace, entry.parent ?: Workspace.ROOT), entry.bytes, created, modified),
+                Modifier.verticalScroll(rememberScrollState()),
+            )
         }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.close)) } })
     }
 }

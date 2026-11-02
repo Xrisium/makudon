@@ -122,9 +122,9 @@
   <string name="new_location">Create in</string>
   <string name="type_unchanged">File type stays unchanged</string>
   <!-- %1$s: filename; %2$s: localized kind; %3$s: display location; %4$d: exact UTF-8 byte count. -->
-  <string name="info_details">%1$s\n\nType: %2$s\nLocation: %3$s\nSize (UTF-8 bytes): %4$d</string>
+  <string name="info_details">%1$s\n\nType: %2$s\nLocation: %3$s\nSize (UTF-8 bytes): %4$d\nCreated: %5$s\nLast modified: %6$s</string>
   <!-- %1$s: folder name; %2$s: display location; %3$d: direct child count. -->
-  <string name="folder_details">%1$s\n\nLocation: %2$s\nDirect items: %3$d</string>
+  <string name="folder_details">%1$s\n\nLocation: %2$s\nDirect items: %3$d\nTotal disk size: %4$s\nCreated: %5$s\nLast modified: %6$s</string>
   <string name="folder">Folder</string>
   <string name="source_view">Source</string>
   <string name="typeset_view">Formatted</string>
