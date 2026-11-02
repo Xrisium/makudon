@@ -50,6 +50,8 @@ app → 组装 data 实现与 feature
 
 ## 构建与安装身份
 
+本地化使用 AppCompat 应用语言 API，设置独立于文稿库；API 33+ 平台为权威，旧系统由 IO 读写小型原子偏好。AppLanguages 不持有 Activity，工作区在语言启动门控完成后懒创建；正文 / 索引协议不变。语言声明与选择器共用 LocaleConfig，消息显示时解析资源，命名按操作快照传入 domain / data。见 [ADR 0009](adr/0009-android-localization.md)。
+
 - namespace / 正式 applicationId：`io.github.xrisium.makudon`。
 - 开发 applicationId：`io.github.xrisium.makudon.debug`，名称 **Makudon Dev**。
 - 开发包和未来正式包数据隔离，不自动迁移；发布前应再次确认正式包名。

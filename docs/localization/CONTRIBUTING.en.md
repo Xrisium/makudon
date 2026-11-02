@@ -1,16 +1,16 @@
 # Contributing translations to Makudon
 
-Status: localization design, 2026-11-02. The bilingual resource layout and checks below are planned; the app currently keeps its Chinese strings in `app/src/main/res/values/strings.xml`. Do not treat the proposed paths or checks as already implemented. See the [localization design](../specs/0004-localization.md) for the implementation boundaries.
+Status: bilingual resources and validation implemented, 2026-11-02. English and Simplified Chinese include the current recycle bin. See the [implementation task](../tasks/0023-localization.md) and [current status](../status.md) for platform coverage and remaining checks.
 
 Makudon is a local-first Android Markdown and plain-text editor. You can contribute translations through a GitHub pull request. No translation service account is required.
 
 ## Files and language tags
 
-The target layout uses complete English source strings in `app/src/main/res/values/strings.xml` and Simplified Chinese in `app/src/main/res/values-b+zh+Hans/strings.xml`. English is also the resource fallback. Stable Android resource keys identify messages; do not rename them to match a translation.
+The layout uses complete English source strings in `app/src/main/res/values/strings.xml` and Simplified Chinese in `app/src/main/res/values-b+zh+Hans/strings.xml`. English is also the resource fallback. Stable Android resource keys identify messages; do not rename them to match a translation.
 
 New languages use Android resource qualifiers, for example `values-ja` for Japanese or `values-b+zh+Hant` for Traditional Chinese. Use a script or region only where needed. Discuss the language tag and a native-language reviewer in your PR before adding it to the supported-language list. Do not create placeholder directories for languages you are not translating.
 
-The planned `app/src/main/res/xml/locales_config.xml` lists reviewed, supported languages. Maintainers will add a language to it after the translation and UI review pass. Work-in-progress translations can stay in a PR or branch; copying English into every untranslated entry does not make a translation complete.
+`app/src/main/res/xml/locales_config.xml` lists supported languages and drives the picker. Translate `language_native_name` into the language's self-name. Maintainers add a language to the declaration after translation and UI review. Work-in-progress translations can stay in a PR or branch; copying English into every untranslated entry does not make a translation complete.
 
 ## Translation rules
 
@@ -26,7 +26,7 @@ The planned `app/src/main/res/xml/locales_config.xml` lists reviewed, supported 
 
 Machine-assisted drafts are welcome, but identify them and review every message. Critical warnings need a language review, even when automated resource checks pass.
 
-For example, a planned count message can use these resources. The caller passes the same raw count both to select a plural category and to fill `%1$d`; translators may change the word order.
+For example, the selection count uses these resources. The caller passes the same raw count both to select a plural category and to fill `%1$d`; translators may change the word order.
 
 ```xml
 <!-- English, values/strings.xml. %1$d: number of selected top-level items. -->
@@ -43,11 +43,11 @@ For example, a planned count message can use these resources. The caller passes 
 </plurals>
 ```
 
-This example changes the existing string resource into a plural resource, so it also needs a caller change during implementation. For later translation-only PRs, preserve the resource type already established by the source.
+For translation-only PRs, preserve the source resource type. A change from string to plurals also requires a caller change.
 
 ## Initial glossary
 
-These are proposed English terms, to be confirmed during bilingual implementation. Follow the meaning in context rather than translating the Chinese character by character.
+These are the initial bilingual terms. Follow the meaning in context rather than translating the Chinese character by character.
 
 | Chinese | English | Meaning |
 | --- | --- | --- |
@@ -77,7 +77,7 @@ Keep Makudon, Markdown, Android and official library names unchanged. Use the fo
 
 1. State the language, tag, completion level and reviewer. Identify any machine-assisted translation and unresolved terms.
 2. Translate resources, retaining comments and functional grouping. Provide all translatable keys before requesting official language support. Remove obsolete keys; do not duplicate non-translatable entries.
-3. Run the existing project check with JDK 17: `pwsh -NoProfile -File scripts/android.ps1 -Action Check`. On a configured Linux environment, the existing CI uses `bash ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain`. The dedicated resource-consistency check is still planned; its exact command will be added when implemented. If you cannot run a check, say so in the PR.
+3. Run the project check with JDK 17: `pwsh -NoProfile -File scripts/android.ps1 -Action Check`. Linux CI uses `bash ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain`. Resource validation is part of the existing JVM test task, with no extra tool to install. To run it alone on Windows: `./gradlew.bat :app:testDebugUnitTest --tests io.github.xrisium.makudon.LocalizationResourcesTest --console=plain` (Linux: `bash ./gradlew` with the same arguments). If you cannot run a check, say so in the PR.
 4. Review the main tabs, editor, settings, dialogs, file import/export and backup/restore. Include screenshots with synthetic content at normal size and at 320dp width / 200% font size. For RTL languages, also review direction, mixed filenames, navigation gestures and directional icons.
 5. Test zero, one and multiple counts, long names and all critical warnings. Note Android version, locale, 12/24-hour setting and any untested cases. Do not share private manuscripts, real paths or content URIs in screenshots or logs.
 6. Keep unrelated Kotlin, formatting and dependency changes out of translation PRs. Maintainers handle the language declaration and necessary picker changes. A clean build proves resource validity, not linguistic quality; provide the review result too.
@@ -89,3 +89,7 @@ When English source text changes, maintainers will flag affected keys in the PR.
 A new reviewed LTR language should normally need only its resource directory, an entry in the supported-language declaration, its self-name and review evidence. It must not require changing the storage format, translating document content or adding a translation runtime dependency.
 
 Languages needing new plural forms, script-specific fonts or RTL behavior may also require implementation work. Track that work explicitly before claiming full support. Do not mark a language supported solely because its strings compile.
+
+The validator rejects missing, obsolete and duplicate keys, empty values, translated invariants, changed types and printf parameters, and invalid plural branches. It requires `other` for all languages and `one` for English; review all categories needed by any new language. Parameter reordering and different category sets are allowed. Current messages do not use ICU; extend validation before introducing it.
+
+Use the [translation PR template](../../.github/PULL_REQUEST_TEMPLATE/translation.md) to provide context and evidence. All declared languages are bundled for offline switching.

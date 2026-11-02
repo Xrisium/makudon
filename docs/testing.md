@@ -79,6 +79,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
 
 ## 常见问题
 
+本地化专项为 `-e case localization`，覆盖中英文字体自称选择、Activity 重建、编辑 / 重命名缓冲、原生复数、命名快照、导出消息、VIEW 去重及 320dp / 200% 字号和伪语言；临时语言 / 屏幕设置在 finally 恢复。`localization-restart-seed` → 模拟器 force-stop → `localization-restart-verify` 验证冷进程语言和正文恢复，第二阶段恢复原偏好并清理本次合成资料。仅在模拟器执行，见[本轮记录](testing/2026-11-02-localization.md)。资源校验包含在既有 JVM 测试与 Check / CI 中，单独命令见[英文贡献指南](localization/CONTRIBUTING.en.md)。
+
 文件管理适配专项使用 `-e case files`。测试 APK 仅在模拟器安装，包含真实 GET_CONTENT 结果 Activity 和可控的元数据 / 授权 / 下载失败 provider；覆盖应用选择、系统后备、取消、多项拒绝、固定正文 / 名称、Activity 重建、迟到结果、下载发布和同名不覆盖、分享只读授权及暂存生命周期。用例临时设置实际 320dp / 字号 200%，在 finally 恢复。真机仅安装应用 APK 一次，厂商交互结果与范围见 [本轮记录](testing/2026-10-31-file-manager.md)。
 
 ZIP 备份恢复使用 `-e case backup`（27 项），真实 320dp / 200% 字号用 `-e case backup-visual`（2 项）。覆盖标准电脑 ZIP、三种模式、逐项冲突、覆盖确认 / 取消、快照交换、迟到保存、普通重读后继续保存、SAF 导出 / 源不变及保存失败屏障。测试跟随库指针选择当前代际，不再假定权威正文始终在旧 workspace 目录；详见 [ZIP 验收记录](testing/2026-10-27-zip-backup.md)。

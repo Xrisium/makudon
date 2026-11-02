@@ -10,5 +10,6 @@
 | [0006](0006-plain-zip-and-library-generations.md) | 接受并实施 | 纯目录 ZIP、逐项冲突、整库代际发布与最近一次恢复快照 |
 | [0007](0007-file-manager-first.md) | 接受并实施 | 应用选择、文件管理分享、固定导出副本与下载目录保存 |
 | [0008](0008-independent-recycle-bin.md) | 接受并实施 | 独立回收站、保留删除称呼、树内恢复与跨索引事务 |
+| [0009](0009-android-localization.md) | 接受并实施 | 原生双语、独立应用语言偏好与翻译贡献校验 |
 
 新决定使用 [模板](../templates/adr.md)，顺序编号。已接入原生工作区、私有保存和文件出入口；实现与未覆盖验收以 [当前状态](../status.md) 为准。
