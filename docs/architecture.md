@@ -33,6 +33,8 @@ ZIP 的 BackupCoordinator 与原 ViewModel 共用 IO Mutex / 保存屏障，Comp
 
 底栏单个选中背景复用主标签 Transition 的位置进度，强调背景横移不挂载中间页面。设置持久化沿用全局 busy 操作互斥，额外标记 savingPreferences，使设置控件 / 底栏不触发禁用颜色且不显示瞬时进度条；失败仍由原有错误路径呈现。完全相同的设置在进入操作前直接返回，不写索引。
 
+编辑菜单的字号偏好同样将控件外观与实际动作门控分开：savingPreferences 期间保留菜单文字、工具和双视图按钮的启用外观，回调仍检查原有 busy 门控，禁止误开弹窗、导出或关闭菜单。正文编辑保护和存储互斥不变，避免以短暂禁用颜色表示普通偏好写盘。
+
 ## 按需增长的依赖方向
 
 文件交互由 FileExchange 协调、FileExchangeDialog 显示应用与导出方式；AndroidFileAccess 处理 Intent / URI / Downloads，ExportFiles 管理独立生命周期的分享副本。四个文稿 / ZIP 出入口共用这条链路，不改变私有库格式。正文与 ZIP 复制 / 回读 / 清理均在 IO dispatcher；FileProvider 仅开放 files/shared-exports，见 [ADR 0007](adr/0007-file-manager-first.md)。
