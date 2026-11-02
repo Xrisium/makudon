@@ -108,14 +108,16 @@ fun SettingsPage(model: WorkspaceViewModel) {
                     }
                     HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant)
                     Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = model::openTrash).padding(18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.trash_settings_summary, model.trashInventory.roots.size, Formatter.formatShortFileSize(LocalContext.current, model.trashInventory.bytes)), Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.trash_title))
+                            Text(stringResource(R.string.trash_settings_summary, model.trashInventory.roots.size, Formatter.formatShortFileSize(LocalContext.current, model.trashInventory.bytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Glyph(R.drawable.ic_chevron_right)
                     }
                 }
             }
         }
         item { TextButton(onClick = model::licenses, enabled = enabled) { Text(stringResource(R.string.licenses)); Spacer(Modifier.width(6.dp)); Glyph(R.drawable.ic_chevron_right) } }
-        item { Text(stringResource(R.string.local_notice), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Box(Modifier.fillMaxWidth().padding(vertical = 18.dp), contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.makudon_lockup), stringResource(R.string.brand_name), Modifier.width(126.dp).height(28.dp)) } }
     }
 }

@@ -151,7 +151,6 @@
   <string name="notice_lucide_description">按需转换为 Android VectorDrawable。</string>
   <string name="notice_fluent_description">Markdown 20 Filled 类型图标。</string>
   <string name="notice_fredoka_description">仅生成路径字标，字体未打包。</string>
-  <string name="local_notice">文稿保存在本应用私有目录。卸载或清除数据会丢失文稿，请定期导出副本。</string>
   <string name="previous_version">上一保存版本</string>
   <string name="restore_previous">恢复此版本</string>
   <string name="restore_warning">将恢复为上一保存版本。当前磁盘文件会先保留为独立恢复材料。</string>
@@ -171,7 +170,7 @@
   <string name="redo">重做</string>
   <string name="editor_placeholder">在这里，写下第一句话。</string>
   <string name="backup_title">备份与恢复</string>
-  <string name="backup_summary">整库 ZIP 导出、恢复与撤回</string>
+  <string name="backup_summary">卸载应用会导致文稿丢失，请定期导出备份</string>
   <string name="backup_separate">单独保存</string>
   <string name="backup_incremental">增量更新</string>
   <string name="backup_replace">完全覆盖</string>
@@ -254,11 +253,9 @@
   <string name="file_download_cleanup_error">保存未完成，且下载目录中的不完整文件未能清理。请在文件管理中检查；可使用同一副本重试。</string>
   <string name="data_management">数据管理</string>
   <string name="trash_title">回收站</string>
-  <string name="trash_settings_summary">回收站 · %1$d 项 · %2$s</string>
+  <string name="trash_settings_summary">%1$d项，%2$s</string>
   <string name="trash_summary">%1$d 项 · %2$s</string>
-  <string name="trash_retention">内容会保留，直到你手动彻底删除。</string>
-  <string name="trash_empty">回收站是空的</string>
-  <string name="trash_empty_hint">删除的文稿和文件夹会出现在这里。</string>
+  <string name="trash_empty">回收站为空</string>
   <string name="trash_folder_empty">此文件夹已没有内容</string>
   <string name="trash_original_location">原位置：%1$s</string>
   <string name="trash_deleted_time">删除于 %1$s</string>

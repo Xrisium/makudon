@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
@@ -46,15 +47,16 @@ internal fun TrashPage(model: WorkspaceViewModel) {
                 if (selection != null) TextButton(onClick = model::exitTrashSelection, enabled = !busy) { Text(stringResource(R.string.exit_selection)) }
                 else Box {
                     Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = !busy) { menu = true }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.trash_select)) }, enabled = visible.isNotEmpty(), onClick = { menu = false; model.selectTrash() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.trash_clear), color = MaterialTheme.colorScheme.error) }, enabled = inventory.roots.isNotEmpty(), onClick = { menu = false; purge = inventory.roots.map { it.id } })
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(20.dp), containerColor = MaterialTheme.colorScheme.surface, modifier = Modifier.widthIn(min = 240.dp, max = 290.dp)) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.trash_select)) }, leadingIcon = { Glyph(R.drawable.ic_check, tint = MaterialTheme.colorScheme.onSurfaceVariant) }, enabled = visible.isNotEmpty(), onClick = { menu = false; model.selectTrash() })
+                        HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
+                        DropdownMenuItem(text = { Text(stringResource(R.string.trash_clear), color = if (inventory.roots.isNotEmpty()) MaterialTheme.colorScheme.error else Color.Unspecified) }, leadingIcon = { Glyph(R.drawable.ic_trash_2, tint = if (inventory.roots.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }, enabled = inventory.roots.isNotEmpty(), onClick = { menu = false; purge = inventory.roots.map { it.id } })
                     }
                 }
             }
         }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Text(stringResource(if (preview == null) R.string.trash_retention else R.string.trash_preview_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (preview != null) item { Text(stringResource(R.string.trash_preview_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (inventory.cleanupPending) item {
                 Column {
                     Text(stringResource(R.string.trash_cleanup_pending), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -62,7 +64,7 @@ internal fun TrashPage(model: WorkspaceViewModel) {
                 }
             }
             model.trashRestored?.let { result -> item {
-                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                     Column(Modifier.padding(14.dp)) {
                         result.entries.forEachIndexed { i, entry -> Text(stringResource(R.string.trash_restored_item, entry.name, result.locations[i]), style = MaterialTheme.typography.bodySmall) }
                         TextButton(onClick = model::viewRestored, enabled = !busy) { Text(stringResource(R.string.trash_view_restored)) }
@@ -87,7 +89,6 @@ internal fun TrashPage(model: WorkspaceViewModel) {
                     Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Glyph(R.drawable.ic_trash_2, Modifier.size(32.dp))
                         Text(stringResource(if (folder == null) R.string.trash_empty else R.string.trash_folder_empty), Modifier.padding(top = 16.dp))
-                        if (folder == null) Text(stringResource(R.string.trash_empty_hint), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 items(visible, key = { it.id }) { node ->
