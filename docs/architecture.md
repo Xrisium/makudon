@@ -20,7 +20,7 @@ app/src/main/kotlin/io/github/xrisium/makudon/
   domain/ArchiveRestore.kt  路径匹配与逐项冲突规划
 ```
 
-现已实现上述职责；[ADR 0003](adr/0003-workspace-catalog.md)记录原生工作区的数据格式、索引事务边界和有限排版编辑。Markdown 连续编辑与三视图由 [ADR 0011](adr/0011-markdown-source-projection.md) 取代原独立段落输入方案。没有 DI、数据库、导航运行库或 WebView。
+现已实现上述职责；[ADR 0003](adr/0003-workspace-catalog.md)记录原生工作区的数据格式、索引事务边界和有限排版编辑。Markdown 连续编辑与三视图由 [ADR 0011](adr/0011-markdown-source-projection.md) 取代原独立段落输入方案。排版表格单元格使用即时回写同一正文的原生输入镜像，保存与撤销共用原有会话，见 [ADR 0012](adr/0012-markdown-table-cells.md)。没有 DI、数据库、导航运行库或 WebView。
 
 每篇私有文稿使用独立 ID，同时只编辑一篇；进程内单一 ViewModel / Mutex 协调保存和目录操作。外部 VIEW 与应用内导入共用只读副本链路，正文不写回源 URI。保存、恢复、导入与导出已接入；完整故障 / 进程中断矩阵及真机体验仍须验收，见 [当前状态](status.md)。
 

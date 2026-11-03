@@ -2,6 +2,8 @@
 
 ## 已知需求
 
+- 2026-11-03 Markdown 表格改为正文背景，排版点击单元格直接编辑，删除局部表格源码按钮、工具组序号和 Markdown 的 `.txt` 副本导出；纯文本 `.txt` 导出保留，见[任务 0028](tasks/0028-markdown-table-editing.md)。
+
 - 2026-11-03 Markdown 工具打磨：三视图标签增加字号和 Lucide 图标，触摸目标与选中指示器边界一致，统一底部信息位置；写作工具按文本 / 段落 / 插入分组，点击及离散横滑切换，修正键盘上方菜单间距。用户随后确认保留 H1–H6，采用 heading-6 图标。见[任务 0027](tasks/0027-markdown-toolbar-layout.md)。
 
 - 2026-11-02 Markdown：用户确认源码精准编辑、排版作家式实时预览编辑、阅读只读审阅；两个编辑模式均提供格式工具，包含常用语法、查找替换及 `.md` / `.txt` 原文导出。实施与验收见 [任务 0026](tasks/0026-markdown-three-modes.md)、[三视图规范](specs/0005-markdown-three-modes.md)。
