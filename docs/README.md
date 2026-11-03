@@ -12,6 +12,7 @@
 | 编辑、保存、导入导出 | [数据安全](data-safety.md)、[首片设计](specs/0001-plain-text-editor.md)、[导入 / 关联协议](specs/0002-import-and-file-association.md)、[测试](testing.md) |
 | Markdown 三视图、实时预览与写作工具 | [行为规范](specs/0005-markdown-three-modes.md)、[连续源码 ADR](adr/0011-markdown-source-projection.md)、[任务](tasks/0026-markdown-three-modes.md)、[页签与分组工具栏](tasks/0027-markdown-toolbar-layout.md) |
 | Markdown 表格单元格编辑 | [单元格输入 ADR](adr/0012-markdown-table-cells.md)、[实施与验证](tasks/0028-markdown-table-editing.md) |
+| Markdown 菜单开关与表后正文 | [边界修复](tasks/0029-markdown-menu-and-table-boundary.md)、[行为规范](specs/0005-markdown-three-modes.md) |
 | 审阅首片存储取舍与产品决定 | [已接受存储 ADR](adr/0002-document-storage.md)、[D1–D3 决定记录](specs/0001-open-decisions.md) |
 | 实施后验收首个编辑切片 | [首片验收规范（未执行）](testing/plain-text-editor-acceptance.md) |
 | 分支、提交、发布 | [Git 工作流](git-workflow.md) |
