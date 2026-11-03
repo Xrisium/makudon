@@ -5,6 +5,72 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MarkdownTableEditsTest {
+    private val boundaryTable = "| A | B |\n| --- | --- |\n| 中 | 😀 |"
+
+    private fun following(before: String, at: Int, input: String): EditResult? {
+        val after = before.substring(0, at) + input + before.substring(at)
+        val separator = MarkdownTableEdits.followingBlock(MarkdownParser.parse(before), TextSelection(at), after) ?: return null
+        return MarkdownEdits.applyEdits(after, listOf(separator), TextSelection(at + input.length))
+    }
+
+    @Test fun typingAndPasteImmediatelyBelowTableBecomeIndependentParagraphs() {
+        for (input in listOf("中", "😀", "a|b", "粘贴\n第二行")) {
+            val before = "$boundaryTable\n"
+            val result = checkNotNull(following(before, before.length, input))
+            assertEquals("$boundaryTable\n\n$input", result.text)
+            assertEquals(TextSelection(result.text.length), result.selection)
+            val parsed = MarkdownParser.parse(result.text)
+            assertEquals(boundaryTable, parsed.raw(parsed.elements.single { it.kind == "TableBlock" }))
+            assertEquals("Paragraph", parsed.root.children.last().kind)
+        }
+    }
+
+    @Test fun enterAtCollapsedTableEndAddsCompleteBlockSeparator() {
+        val result = checkNotNull(following(boundaryTable, boundaryTable.length, "\n"))
+        assertEquals("$boundaryTable\n\n", result.text)
+        assertEquals(TextSelection(result.text.length), result.selection)
+        assertNull(following("$boundaryTable\n", boundaryTable.length + 1, "\n"))
+    }
+
+    @Test fun inputAtCollapsedEndKeepsTableAndExistingSuffix() {
+        val before = "$boundaryTable\n\n尾部"
+        val result = checkNotNull(following(before, boundaryTable.length, "正文"))
+        assertEquals("$boundaryTable\n\n正文\n\n尾部", result.text)
+        assertEquals(TextSelection(boundaryTable.length + 4), result.selection)
+    }
+
+    @Test fun existingBlockSeparatorAndCellInteriorAreNotChanged() {
+        val separated = "$boundaryTable\n\n"
+        assertNull(following(separated, separated.length, "正文"))
+        assertNull(following(boundaryTable, boundaryTable.indexOf("中"), "字"))
+        assertNull(MarkdownTableEdits.followingBlock(MarkdownParser.parse(boundaryTable), TextSelection(0, boundaryTable.length), "替换"))
+        assertNull(MarkdownTableEdits.followingBlock(MarkdownParser.parse(boundaryTable), TextSelection(boundaryTable.length), boundaryTable.dropLast(1)))
+    }
+
+    @Test fun boundaryCorrectionAndInputUndoTogether() {
+        val before = "$boundaryTable\n"
+        val result = checkNotNull(following(before, before.length, "中文"))
+        val history = io.github.xrisium.makudon.feature.workspace.EditHistory()
+        history.record(before, result.text, TextSelection(before.length), result.selection)
+        assertEquals(before, history.undo(result.text))
+        assertEquals(result.text, history.redo(before))
+    }
+
+    @Test fun pendingCompositionDisplaysOutsideTheOriginalTable() {
+        val previous = MarkdownParser.parse(boundaryTable)
+        for (suffix in listOf("zh", "\nzhong")) {
+            val source = boundaryTable + suffix
+            val provisional = io.github.xrisium.makudon.feature.workspace.provisionalDocument(previous, source)
+            val table = provisional.elements.single { it.kind == "TableBlock" }
+            assertEquals(boundaryTable, provisional.raw(table))
+            val projection = io.github.xrisium.makudon.feature.workspace.projection(provisional, TextSelection(source.length), null, listOf(table))
+            var visible = source
+            projection.changes.asReversed().forEach { visible = visible.replaceRange(it.range.start, it.range.end, it.text) }
+            assertEquals("\uFFFC\n" + suffix.trimStart('\n'), visible)
+            assertEquals(source, provisional.source)
+        }
+    }
+
     private fun cells(source: String, row: Int = 1): List<MarkdownCellText> {
         val doc = MarkdownParser.parse(source)
         return MarkdownTableEdits.cells(doc, doc.elements.filter { it.kind == "TableRow" }[row])

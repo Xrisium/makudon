@@ -126,6 +126,23 @@ data class MarkdownCellEdit(val result: EditResult, val cell: MarkdownCellText)
 data class MarkdownCellSpan(val source: SourceRange, val visible: SourceRange)
 
 object MarkdownTableEdits {
+    /** Typeset's collapsed table ends before its trailing newline. Keep input just
+     * after that slot outside GFM's permissive continuation rows, including IME text. */
+    fun followingBlock(document: MarkdownDocument, originalSelection: TextSelection, after: String): SourceEdit? {
+        if (originalSelection.min != originalSelection.max || after.length <= document.source.length) return null
+        val before = document.source
+        val at = originalSelection.start
+        val table = document.elements.firstOrNull { it.kind == "TableBlock" &&
+            (at == it.range.end || (at == it.range.end + 1 && before.getOrNull(it.range.end) == '\n')) } ?: return null
+        val inserted = after.length - before.length
+        if (!after.regionMatches(0, before, 0, at) ||
+            !after.regionMatches(at + inserted, before, at, before.length - at)) return null
+        val end = table.range.end
+        var newlines = 0
+        while (after.getOrNull(end + newlines) == '\n') newlines++
+        return if (newlines < 2) SourceEdit(SourceRange(end, end), "\n".repeat(2 - newlines)) else null
+    }
+
     fun cells(document: MarkdownDocument, row: MdElement): List<MarkdownCellText> {
         val raw = document.raw(row)
         val pipes = raw.indices.filter { raw[it] == '|' && (it == 0 || raw[it - 1] != '\\') }

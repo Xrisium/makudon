@@ -75,7 +75,7 @@ internal fun provisionalDocument(previous: MarkdownDocument?, source: String): M
     while (suffix < minOf(old.length, source.length) - prefix && old[old.lastIndex - suffix] == source[source.lastIndex - suffix]) suffix++
     val oldEnd = old.length - suffix; val delta = source.length - old.length
     fun shifted(n: MdElement): MdElement = n.copy(range = if (n.range == SourceRange(0, 0)) n.range else SourceRange(n.range.start + delta, n.range.end + delta), children = n.children.map(::shifted))
-    val before = previous.root.children.takeWhile { it.range.end < prefix }
+    val before = previous.root.children.takeWhile { it.range.end < prefix || (it.kind == "TableBlock" && it.range.end == prefix) }
     val after = previous.root.children.takeLastWhile { it.range.start > oldEnd }
     val affected = previous.root.children.subList(before.size, previous.root.children.size - after.size)
     val start = minOf(prefix, affected.firstOrNull()?.range?.start ?: prefix).coerceAtMost(source.length)
@@ -147,7 +147,11 @@ internal fun projection(document: MarkdownDocument, selection: TextSelection?, c
         }
         start += line.length + 1
     }
-    tables.forEach { changes += DisplayChange(it.range, "\uFFFC") }
+    tables.forEach {
+        changes += DisplayChange(it.range, "\uFFFC")
+        if (source.getOrNull(it.range.end)?.let { char -> char != '\n' } == true)
+            changes += DisplayChange(SourceRange(it.range.end, it.range.end), "\n")
+    }
     // Outer replacements (for example link destinations or table slots) own nested tokens.
     val sorted = changes.distinct().sortedWith(compareBy<DisplayChange> { it.range.start }.thenByDescending { it.range.end })
     val nonOverlapping = mutableListOf<DisplayChange>()

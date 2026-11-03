@@ -1897,6 +1897,9 @@ class WorkspaceInstrumentation : Instrumentation() {
 
     private fun markdownTableTest() {
         val oldTheme = main { model.ui.workspace!!.theme }
+        val oldKeyboard = shell("settings get secure show_ime_with_hard_keyboard").trim()
+        val oldIme = shell("settings get secure default_input_method").trim()
+        val fixtureIme = "io.github.xrisium.makudon.debug.test/io.github.xrisium.makudon.FixtureInputMethod"
         val oldFont = shell("settings get system font_scale").trim()
         val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
         main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Markdown) }; ready()
@@ -1933,6 +1936,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             bitmap.recycle()
         }
         try {
+            shell("settings put secure show_ime_with_hard_keyboard 0")
             click("源码"); setText("编辑正文", sample); saved(); parsed(); click("排版"); hideKeyboard()
             verify(nodes().none { it.text?.toString() == "编辑表格源码" }, "Typeset removes table source action")
             verify(cell("表格第 2 行，第 1 列").isEditable, "Table exposes native cell input directly")
@@ -1962,10 +1966,12 @@ class WorkspaceInstrumentation : Instrumentation() {
             setText("表格第 2 行，第 1 列", ""); saved(); parsed()
             // The synthetic InputConnection owns composition here; a visible Gboard would
             // finish an unfamiliar synthetic composing span in response to updateSelection.
+            shell("ime enable $fixtureIme"); shell("ime set $fixtureIme"); SystemClock.sleep(500)
             hideKeyboard()
             val composingConnection = main { connection() }
             main { check(composingConnection.setComposingText("zh", 1)); check(composingConnection.setComposingText("zhong", 1)) }; parsed()
             main { check(composingConnection.setComposingText("中文", 1)); composingConnection.finishComposingText() }; saved(); parsed()
+            waitFor("committed cell semantics") { cell("表格第 2 行，第 1 列").text?.contains("中文") == true }
             verify(cell("表格第 2 行，第 1 列").text?.contains("中文") == true && !body().contains("zhong"), "Real cell InputConnection composition replaces candidates without duplicating text")
             main { connection().setComposingText("读", 1) }; val composing = body()
             click("阅读"); saved(); parsed()
@@ -1980,6 +1986,43 @@ class WorkspaceInstrumentation : Instrumentation() {
                 click("阅读"); parsed()
                 verify(body().contains("保存失败保留") && source(id, DocumentKind.Markdown) == composing, "A failed cell save retains latest memory text in reading and the last confirmed disk file")
             } finally { check(pending.delete()); main { model.retrySave() }; saved() }
+            val boundary = "| A | B |\n| --- | --- |\n| 中 | 😀 |"
+            fun boundaryInput(text: String, typeset: Boolean = true) {
+                main { model.editorMode(EditorMode.Source) }; setText("编辑正文", text); saved(); parsed()
+                main {
+                    model.textState!!.edit { selection = androidx.compose.ui.text.TextRange(length) }
+                    if (typeset) model.editorMode(EditorMode.Typeset)
+                }
+                find("编辑正文").performAction(AccessibilityNodeInfo.ACTION_FOCUS); waitForIdleSync(); hideKeyboard()
+            }
+            boundaryInput("$boundary\n")
+            main { check(connection().commitText("正文 😀", 1)) }; saved(); parsed()
+            verify(body() == "$boundary\n\n正文 😀" && source(id, DocumentKind.Markdown) == body() &&
+                main { model.markdownDocument!!.root.children.last().kind == "Paragraph" }, "Native typing directly below a table inserts a block separator and saves a paragraph")
+            click("撤销"); saved(); parsed()
+            verify(body() == "$boundary\n", "Table boundary separator and typed input undo together")
+            click("重做"); saved(); parsed()
+            verify(body() == "$boundary\n\n正文 😀", "Redo restores the table boundary and paragraph together")
+            boundaryInput(boundary)
+            main { check(connection().commitText("\n", 1)) }; saved(); parsed()
+            verify(body() == "$boundary\n\n" && main { model.currentSelection() == TextSelection(model.textState!!.text.length) }, "Enter at a collapsed table end creates a complete separator with the caret below it")
+            boundaryInput("$boundary\n")
+            check(main { connection().setComposingText("zh", 1) }); parsed()
+            verify(main { model.textState!!.composition != null && model.tableBoundaryDocument != null }, "Typing below a table preserves the active native composing region")
+            check(main { connection().setComposingText("zhong", 1) }); parsed()
+            check(main { connection().setComposingText("中文", 1).also { connection().finishComposingText() } }); saved(); parsed()
+            verify(body() == "$boundary\n\n中文", "Chinese composition below a table replaces candidates across background parses without duplicate text")
+            boundaryInput("$boundary\n")
+            main { check(connection().commitText("a|b\n下一行", 1)) }; saved(); parsed()
+            verify(body() == "$boundary\n\na|b\n下一行" && main { model.markdownDocument!!.elements.count { it.kind == "TableRow" } == 2 }, "Pasted pipes below the table remain outside its rows")
+            boundaryInput("$boundary\n")
+            check(main { connection().setComposingText("未定候选", 1) }); parsed()
+            click("阅读"); saved(); parsed()
+            verify(body() == "$boundary\n\n未定候选" && source(id, DocumentKind.Markdown) == body(), "Switching to reading during table-boundary composition commits the separator and visible candidate together")
+            boundaryInput("$boundary\n", typeset = false)
+            main { check(connection().commitText("原样", 1)) }; saved(); parsed()
+            verify(body() == "$boundary\n原样", "Source mode preserves literal input below a table")
+            setText("编辑正文", composing); saved(); parsed()
             click("排版"); main { model.preferences(theme = ColorTheme.Paper) }; ready(); hideKeyboard(); tableBackground("表格第 1 行，第 1 列"); screenshot("table-typeset-light")
             click("文本"); verify(nodes().none { it.text?.toString()?.contains("· 1/3") == true }, "Toolbar removes group position label")
             click("条目操作"); verify(nodes().any { it.text?.toString() == "导出 .md 副本" } && nodes().none { it.text?.toString() == "导出 .txt 副本" }, "Markdown menu exports only a Markdown copy")
@@ -1993,6 +2036,9 @@ class WorkspaceInstrumentation : Instrumentation() {
             screenshot("table-en-narrow-200")
             verify(cell("Table row 1, column 1").isEditable, "Cell input remains accessible in English at 320dp and 200% font size")
         } catch (e: Exception) { screenshot("table-failure"); throw e } finally {
+            if (oldIme.isNotBlank() && oldIme != "null") shell("ime set $oldIme")
+            shell("ime disable $fixtureIme")
+            shell(if (oldKeyboard == "null") "settings delete secure show_ime_with_hard_keyboard" else "settings put secure show_ime_with_hard_keyboard $oldKeyboard")
             shell("settings put system font_scale $oldFont"); shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
             main { model.changeLanguage("zh-Hans") }; ready(); hideKeyboard()
             if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
@@ -2042,7 +2088,18 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("插入"); verify(listOf("行内代码", "代码块", "分隔线", "表格").all { name -> nodes().any { it.contentDescription?.toString() == name } }, "Insert group exposes four tools without a More menu")
             screenshot("markdown-toolbar-insert")
             click("文本"); click("标题")
+            val headingButton = bounds("标题")
+            tapPoint(headingButton.centerX().toFloat(), headingButton.centerY().toFloat())
+            verify(nodes().none { it.text?.toString() == "6 级标题" }, "A real tap on the expanded heading anchor closes its popup")
+            tapPoint(headingButton.centerX().toFloat(), headingButton.centerY().toFloat())
             verify(nodes().any { it.text?.toString() == "5 级标题" } && nodes().any { it.text?.toString() == "6 级标题" }, "Heading popup contains body and all six heading levels")
+            val info = bounds(count)
+            tapPoint(info.centerX().toFloat(), info.centerY().toFloat())
+            verify(nodes().none { it.text?.toString() == "6 级标题" }, "Touching the document footer dismisses the format popup")
+            tapPoint(headingButton.centerX().toFloat(), headingButton.centerY().toFloat())
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); SystemClock.sleep(300)
+            verify(nodes().none { it.text?.toString() == "6 级标题" } && main { model.ui.page == Page.Editor }, "Back dismisses the format popup before leaving the editor")
+            tapPoint(headingButton.centerX().toFloat(), headingButton.centerY().toFloat())
             screenshot("markdown-toolbar-heading")
             click("6 级标题"); saved()
             verify(main { model.textState!!.text.toString() == body.replace("正文测试", "###### 正文测试") }, "Sixth heading tool inserts the exact source prefix")
@@ -2076,6 +2133,18 @@ class WorkspaceInstrumentation : Instrumentation() {
             val density = targetContext.resources.displayMetrics.density
             verify((listTop - last.bottom) in (6 * density).toInt()..(11 * density).toInt(), "Popup anchors 4dp above toolbar plus 4dp content padding with IME")
             screenshot("markdown-toolbar-ime-list")
+            val listButton = bounds("列表")
+            tapPoint(listButton.centerX().toFloat(), listButton.centerY().toFloat())
+            verify(nodes().none { it.text?.toString() == "取消列表" }, "A real tap on the expanded list anchor closes its popup with IME visible")
+            tapPoint(listButton.centerX().toFloat(), listButton.centerY().toFloat())
+            tapPoint(listButton.centerX().toFloat(), listButton.centerY().toFloat())
+            verify(nodes().none { it.text?.toString() == "取消列表" } && main { model.currentSelection() == selection && currentActivity!!.window.decorView.rootWindowInsets!!.isVisible(android.view.WindowInsets.Type.ime()) }, "Repeated list toggles preserve selection and the visible keyboard")
+            tapPoint(listButton.centerX().toFloat(), listButton.centerY().toFloat())
+            val quoteButton = bounds("引用")
+            tapPoint(quoteButton.centerX().toFloat(), quoteButton.centerY().toFloat())
+            verify(nodes().none { it.text?.toString() == "取消列表" }, "Touching another tool dismisses the format popup")
+            click("撤销"); saved()
+            tapPoint(listButton.centerX().toFloat(), listButton.centerY().toFloat())
             click("取消列表"); saved()
             verify(main { model.textState!!.text.toString() == body || model.textState!!.text.toString() == body.replace("####### 更深标题", "更深标题") }, "Toolbar navigation never rewrites unrelated source")
         } catch (e: Exception) { screenshot("markdown-toolbar-failure"); throw e } finally {
@@ -2127,6 +2196,8 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
 
     private fun markdownTest() {
+        val oldIme = shell("settings get secure default_input_method").trim()
+        val fixtureIme = "io.github.xrisium.makudon.debug.test/io.github.xrisium.makudon.FixtureInputMethod"
         val oldFont = shell("settings get system font_scale").trim()
         val oldSize = shell("wm size").lineSequence().firstOrNull { it.startsWith("Override size:") }?.substringAfter(":")?.trim()
         val oldTheme = main { model.ui.workspace!!.theme }
@@ -2160,6 +2231,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.editorMode(EditorMode.Typeset) }; SystemClock.sleep(300); waitForIdleSync()
         }
         try {
+            shell("ime enable $fixtureIme"); shell("ime set $fixtureIme"); SystemClock.sleep(500)
             click("新建文稿"); click("Markdown"); ready()
             id = main { checkNotNull(model.ui.activeId) }
             val sample = "# 写作标题 😀\n\n正文 **粗体** 与 *斜体*、~~删除~~和[链接](https://example.com)。\n\n- [ ] 任务\n  - 子项\n\n> 引用\n\n| A | B |\n| --- | --- |\n| 中文 | 😀 |\n\n```kotlin\nval x = 1\n```\n\n<div>原样保留</div>\n"
@@ -2286,6 +2358,8 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.editorMode(EditorMode.Reading); model.immersive = true }; waitForIdleSync(); screenshot("markdown-immersive")
             verify(nodes().none { it.isEditable || it.text?.toString() == "格式" }, "Immersive reading remains non-editable")
         } catch (e: Exception) { screenshot("markdown-before-cleanup-failure"); throw e } finally {
+            if (oldIme.isNotBlank() && oldIme != "null") shell("ime set $oldIme")
+            shell("ime disable $fixtureIme")
             main { model.files.close(); model.immersive = false }
             shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
             shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")

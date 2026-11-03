@@ -59,6 +59,15 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var markdownDocument by mutableStateOf<MarkdownDocument?>(null)
         private set
+    private var tableBoundary by mutableStateOf<Pair<MarkdownDocument, TextSelection>?>(null)
+    internal val tableBoundaryDocument get() = tableBoundary?.first
+    internal fun tableBoundaryEdit(document: MarkdownDocument, selection: TextSelection, after: String): SourceEdit? {
+        val pending = tableBoundary
+        return MarkdownTableEdits.followingBlock(pending?.first ?: document, pending?.second ?: selection, after)
+    }
+    internal fun trackTableBoundary(document: MarkdownDocument, selection: TextSelection) {
+        if (tableBoundary == null) tableBoundary = document to selection
+    }
     private var parseJob: Job? = null
     private val parseLock = Mutex()
     var editorRevision by mutableLongStateOf(0)
@@ -187,6 +196,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun barrier(retry: Boolean = false): Boolean {
         val coordinator = save ?: return true
         while (true) {
+            finishTableBoundary(force = true)
                 textState?.let { coordinator.changed(it.text.toString()) }
             if (!coordinator.flush(retry)) return false
             if (textState?.text?.toString() == coordinator.latest) return true
@@ -286,12 +296,18 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         departingSession = null
         textState = field; save = session
         history = EditHistory(); historySource = text; canUndo = false; canRedo = false
-        markdownDocument = null; editorRevision = 0; editorMessage = null; immersive = false
+        markdownDocument = null; tableBoundary = null; editorRevision = 0; editorMessage = null; immersive = false
         editorAnchor = 0; readingAnchor = 0; editorAnchorOffset = 0; readingAnchorOffset = 0
         ui = ui.copy(activeId = id, origin = origin, editorMode = EditorMode.Typeset, workspace = refreshed)
         requestParse(text)
         navigate(Page.Editor)
-        observer = viewModelScope.launch { snapshotFlow { field.text.toString() }.collect { recordEdit(it); session.changed(it); field.undoState.clearHistory() } }
+        observer = viewModelScope.launch {
+            snapshotFlow { field.text.toString() to field.composition }.collect {
+                finishTableBoundary()
+                val current = field.text.toString()
+                recordEdit(current); session.changed(current); field.undoState.clearHistory()
+            }
+        }
     }
     fun back() {
         if (ui.busy || ui.transitioning || ui.tabTransitioning) return
@@ -318,6 +334,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun typeset(value: Boolean) = editorMode(if (value) EditorMode.Typeset else EditorMode.Source)
     fun editorMode(value: EditorMode) {
         if (ui.busy || ui.transitioning || ui.page != Page.Editor || ui.editorMode == value) return
+        finishTableBoundary(force = true)
         textState?.let { recordEdit(it.text.toString()); save?.changed(it.text.toString()) }
         ui = ui.copy(editorMode = value)
         immersive = false
@@ -347,6 +364,27 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         history.record(before, after, beforeSelection, afterSelection)
         if (before != after) { historySource = after; editorRevision++; requestParse(after) }
         canUndo = history.canUndo; canRedo = history.canRedo
+    }
+    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+    private fun finishTableBoundary(force: Boolean = false) {
+        val pending = tableBoundary ?: return
+        val field = textState ?: return
+        // InputTransformation commits composing text when it changes content. Wait for
+        // native composition to finish, or an explicit mode/save barrier, before editing.
+        if (!force && field.composition != null) return
+        val current = field.text.toString()
+        tableBoundary = null
+        val separator = MarkdownTableEdits.followingBlock(pending.first, pending.second, current) ?: return
+        val result = MarkdownEdits.applyEdits(current, listOf(separator), currentSelection())
+        try { TextRules.bytes(result.text) } catch (e: WorkspaceException) { inputRejected(e.reason); return }
+        // Fold the separator into the last input instead of creating a second undo step.
+        val previous = history.undo(current)
+        val previousSelection = history.restoredSelection
+        history.record(previous, result.text, previousSelection, result.selection)
+        historySource = result.text
+        replaceEditorText(result.text, result.selection)
+        canUndo = history.canUndo; canRedo = history.canRedo
+        editorRevision++; requestParse(result.text)
     }
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     fun applyEditorEdit(result: EditResult, token: EditToken? = null): Boolean {
@@ -385,6 +423,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     fun undo(redo: Boolean = false) {
         if (ui.editorMode == EditorMode.Reading || ui.busy || ui.transitioning || ui.storageBlocked || ui.page != Page.Editor) return
+        finishTableBoundary(force = true)
         val field = textState ?: return
         recordEdit(field.text.toString())
         val next = if (redo) history.redo(historySource) else history.undo(historySource)
@@ -573,6 +612,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     }
     fun fontSettings(uiFont: Boolean) { if (!ui.busy && !ui.transitioning) navigate(if (uiFont) Page.UiFont else Page.EditorFont) }
     fun prepareExport(): Boolean {
+        finishTableBoundary(force = true)
         val text = textState?.text?.toString() ?: return false
         exportText = text
         exportName = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty().ifBlank { localized().getString(R.string.untitled) } + if (ui.workspace?.entry(ui.activeId.orEmpty())?.kind == DocumentKind.Markdown) ".md" else ".txt"

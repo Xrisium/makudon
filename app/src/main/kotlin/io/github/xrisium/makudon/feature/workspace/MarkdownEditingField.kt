@@ -4,6 +4,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.OutputTransformation
 import androidx.compose.foundation.text.input.TextFieldDecorator
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,7 +38,8 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     var visibleSourceEnd by remember(field) { mutableIntStateOf(2048) }
     val requester = remember { FocusRequester() }
     val density = LocalDensity.current
-    val parsed = remember(model.markdownDocument, source) { provisionalDocument(model.markdownDocument, source) }
+    val displayDocument = model.tableBoundaryDocument ?: model.markdownDocument
+    val parsed = remember(displayDocument, source) { provisionalDocument(displayDocument, source) }
     val sourceSelection = field.selection.let { TextSelection(it.start, it.end) }
     val composition = field.composition?.let { SourceRange(it.start, it.end) }
     val active = if (focused || findOpen) sourceSelection else null
@@ -49,6 +51,11 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     val windows = listOf(window(visibleSourceStart.coerceAtMost(source.length), visibleSourceEnd.coerceAtMost(source.length)), window(sourceSelection.min, sourceSelection.min), window(sourceSelection.max, sourceSelection.max))
     val output = remember(typeset, parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeightSp, windows) {
         if (typeset) liveTransformation(parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeightSp, windows) else null
+    }
+    val currentOutput by rememberUpdatedState(output)
+    // AST/style refreshes must not restart the native IME's composing session.
+    val stableOutput = remember(field, typeset) {
+        if (typeset) OutputTransformation { currentOutput?.let { with(it) { transformOutput() } } } else null
     }
     val input = remember(model, field, markdown) { InputTransformation {
         if (model.ui.busy || model.ui.transitioning || model.ui.storageBlocked || model.ui.page != Page.Editor || model.ui.editorMode == EditorMode.Reading) { revertAllChanges(); return@InputTransformation }
@@ -62,7 +69,15 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
                 if (raw[index] == '\r') replace(index, index + 1, if (index < raw.lastIndex && raw[index + 1] == '\n') "" else "\n")
             }
             val doc = model.markdownDocument?.takeIf { it.source == before }
-            if (model.ui.editorMode == EditorMode.Typeset && markdown && field.composition == null && beforeSelection.min == beforeSelection.max && doc != null && !doc.protected(beforeSelection.min, beforeSelection.max)) {
+            val boundaryDocument = model.tableBoundaryDocument ?: doc
+            if (model.ui.editorMode == EditorMode.Typeset && markdown && boundaryDocument != null) {
+                model.tableBoundaryEdit(boundaryDocument, beforeSelection, asCharSequence().toString())?.let {
+                    val proposed = asCharSequence().toString().replaceRange(it.range.start, it.range.end, it.replacement)
+                    TextRules.bytes(proposed)
+                    model.trackTableBoundary(boundaryDocument, beforeSelection)
+                }
+            }
+            if (model.ui.editorMode == EditorMode.Typeset && markdown && model.tableBoundaryDocument == null && field.composition == null && beforeSelection.min == beforeSelection.max && doc != null && !doc.protected(beforeSelection.min, beforeSelection.max)) {
                 MarkdownEdits.structural(before, asCharSequence().toString(), TextSelection(selection.start, selection.end))?.let {
                     TextRules.bytes(it.text); replace(0, length, it.text); selection = TextRange(it.selection.start, it.selection.end)
                 }
@@ -104,7 +119,7 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
                 if (it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key in listOf(Key.Z, Key.Y)) { model.undo(it.key == Key.Y || it.isShiftPressed); true } else false
             }.testTag(if (typeset) "typeset-editor" else "source-editor").semantics { contentDescription = description },
             readOnly = !editable, textStyle = bodyStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
-            outputTransformation = output, scrollState = model.editorScroll,
+            outputTransformation = stableOutput, scrollState = model.editorScroll,
             onTextLayout = { get -> layout = get() },
             decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = bodyStyle, color = colors.onSurfaceVariant); inner() } })
         val result = layout

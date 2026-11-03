@@ -5,6 +5,8 @@ import androidx.core.net.toUri
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,6 +14,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.*
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.res.*
 import androidx.compose.ui.semantics.*
@@ -42,6 +48,9 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     var focused by remember { mutableStateOf(false) }
     var tools by rememberSaveable(entry.id) { mutableStateOf(false) }
     var toolGroup by rememberSaveable(entry.id) { mutableStateOf(MarkdownToolGroup.Text) }
+    var formatMenu by remember(entry.id, toolGroup) { mutableIntStateOf(0) }
+    var formatAnchor by remember { mutableStateOf(Rect.Zero) }
+    var editorOrigin by remember { mutableStateOf(Offset.Zero) }
     var findOpen by rememberSaveable(entry.id) { mutableStateOf(false) }
     var query by rememberSaveable(entry.id) { mutableStateOf("") }
     var replacement by rememberSaveable(entry.id) { mutableStateOf("") }
@@ -72,7 +81,9 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             field.edit { selection = TextRange(match.start, match.end) }
         }
     }
-    BackHandler(model.immersive || findOpen) { if (model.immersive) model.immersive = false else findOpen = false }
+    BackHandler(model.immersive || findOpen || formatMenu != 0) {
+        if (formatMenu != 0) formatMenu = 0 else if (model.immersive) model.immersive = false else findOpen = false
+    }
     fun changeMode(mode: EditorMode) {
         if (mode == EditorMode.Reading) { model.readingAnchor = model.editorAnchor; model.readingAnchorOffset = model.editorAnchorOffset; focusManager.clearFocus(); keyboard?.hide() }
         else if (reading) { model.editorAnchor = model.readingAnchor; model.editorAnchorOffset = model.readingAnchorOffset }
@@ -92,7 +103,15 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         } catch (e: WorkspaceException) { model.inputRejected(e.reason) }
     }
     CompositionLocalProvider(LocalUriHandler provides uriHandler) {
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().onGloballyPositioned { editorOrigin = it.positionInWindow() }
+        .pointerInput(formatMenu, formatAnchor, editorOrigin) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                // The anchor owns its toggle. Dismiss other touches without consuming them.
+                // An Android popup's outside-dismiss fires before the anchor's click.
+                if (formatMenu != 0 && !formatAnchor.contains(down.position + editorOrigin)) formatMenu = 0
+            }
+        }) {
         if (!model.immersive) PageBar(entry.name, model::back, onTitleClick = { if (editable) onAction("rename") }, titleEnabled = controlsEnabled) {
             if (!reading) Tool(R.drawable.ic_undo_2, stringResource(R.string.undo), enabled = controlsEnabled && model.canUndo, onClick = { model.undo() })
             if (!reading) Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = controlsEnabled && model.canRedo, onClick = { model.undo(true) })
@@ -139,6 +158,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             val keyboardTools = markdown && !reading && focused && imeVisible && !findOpen
             if (markdown && !reading && !findOpen && (tools || keyboardTools)) MarkdownTools(model, controlsEnabled, toolGroup,
+                formatMenu, { formatMenu = it }, { formatAnchor = it },
                 onGroup = { toolGroup = it }, onLink = { if (editable) linkToken = model.editToken() })
             if (!keyboardTools) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp).testTag("editor-info"), verticalAlignment = Alignment.CenterVertically) {
                 Text(pluralStringResource(R.plurals.document_count, source.codePointCount(0, source.length), source.codePointCount(0, source.length)), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
