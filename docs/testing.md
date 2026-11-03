@@ -79,6 +79,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
 
 ## 常见问题
 
+表格自然高度回归包含在 `markdown-table`（当前 38 项）：长表内真实纵向拖动需改变正文滚动位置，末行可达且可编辑 / 撤销；阅读同样滚动整篇。短表高度、长单元格换行撑高与撤销缩回、多表格独立占位，以及英文 320dp / 200% 字号均需验证。记录见[任务 0030](tasks/0030-markdown-table-flow.md)。
+
 Markdown 表格专项使用 `-e case markdown-table`：真实触摸进入单元格、原生输入、空单元格 / 表头、管道转义、粗体保留、共享撤销 / 重做、超限整体拒绝、跨后台解析的 IME 组合、组词中切换阅读、保存失败保留内存与确认磁盘正文、菜单移除项、浅深色背景像素，以及英文 320dp / 200% 字号。合成 InputConnection 测试收起真实键盘，避免两个输入法同时竞争组合态；真实触摸输入另行验证。临时主题、语言、字号和屏幕尺寸在 finally 恢复，只创建 / 清理本次合成文稿。记录见[任务 0028](tasks/0028-markdown-table-editing.md)。
 
 任务 0029 将表格专项扩展到表后输入 / 回车 / 粘贴、候选跨解析替换、补行与输入共同撤销、组词中切换阅读及源码原样输入；菜单专项 `markdown-toolbar` 覆盖标题 / 列表入口的真实触摸反复开关、键盘保持、外部触摸与返回关闭。`markdown-table` 与 `markdown` 的合成组词临时选用仅测试 APK 的无界面输入法夹具，候选由测试独占更新，避免 Gboard 提前确认；finally 恢复原输入法并禁用夹具。真实键盘菜单测试仍使用原输入法，真机中文体验单列，见[任务 0029](tasks/0029-markdown-menu-and-table-boundary.md)。
