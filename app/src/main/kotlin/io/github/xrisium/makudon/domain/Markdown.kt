@@ -101,6 +101,7 @@ object MarkdownEdits {
         return result
     }
     fun command(source: String, selection: TextSelection, action: MarkdownAction, level: Int = 0, document: MarkdownDocument = MarkdownParser.parse(source)): EditResult? {
+        if (action == MarkdownAction.Heading && level !in 0..6) return null
         if (action !in setOf(MarkdownAction.CodeBlock, MarkdownAction.InlineCode) && document.protected(selection.min, selection.max)) return null
         val marker = when (action) { MarkdownAction.Bold -> "**"; MarkdownAction.Italic -> "*"; MarkdownAction.Strike -> "~~"; MarkdownAction.InlineCode -> "`"; else -> null }
         if (marker != null) return inline(source, selection, action, marker, document)

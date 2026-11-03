@@ -173,20 +173,21 @@ private fun MainWorkspace(
 
 // Gesture recognition changes no page offset or enabled state. Only an accepted
 // pointer-up emits navigation. Children keep vertical scroll, selection and menus.
-private fun Modifier.discreteTabSwipe(
+internal fun Modifier.discreteTabSwipe(
     enabled: Boolean,
     minimumDistance: Float,
     edgeInset: Float,
+    eventPass: PointerEventPass = PointerEventPass.Main,
     onSwipe: (Int) -> Unit,
-): Modifier = pointerInput(enabled, minimumDistance, edgeInset) {
+): Modifier = pointerInput(enabled, minimumDistance, edgeInset, eventPass) {
     if (!enabled) return@pointerInput
     awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
+        val down = awaitFirstDown(requireUnconsumed = false, pass = eventPass)
         var cancelled = down.position.x < edgeInset || down.position.x > size.width - edgeInset
         var horizontal = false
         var released = false
         while (!released) {
-            val event = awaitPointerEvent()
+            val event = awaitPointerEvent(eventPass)
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
             val delta = change.position - down.position
             if (event.changes.any { it.id != down.id && it.pressed }) cancelled = true

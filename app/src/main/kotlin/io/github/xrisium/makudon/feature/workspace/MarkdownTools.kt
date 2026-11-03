@@ -8,60 +8,158 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.*
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
 
+internal enum class MarkdownToolGroup(val label: Int) {
+    Text(R.string.md_group_text), Paragraph(R.string.md_group_paragraph), Insert(R.string.md_group_insert),
+}
+
+private data class FormatTool(val label: Int, val icon: Int, val action: MarkdownAction? = null)
+private val textTools = listOf(
+    FormatTool(R.string.md_heading, R.drawable.ic_heading),
+    FormatTool(R.string.md_bold, R.drawable.ic_bold, MarkdownAction.Bold),
+    FormatTool(R.string.md_italic, R.drawable.ic_italic, MarkdownAction.Italic),
+    FormatTool(R.string.md_strike, R.drawable.ic_strikethrough, MarkdownAction.Strike),
+    FormatTool(R.string.md_link, R.drawable.ic_link),
+)
+private val paragraphTools = listOf(
+    FormatTool(R.string.md_list, R.drawable.ic_list),
+    FormatTool(R.string.md_quote, R.drawable.ic_quote, MarkdownAction.Quote),
+    FormatTool(R.string.md_indent, R.drawable.ic_list_indent_increase, MarkdownAction.Indent),
+    FormatTool(R.string.md_outdent, R.drawable.ic_list_indent_decrease, MarkdownAction.Outdent),
+)
+private val insertTools = listOf(
+    FormatTool(R.string.md_inline_code, R.drawable.ic_code, MarkdownAction.InlineCode),
+    FormatTool(R.string.md_code_block, R.drawable.ic_square_code, MarkdownAction.CodeBlock),
+    FormatTool(R.string.md_rule, R.drawable.ic_minus, MarkdownAction.Rule),
+    FormatTool(R.string.md_table, R.drawable.ic_table_2, MarkdownAction.Table),
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MarkdownTools(model: WorkspaceViewModel, enabled: Boolean, onLink: () -> Unit) {
-    var menu by remember { mutableIntStateOf(0) }
+internal fun MarkdownTools(model: WorkspaceViewModel, enabled: Boolean, group: MarkdownToolGroup,
+    onGroup: (MarkdownToolGroup) -> Unit, onLink: () -> Unit) {
+    val transition = updateTransition(group, label = "format-group")
+    val moving = transition.isRunning || transition.currentState != transition.targetState
+    val distance = with(LocalDensity.current) { 48.dp.toPx() }
+    Column(Modifier.fillMaxWidth().clipToBounds().testTag("markdown-tools").discreteTabSwipe(
+        enabled = enabled && !moving, minimumDistance = distance, edgeInset = 0f, eventPass = PointerEventPass.Initial,
+        onSwipe = { direction -> MarkdownToolGroup.entries.getOrNull(group.ordinal + direction)?.let(onGroup) },
+    )) {
+        transition.AnimatedContent(transitionSpec = {
+            val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+            slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { it * direction } togetherWith
+                slideOutHorizontally(tween(240, easing = FastOutSlowInEasing)) { -it * direction } using null
+        }) { shown ->
+            Box(Modifier.fillMaxWidth().blockInteractions(moving || shown != group)) {
+                MarkdownToolRow(model, enabled, shown, onLink)
+            }
+        }
+        Text(stringResource(R.string.md_group_position, stringResource(group.label), group.ordinal + 1, MarkdownToolGroup.entries.size),
+            Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MarkdownToolRow(model: WorkspaceViewModel, enabled: Boolean, group: MarkdownToolGroup, onLink: () -> Unit) {
+    var menu by remember(group) { mutableIntStateOf(0) }
     val selection = model.currentSelection()
     val parsed = model.markdownDocument
     val source = model.textState?.text?.toString()
     fun active(kind: String) = parsed?.takeIf { it.source == source }?.elements?.any { it.kind == kind && it.range.start <= selection.min && it.range.end >= selection.max } == true
     val heading = parsed?.takeIf { it.source == source }?.elements?.firstOrNull { it.kind == "Heading" && it.range.start <= selection.min && it.range.end >= selection.max }?.level ?: 0
     val task = parsed?.takeIf { it.source == source }?.elements?.any { it.kind == "ListItem" && it.range.start <= selection.min && it.range.end >= selection.max && it.children.any { child -> child.kind == "TaskListItemMarker" } } == true
-    val labels = listOf(R.string.md_heading, R.string.md_bold, R.string.md_list, R.string.md_quote, R.string.md_link, R.string.md_more)
-    val glyphs = listOf("H", "B", "☷", "❞", "↗", "⋯")
+    val tools = when (group) { MarkdownToolGroup.Text -> textTools; MarkdownToolGroup.Paragraph -> paragraphTools; MarkdownToolGroup.Insert -> insertTools }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-    val available = maxWidth
-    Row(Modifier.horizontalScroll(rememberScrollState()).widthIn(min = available).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-        labels.forEachIndexed { index, label ->
-            Box {
-                val selected = when (index) { 0 -> active("Heading"); 1 -> active("StrongEmphasis"); 2 -> active("ListItem"); 3 -> active("BlockQuote"); 4 -> active("Link"); else -> false }
-                val name = stringResource(label)
-                TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), state = rememberTooltipState(), tooltip = { PlainTooltip { Text(name) } }) {
-                TextButton(onClick = { if (!model.ui.busy && !model.ui.transitioning && !model.ui.storageBlocked) when (index) { 1 -> model.format(MarkdownAction.Bold); 3 -> model.format(MarkdownAction.Quote); 4 -> onLink(); else -> menu = index + 1 } },
-                    enabled = enabled, modifier = Modifier.size(48.dp).semantics { contentDescription = name; this.selected = selected }, contentPadding = PaddingValues(0.dp),
-                    colors = ButtonDefaults.textButtonColors(containerColor = if (selected) MaterialTheme.colorScheme.surfaceVariant else androidx.compose.ui.graphics.Color.Transparent)) {
-                    Text(glyphs[index], fontWeight = if (index == 1) FontWeight.Bold else FontWeight.Medium)
-                }
-                }
-                DropdownMenu(menu == index + 1, { menu = 0 }, properties = PopupProperties(focusable = false)) {
-                    when (index) {
-                        0 -> (0..6).forEach { level ->
-                            DropdownMenuItem(text = { Text(if (level == 0) stringResource(R.string.md_body) else stringResource(R.string.md_heading_level, level)) },
-                                trailingIcon = { if (heading == level) Glyph(R.drawable.ic_check) },
-                                onClick = { model.format(MarkdownAction.Heading, level); menu = 0 })
+        val available = maxWidth
+        Row(Modifier.horizontalScroll(rememberScrollState()).widthIn(min = available).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            tools.forEach { tool ->
+                Box {
+                    val selected = when (tool.label) {
+                        R.string.md_heading -> active("Heading"); R.string.md_bold -> active("StrongEmphasis")
+                        R.string.md_italic -> active("Emphasis"); R.string.md_strike -> active("Strikethrough")
+                        R.string.md_list -> active("ListItem"); R.string.md_quote -> active("BlockQuote"); R.string.md_link -> active("Link")
+                        R.string.md_inline_code -> active("Code"); R.string.md_code_block -> active("FencedCodeBlock") || active("IndentedCodeBlock")
+                        else -> false
+                    }
+                    val name = stringResource(tool.label)
+                    TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), state = rememberTooltipState(), tooltip = { PlainTooltip { Text(name) } }) {
+                        IconButton(onClick = {
+                            if (!model.ui.busy && !model.ui.transitioning && !model.ui.storageBlocked) {
+                                if (tool.action != null) model.format(tool.action)
+                                else if (tool.label == R.string.md_link) onLink()
+                                else menu = tool.label
+                            }
+                        }, enabled = enabled, modifier = Modifier.size(48.dp).semantics { contentDescription = name; this.selected = selected },
+                            colors = IconButtonDefaults.iconButtonColors(containerColor = if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)) {
+                            Glyph(tool.icon)
                         }
-                        2 -> listOf(R.string.md_bullet to MarkdownAction.Bullet, R.string.md_ordered to MarkdownAction.Ordered, R.string.md_task to MarkdownAction.Task, R.string.md_unlist to MarkdownAction.Unlist).forEach { (text, action) ->
-                            val chosen = when (action) { MarkdownAction.Task -> task; MarkdownAction.Ordered -> active("OrderedList") && !task; MarkdownAction.Bullet -> active("BulletList") && !task; else -> !active("ListItem") }
-                            DropdownMenuItem(text = { Text(stringResource(text)) }, trailingIcon = { if (chosen) Glyph(R.drawable.ic_check) }, onClick = { model.format(action); menu = 0 })
-                        }
-                        5 -> listOf(R.string.md_italic to MarkdownAction.Italic, R.string.md_strike to MarkdownAction.Strike, R.string.md_inline_code to MarkdownAction.InlineCode,
-                            R.string.md_code_block to MarkdownAction.CodeBlock, R.string.md_rule to MarkdownAction.Rule, R.string.md_table to MarkdownAction.Table,
-                            R.string.md_indent to MarkdownAction.Indent, R.string.md_outdent to MarkdownAction.Outdent).forEach { (text, action) ->
-                            val chosen = when (action) { MarkdownAction.Italic -> active("Emphasis"); MarkdownAction.Strike -> active("Strikethrough"); MarkdownAction.InlineCode -> active("Code"); MarkdownAction.CodeBlock -> active("FencedCodeBlock") || active("IndentedCodeBlock"); else -> false }
-                            DropdownMenuItem(text = { Text(stringResource(text)) }, trailingIcon = { if (chosen) Glyph(R.drawable.ic_check) }, onClick = { model.format(action); menu = 0 })
+                    }
+                    UpwardFormatMenu(menu == tool.label, { menu = 0 }) {
+                        if (tool.label == R.string.md_heading) {
+                            val icons = listOf(R.drawable.ic_type, R.drawable.ic_heading_1, R.drawable.ic_heading_2, R.drawable.ic_heading_3, R.drawable.ic_heading_4, R.drawable.ic_heading_5, R.drawable.ic_heading_6)
+                            (0..6).forEach { level ->
+                                DropdownMenuItem(text = { Text(if (level == 0) stringResource(R.string.md_body) else stringResource(R.string.md_heading_level, level)) },
+                                    leadingIcon = { Glyph(icons[level]) }, trailingIcon = { if (heading == level) Glyph(R.drawable.ic_check) },
+                                    onClick = { model.format(MarkdownAction.Heading, level); menu = 0 })
+                            }
+                        } else if (tool.label == R.string.md_list) {
+                            listOf(FormatTool(R.string.md_bullet, R.drawable.ic_list, MarkdownAction.Bullet),
+                                FormatTool(R.string.md_ordered, R.drawable.ic_list_ordered, MarkdownAction.Ordered),
+                                FormatTool(R.string.md_task, R.drawable.ic_list_checks, MarkdownAction.Task),
+                                FormatTool(R.string.md_unlist, R.drawable.ic_list_minus, MarkdownAction.Unlist)).forEach { item ->
+                                val chosen = when (item.action) { MarkdownAction.Task -> task; MarkdownAction.Ordered -> active("OrderedList") && !task; MarkdownAction.Bullet -> active("BulletList") && !task; else -> !active("ListItem") }
+                                DropdownMenuItem(text = { Text(stringResource(item.label)) }, leadingIcon = { Glyph(item.icon) },
+                                    trailingIcon = { if (chosen) Glyph(R.drawable.ic_check) }, onClick = { model.format(checkNotNull(item.action)); menu = 0 })
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+/** Position against the actual 48dp tool, never against the hidden footer or IME. */
+@Composable
+private fun UpwardFormatMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val density = LocalDensity.current
+    val topInset = WindowInsets.statusBars.getTop(density)
+    var anchorTop by remember { mutableIntStateOf(0) }
+    val gap = with(density) { 4.dp.roundToPx() }
+    val provider = remember(gap, topInset) { object : PopupPositionProvider {
+        override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+            val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left else anchorBounds.right - popupContentSize.width
+            return IntOffset(x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+                (anchorBounds.top - popupContentSize.height - gap).coerceAtLeast(topInset))
+        }
+    } }
+    // A zero-size sibling inherits the tool Box coordinates without enlarging its hit area.
+    Box(Modifier.onGloballyPositioned { anchorTop = it.positionInWindow().y.toInt() }) {
+        if (expanded) Popup(popupPositionProvider = provider, onDismissRequest = onDismiss, properties = PopupProperties(focusable = false)) {
+            Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp, shadowElevation = 6.dp,
+                modifier = Modifier.widthIn(min = 224.dp, max = 300.dp).heightIn(max = with(density) { (anchorTop - topInset - gap).coerceAtLeast(48).toDp() }).testTag("format-popup")) {
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp), content = content)
+            }
+        }
     }
 }
 

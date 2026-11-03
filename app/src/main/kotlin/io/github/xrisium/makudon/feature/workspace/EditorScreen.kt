@@ -16,7 +16,6 @@ import androidx.compose.ui.platform.*
 import androidx.compose.ui.res.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.xrisium.makudon.R
@@ -32,7 +31,6 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     val entry = ui.workspace?.entry(ui.activeId.orEmpty()) ?: return
     val status by session.status.collectAsState()
     val colors = MaterialTheme.colorScheme
-    val labelMeasurer = rememberTextMeasurer()
     val textSize = ui.workspace?.editorTextSize ?: EditorTextSize.Medium
     val scale = textSize.sp / 18f
     val bodyStyle = EditorStyle.copy(fontSize = textSize.sp.sp, lineHeight = (33 * scale).sp)
@@ -43,6 +41,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     var more by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
     var tools by rememberSaveable(entry.id) { mutableStateOf(false) }
+    var toolGroup by rememberSaveable(entry.id) { mutableStateOf(MarkdownToolGroup.Text) }
     var findOpen by rememberSaveable(entry.id) { mutableStateOf(false) }
     var query by rememberSaveable(entry.id) { mutableStateOf("") }
     var replacement by rememberSaveable(entry.id) { mutableStateOf("") }
@@ -116,24 +115,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         if (!model.immersive) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                 if (markdown) {
-                    val position by animateFloatAsState(ui.editorMode.ordinal.toFloat(), tween(160), label = "editor-view-selection")
-                    BoxWithConstraints(Modifier.fillMaxWidth().background(colors.surfaceVariant, RoundedCornerShape(14.dp)).padding(4.dp)) {
-                        val labelWidth = with(LocalDensity.current) { (maxWidth / 3 - 8.dp).toPx() }
-                        Canvas(Modifier.matchParentSize()) {
-                            drawRoundRect(colors.surface, topLeft = Offset(size.width / 3 * position, 0f), size = Size(size.width / 3, size.height), cornerRadius = CornerRadius(11.dp.toPx()))
-                        }
-                        Row {
-                            listOf(EditorMode.Source to R.string.source_view, EditorMode.Typeset to R.string.typeset_view, EditorMode.Reading to R.string.reading_view).forEach { (mode, label) ->
-                                val fullLabel = stringResource(label)
-                                val compact = when (mode) { EditorMode.Source -> R.string.source_view_compact; EditorMode.Typeset -> R.string.typeset_view_compact; EditorMode.Reading -> R.string.reading_view_compact }
-                                val display = if (labelMeasurer.measure(fullLabel, style = MaterialTheme.typography.labelMedium, softWrap = false).size.width > labelWidth) stringResource(compact) else fullLabel
-                                TextButton(onClick = { if (editable) changeMode(mode) }, enabled = controlsEnabled, shape = RoundedCornerShape(11.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-                                    modifier = Modifier.weight(1f).semantics { selected = mode == ui.editorMode; contentDescription = fullLabel }) {
-                                    Text(display, style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
-                                }
-                            }
-                        }
-                    }
+                    MarkdownModePicker(ui.editorMode, controlsEnabled) { if (editable) changeMode(it) }
                 } else Text(stringResource(R.string.plain_text), style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(when (status.phase) { SavePhase.Saved -> R.string.save_saved; SavePhase.Waiting -> R.string.save_waiting; SavePhase.Saving -> R.string.save_saving; SavePhase.Failed -> R.string.save_failed }),
                     Modifier.padding(top = 4.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }, style = MaterialTheme.typography.labelSmall,
@@ -156,11 +138,15 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         } else MarkdownEditingField(model, markdown, bodyStyle, editable, findOpen, Modifier.weight(1f).fillMaxWidth()) { focused = it }
         if (!model.immersive) {
             val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-            if (markdown && !reading && !findOpen && (tools || (focused && imeVisible))) MarkdownTools(model, controlsEnabled) { if (editable) linkToken = model.editToken() }
-            if (!(markdown && !reading && focused && imeVisible && !findOpen)) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            val keyboardTools = markdown && !reading && focused && imeVisible && !findOpen
+            if (markdown && !reading && !findOpen && (tools || keyboardTools)) MarkdownTools(model, controlsEnabled, toolGroup,
+                onGroup = { toolGroup = it }, onLink = { if (editable) linkToken = model.editToken() })
+            if (!keyboardTools) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp).testTag("editor-info"), verticalAlignment = Alignment.CenterVertically) {
                 Text(pluralStringResource(R.plurals.document_count, source.codePointCount(0, source.length), source.codePointCount(0, source.length)), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                 Text(displayPath(checkNotNull(ui.workspace), entry.parent ?: Workspace.ROOT), Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
-                if (markdown && !reading && !imeVisible) TextButton(onClick = { if (editable) tools = !tools }, enabled = controlsEnabled) { Text(stringResource(R.string.md_format)) }
+                if (markdown && !reading && !imeVisible) MarkdownGroupButtons(toolGroup.takeIf { tools }, controlsEnabled) { chosen ->
+                    if (editable) { tools = !tools || chosen != toolGroup; toolGroup = chosen }
+                }
             }
         }
     }

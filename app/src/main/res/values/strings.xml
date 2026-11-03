@@ -363,7 +363,6 @@
   <string name="editor_size_medium">Medium</string>
   <string name="editor_size_large">Large</string>
     <string name="reading_view">Reading</string>
-    <string name="md_format">Format</string>
     <string name="md_heading">Heading</string>
     <string name="md_heading_level">Heading %1$d</string>
     <string name="md_body">Body</string>
@@ -381,7 +380,6 @@
     <string name="md_link_url">Address</string>
     <string name="md_remove_link">Remove link</string>
     <string name="md_open_link">Open link</string>
-    <string name="md_more">More formatting</string>
     <string name="md_inline_code">Inline code</string>
     <string name="md_code_block">Code block</string>
     <string name="md_rule">Divider</string>
@@ -415,4 +413,8 @@
     <string name="source_view_compact">Code</string>
     <string name="typeset_view_compact">Write</string>
     <string name="reading_view_compact">Read</string>
+    <string name="md_group_text">Text</string>
+    <string name="md_group_paragraph">Paragraph</string>
+    <string name="md_group_insert">Insert</string>
+    <string name="md_group_position">%1$s · %2$d/%3$d</string>
 </resources>

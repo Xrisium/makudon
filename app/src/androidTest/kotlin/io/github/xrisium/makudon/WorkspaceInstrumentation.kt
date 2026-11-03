@@ -27,6 +27,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private val checks = mutableListOf<String>()
     private var profileMarkdownLong = false
     private var onlyMarkdownLong = false
+    private var onlyMarkdownToolbar = false
     private var onlyMarkdownVisual = false
     private var onlyMarkdown = false
     private var onlyLong = false
@@ -52,6 +53,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
         profileMarkdownLong = arguments?.getString("profile") == "true"
+        onlyMarkdownToolbar = arguments?.getString("case") == "markdown-toolbar"
         onlyMarkdownLong = arguments?.getString("case") == "markdown-long"
         onlyMarkdownVisual = arguments?.getString("case") == "markdown-visual"
         onlyMarkdown = arguments?.getString("case") == "markdown"
@@ -77,7 +79,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     override fun onStart() {
         try {
-            if (onlyMarkdown) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+            if (onlyMarkdown || onlyMarkdownToolbar) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitFor("language bootstrap and first workspace frame") {
                 val label = main { currentActivity?.getString(R.string.recent) }
@@ -90,7 +92,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -118,7 +120,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
         visit(root)
-        if (onlyMarkdown) {
+        if (onlyMarkdown || onlyMarkdownToolbar) {
             val activeLayer = uiAutomation.windows.firstOrNull { it.id == root.windowId }?.layer ?: 0
             uiAutomation.windows.filter { it.layer > activeLayer && it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.forEach { window -> window.root?.let(::visit) }
         }
@@ -1351,7 +1353,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val oldScale = shell("settings get global animator_duration_scale")
         val display = targetContext.resources.displayMetrics
         val density = display.density
-        val licenses = model.languages.context().getString(R.string.licenses)
+        val licenses = model.languages.context().getString(R.string.ui_font)
         val paper = model.languages.context().getString(R.string.theme_paper)
         fun enabled(label: String): Boolean {
             var node: AccessibilityNodeInfo? = find(label)
@@ -1392,7 +1394,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             try {
                 hold(0f, false) {
                     verify(main { model.ui.page == Page.Settings && !model.ui.tabTransitioning }, "Stationary long press does not start navigation")
-                    verify(enabled(licenses) && enabled(paper), "Long press keeps license and theme controls enabled")
+                    verify(enabled(licenses) && enabled(paper), "Long press keeps font and theme controls enabled")
                     val during = pixels(chipBounds)
                     try { verify(before.sameAs(during), "Long press elsewhere does not recolor theme text pixels") } finally { during.recycle() }
                 }
@@ -1891,6 +1893,92 @@ class WorkspaceInstrumentation : Instrumentation() {
         }
     }
 
+    private fun markdownToolbarTest() {
+        val oldKeyboard = shell("settings get secure show_ime_with_hard_keyboard").trim()
+        main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Markdown) }; ready()
+        val id = main { checkNotNull(model.ui.activeId) }
+        fun bounds(label: String) = Rect().also { find(label).getBoundsInScreen(it) }
+        fun tapPoint(x: Float, y: Float) {
+            val time = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, x, y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+                check(uiAutomation.injectInputEvent(event, true)); event.recycle(); SystemClock.sleep(30)
+            }
+            SystemClock.sleep(300); waitForIdleSync()
+        }
+        fun hideKeyboard() {
+            main {
+                val activity = currentActivity!!
+                (activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0)
+                activity.currentFocus?.clearFocus()
+            }
+            SystemClock.sleep(600); waitForIdleSync()
+        }
+        try {
+            click("源码"); val body = "###### 六级标题\n\n####### 更深标题\n\n正文测试"; setText("编辑正文", body); saved(); hideKeyboard()
+            val count = main { model.languages.context().resources.getQuantityString(R.plurals.document_count, body.length, body.length) }
+            val footer = bounds(count)
+            click("排版"); verify(bounds(count).centerY() == footer.centerY(), "Source and typeset footer share a baseline")
+            click("阅读"); verify(bounds(count).centerY() == footer.centerY(), "Reading footer reserves the same 48dp row as editing")
+            val modeBoxes = listOf("源码", "排版", "阅读").map(::bounds)
+            verify(modeBoxes.maxOf { it.width() } - modeBoxes.minOf { it.width() } <= 1 && modeBoxes.zipWithNext().all { (a,b) -> a.right == b.left }, "Three mode touch targets are equal and contiguous")
+            val sourceBox = modeBoxes[0]
+            tapPoint(sourceBox.left + 3f, sourceBox.centerY().toFloat())
+            verify(main { model.ui.editorMode == EditorMode.Source }, "Left edge inside source indicator accepts a real touch")
+            val readingBox = bounds("阅读")
+            tapPoint(readingBox.right - 3f, readingBox.centerY().toFloat())
+            verify(main { model.ui.editorMode == EditorMode.Reading }, "Right edge inside reading indicator accepts a real touch")
+            click("排版"); click("文本")
+            verify(listOf("标题", "粗体", "斜体", "删除线", "链接").all { name -> nodes().any { it.contentDescription?.toString() == name } }, "Text group presents five related Lucide tools")
+            click("文本"); verify(nodes().none { it.contentDescription?.toString() == "粗体" }, "Clicking current group hides its tools")
+            click("段落"); verify(listOf("列表", "引用", "增加缩进", "减少缩进").all { name -> nodes().any { it.contentDescription?.toString() == name } }, "Selecting another group expands its paragraph tools")
+            click("插入"); verify(listOf("行内代码", "代码块", "分隔线", "表格").all { name -> nodes().any { it.contentDescription?.toString() == name } }, "Insert group exposes four tools without a More menu")
+            screenshot("markdown-toolbar-insert")
+            click("文本"); click("标题")
+            verify(nodes().any { it.text?.toString() == "5 级标题" } && nodes().any { it.text?.toString() == "6 级标题" }, "Heading popup contains body and all six heading levels")
+            screenshot("markdown-toolbar-heading")
+            click("6 级标题"); saved()
+            verify(main { model.textState!!.text.toString() == body.replace("正文测试", "###### 正文测试") }, "Sixth heading tool inserts the exact source prefix")
+            click("撤销"); saved()
+            verify(main { model.textState!!.text.toString() == body }, "Sixth heading formatting restores in one undo")
+            shell("settings put secure show_ime_with_hard_keyboard 1")
+            val edit = nodes().first { it.isEditable }; edit.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            main { val view = currentActivity!!.window.decorView.findFocus()!!; (currentActivity!!.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(view, 0) }
+            waitFor("IME shown", 20_000) { main { currentActivity!!.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true } }
+            SystemClock.sleep(500); waitForIdleSync()
+            val selection = main { model.currentSelection() }; val revision = main { model.save!!.revision }
+            val toolbar = bounds("粗体")
+            // Recognize the gesture during movement, but publish the group only on pointer-up.
+            val time = SystemClock.uptimeMillis(); val y = toolbar.centerY().toFloat()
+            val width = targetContext.resources.displayMetrics.widthPixels
+            for (step in 0..8) {
+                val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(), if (step == 0) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_MOVE,
+                    width * (.8f - .6f * step / 8), y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+                check(uiAutomation.injectInputEvent(event, true)); event.recycle(); SystemClock.sleep(25)
+            }
+            verify(nodes().any { it.contentDescription?.toString() == "粗体" }, "Horizontal movement does not change group before release")
+            MotionEvent.obtain(time, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, width * .2f, y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }.let { check(uiAutomation.injectInputEvent(it, true)); it.recycle() }
+            find("列表"); SystemClock.sleep(350)
+            verify(nodes().any { it.contentDescription?.toString() == "引用" }, "Pointer-up discretely advances to paragraph group while IME is visible")
+            verify(main { model.currentSelection() == selection && model.save!!.revision == revision && currentActivity!!.window.decorView.rootWindowInsets!!.isVisible(android.view.WindowInsets.Type.ime()) }, "Group swipe preserves selection, body revision and keyboard")
+            val listTop = bounds("列表").top
+            click("列表")
+            var lastItem = find("取消列表")
+            while (!lastItem.isClickable && lastItem.parent != null) lastItem = lastItem.parent
+            val last = Rect().also { lastItem.getBoundsInScreen(it) }
+            val density = targetContext.resources.displayMetrics.density
+            verify((listTop - last.bottom) in (6 * density).toInt()..(11 * density).toInt(), "Popup anchors 4dp above toolbar plus 4dp content padding with IME")
+            screenshot("markdown-toolbar-ime-list")
+            click("取消列表"); saved()
+            verify(main { model.textState!!.text.toString() == body || model.textState!!.text.toString() == body.replace("####### 更深标题", "更深标题") }, "Toolbar navigation never rewrites unrelated source")
+        } catch (e: Exception) { screenshot("markdown-toolbar-failure"); throw e } finally {
+            hideKeyboard()
+            shell(if (oldKeyboard == "null") "settings delete secure show_ime_with_hard_keyboard" else "settings put secure show_ime_with_hard_keyboard $oldKeyboard")
+            if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
+            main { model.delete(id) }; ready()
+        }
+    }
+
     private fun markdownVisualTest() {
         val oldFont = shell("settings get system font_scale").trim()
         val oldSize = shell("wm size").lineSequence().firstOrNull { it.startsWith("Override size:") }?.substringAfter(":")?.trim()
@@ -1913,11 +2001,11 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(listOf(R.string.source_view, R.string.typeset_view, R.string.reading_view).all { resource ->
                 val label = main { model.languages.context().getString(resource) }; nodes().any { it.text?.toString() == label || it.contentDescription?.toString() == label }
             }, "English 320dp doubled fonts retain three accessible mode labels")
-            main { model.editorMode(EditorMode.Typeset) }; ready(); click("Format"); screenshot("markdown-tools-en-narrow-200")
+            main { model.editorMode(EditorMode.Typeset) }; ready(); click("Text"); screenshot("markdown-tools-en-narrow-200")
             val width = checkNotNull(uiAutomation.takeScreenshot()).let { val w = it.width; it.recycle(); w }
-            verify(listOf("Heading", "Bold", "List", "Quote", "Link", "More formatting").all { label ->
+            verify(listOf("Heading", "Bold", "Italic", "Strikethrough", "Link").all { label ->
                 val bounds = Rect(); find(label).getBoundsInScreen(bounds); bounds.left >= 0 && bounds.right <= width && !bounds.isEmpty
-            }, "All six toolbar touch targets fit the 320dp window")
+            }, "All text-group toolbar touch targets fit the 320dp window")
             shell("settings put system font_scale 1.0"); shell("wm size 1800x840")
             waitFor("landscape layout", 30_000) { main { currentActivity!!.resources.configuration.screenWidthDp > currentActivity!!.resources.configuration.screenHeightDp && currentActivity!!.resources.configuration.fontScale <= 1.01f } }; ready()
             main { model.editorMode(EditorMode.Reading) }; ready(); screenshot("markdown-reading-landscape")
@@ -1937,6 +2025,15 @@ class WorkspaceInstrumentation : Instrumentation() {
         val oldTheme = main { model.ui.workspace!!.theme }
         var id: String? = null
         fun parsed() = waitFor("current Markdown parse") { main { model.markdownDocument?.source == model.textState?.text?.toString() } }
+        fun group(label: String) {
+            // Native selection may show the IME; the footer groups intentionally hide then.
+            main {
+                val activity = currentActivity!!
+                (activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                    .hideSoftInputFromWindow(activity.window.decorView.windowToken, 0)
+            }
+            SystemClock.sleep(500); waitForIdleSync(); click(label)
+        }
         fun sourceSelection(start: Int, end: Int = start) {
             main { model.editorMode(EditorMode.Source) }; SystemClock.sleep(300); waitForIdleSync()
             val labelled = find("编辑正文")
@@ -1969,7 +2066,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             screenshot("markdown-reading")
             click("排版"); click("源码"); click("阅读")
             verify(main { model.save!!.revision == revision } && source(id, DocumentKind.Markdown) == sample, "Three-view roundtrip creates no body revision or byte changes")
-            click("排版"); click("格式")
+            click("排版"); click("文本")
             val position = sample.indexOf("正文")
             sourceSelection(position, position + 2)
             verify(main { model.currentSelection() == TextSelection(position, position + 2) }, "Typeset switch retains exact source selection for tools")
@@ -1988,11 +2085,11 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.textState!!.text.toString().startsWith("### 写作标题") }, "Heading tool changes current heading level in typeset")
             click("撤销"); parsed(); saved()
             sourceSelection(sample.indexOf("引用"))
-            click("引用"); parsed(); saved()
+            group("段落"); click("引用"); parsed(); saved()
             verify(main { !model.textState!!.text.toString().contains("> 引用") }, "Quote tool removes one quote layer")
             click("撤销"); parsed(); saved()
             sourceSelection(position, position + 2)
-            click("链接"); verify(nodes().any { it.text?.toString() == "链接名称" }, "Link dialog opens from typeset with retained selection")
+            group("文本"); click("链接"); verify(nodes().any { it.text?.toString() == "链接名称" }, "Link dialog opens from typeset with retained selection")
             click("取消"); verify(main { model.textState!!.text.toString() == sample }, "Cancelling a link leaves source unchanged")
             val stale = main { model.editToken() }
             main { model.applyEditorEdit(EditResult(sample + "x", model.currentSelection())) }; parsed(); saved()

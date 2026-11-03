@@ -9,6 +9,16 @@ import org.junit.Test
 
 class MarkdownEditsTest {
     private fun edit(source: String, selection: TextSelection, action: MarkdownAction, level: Int = 0) = checkNotNull(MarkdownEdits.command(source, selection, action, level))
+    @Test fun sixthHeadingKeepsSourceAndFormattingRoundTrips() {
+        val source = "###### 六级 😀\n\n正文"
+        val parsed = MarkdownParser.parse(source)
+        assertEquals(source, parsed.source)
+        assertEquals(6, parsed.elements.single { it.kind == "Heading" }.level)
+        val body = edit(source, TextSelection(8), MarkdownAction.Heading, 0)
+        assertEquals("六级 😀\n\n正文", body.text)
+        assertEquals(source, edit(body.text, TextSelection(1), MarkdownAction.Heading, 6).text)
+        assertNull(MarkdownEdits.command(source, TextSelection(8), MarkdownAction.Heading, 7))
+    }
     @Test fun parserKeepsUtf16SourceOffsetsAcrossEmojiAndNestedSyntax() {
         val source = "# 标题 😀\n\n> **加粗**和[链接](https://example.com)\n\n- [x] 完成\n\n| A | B |\n|---|---|\n| 中 | 😀 |\n\n~~删除~~"
         val doc = MarkdownParser.parse(source)
