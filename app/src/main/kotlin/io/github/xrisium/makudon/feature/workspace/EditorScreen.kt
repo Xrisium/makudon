@@ -106,7 +106,6 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
                     DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("info") } })
                     DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("rename") } })
                     DropdownMenuItem(text = { Text(stringResource(if (markdown) R.string.md_export_md else R.string.export_copy)) }, leadingIcon = { Glyph(R.drawable.ic_download) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onExport() } })
-                    if (markdown) DropdownMenuItem(text = { Text(stringResource(R.string.md_export_txt)) }, onClick = { model.exportCopy(true); more = false })
                     HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
                     DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = colors.error) }, leadingIcon = { Glyph(R.drawable.ic_trash_2, tint = colors.error) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("delete") } })
                 }
@@ -126,7 +125,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         if (status.phase == SavePhase.Failed) Surface(color = colors.errorContainer, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
                 Text(stringResource(R.string.save_failure_help), style = MaterialTheme.typography.bodySmall)
-                Row { TextButton(onClick = model::retrySave, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }; TextButton(onClick = onExport) { Text(stringResource(R.string.export_copy)) } }
+                Row { TextButton(onClick = model::retrySave, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }; TextButton(onClick = onExport) { Text(stringResource(if (markdown) R.string.md_export_md else R.string.export_copy)) } }
             }
         }
         model.editorMessage?.let { Text(stringResource(it), Modifier.padding(horizontal = 16.dp, vertical = 4.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall, color = colors.error) }

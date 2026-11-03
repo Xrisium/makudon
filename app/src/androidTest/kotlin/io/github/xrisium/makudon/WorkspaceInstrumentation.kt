@@ -30,6 +30,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyMarkdownToolbar = false
     private var onlyMarkdownVisual = false
     private var onlyMarkdown = false
+    private var onlyMarkdownTable = false
     private var onlyLong = false
     private var onlyMotion = false
     private var onlyVisual = false
@@ -57,6 +58,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyMarkdownLong = arguments?.getString("case") == "markdown-long"
         onlyMarkdownVisual = arguments?.getString("case") == "markdown-visual"
         onlyMarkdown = arguments?.getString("case") == "markdown"
+        onlyMarkdownTable = arguments?.getString("case") == "markdown-table"
         onlyLong = arguments?.getString("case") == "long"
         onlyMotion = arguments?.getString("case") == "motion"
         onlyVisual = arguments?.getString("case") == "motion-visual"
@@ -79,7 +81,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     override fun onStart() {
         try {
-            if (onlyMarkdown || onlyMarkdownToolbar) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+            if (onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitFor("language bootstrap and first workspace frame") {
                 val label = main { currentActivity?.getString(R.string.recent) }
@@ -92,7 +94,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -120,7 +122,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
         visit(root)
-        if (onlyMarkdown || onlyMarkdownToolbar) {
+        if (onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable) {
             val activeLayer = uiAutomation.windows.firstOrNull { it.id == root.windowId }?.layer ?: 0
             uiAutomation.windows.filter { it.layer > activeLayer && it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.forEach { window -> window.root?.let(::visit) }
         }
@@ -1893,6 +1895,111 @@ class WorkspaceInstrumentation : Instrumentation() {
         }
     }
 
+    private fun markdownTableTest() {
+        val oldTheme = main { model.ui.workspace!!.theme }
+        val oldFont = shell("settings get system font_scale").trim()
+        val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Markdown) }; ready()
+        val id = main { checkNotNull(model.ui.activeId) }
+        val sample = "表前正文\n\n| 标题 | B |\n| :--- | ---: |\n| 中文 |  |\n| **粗体** | 后 |\n\n表后正文 😀"
+        fun parsed() = waitFor("table parse") { main { model.markdownDocument?.source == model.textState?.text?.toString() } }
+        fun body() = main { model.textState!!.text.toString() }
+        fun cell(label: String): AccessibilityNodeInfo {
+            fun editable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+                if (node.isEditable) return node
+                for (i in 0 until node.childCount) node.getChild(i)?.let { editable(it)?.let { found -> return found } }
+                return null
+            }
+            val labelled = find(label)
+            var ancestor: AccessibilityNodeInfo? = labelled
+            while (ancestor != null) {
+                if (ancestor.isEditable) return ancestor
+                ancestor = ancestor.parent
+            }
+            return checkNotNull(editable(labelled))
+        }
+        fun connection() = checkNotNull(currentActivity!!.window.decorView.findFocus()?.onCreateInputConnection(android.view.inputmethod.EditorInfo()))
+        fun hideKeyboard() {
+            main { (currentActivity!!.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(currentActivity!!.window.decorView.windowToken, 0) }
+            SystemClock.sleep(400); waitForIdleSync()
+        }
+        fun tableBackground(label: String) {
+            val rect = Rect().also { find(label).getBoundsInScreen(it) }
+            val bitmap = checkNotNull(uiAutomation.takeScreenshot())
+            val x = (rect.left + 3).coerceIn(0, bitmap.width - 1)
+            val y = (rect.top + 3).coerceIn(0, bitmap.height - 1)
+            val beside = (rect.left - 12).coerceAtLeast(0)
+            verify(bitmap.getPixel(x, y) == bitmap.getPixel(beside, y), "Table cell background matches adjacent document background")
+            bitmap.recycle()
+        }
+        try {
+            click("源码"); setText("编辑正文", sample); saved(); parsed(); click("排版"); hideKeyboard()
+            verify(nodes().none { it.text?.toString() == "编辑表格源码" }, "Typeset removes table source action")
+            verify(cell("表格第 2 行，第 1 列").isEditable, "Table exposes native cell input directly")
+            val tap = Rect().also { find("表格第 2 行，第 1 列").getBoundsInScreen(it) }
+            val down = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, tap.centerX().toFloat(), tap.centerY().toFloat(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+                check(uiAutomation.injectInputEvent(event, true)); event.recycle()
+            }
+            SystemClock.sleep(250); main { connection().commitText("点", 1) }; saved(); parsed()
+            verify(cell("表格第 2 行，第 1 列").text?.contains("点") == true, "A real tap enters the cell and sends native keyboard input without opening source")
+            click("撤销"); saved(); parsed()
+            setText("表格第 2 行，第 1 列", "中文修改 😀"); saved(); parsed()
+            val changed = sample.replace("中文", "中文修改 😀")
+            verify(body() == changed && source(id, DocumentKind.Markdown) == changed, "Cell input immediately updates the shared saved Markdown and preserves surrounding source")
+            click("撤销"); saved(); parsed(); verify(body() == sample, "Cell edit uses the shared undo history")
+            click("重做"); saved(); parsed(); verify(body() == changed, "Shared redo restores cell input")
+            setText("表格第 2 行，第 2 列", "a|b"); saved(); parsed()
+            verify(body().contains("a\\|b") && cell("表格第 2 行，第 2 列").text?.contains("a|b") == true, "Typing a pipe keeps two columns and hides the escape")
+            setText("表格第 1 行，第 1 列", "表头"); saved(); parsed()
+            verify(body().contains("| 表头 | B |\n| :--- | ---: |"), "Header editing keeps the original alignment separator")
+            setText("表格第 3 行，第 1 列", "粗字"); saved(); parsed()
+            verify(body().contains("**粗字**"), "Editing visible formatted cell text preserves emphasis syntax")
+            val beforeLimit = body()
+            setText("表格第 2 行，第 1 列", "界".repeat(100_001)); saved(); parsed()
+            verify(body() == beforeLimit && cell("表格第 2 行，第 1 列").text?.contains("中文修改") == true, "Oversized cell paste rejects the entire change and keeps the editable mirror")
+            setText("表格第 2 行，第 1 列", ""); saved(); parsed()
+            // The synthetic InputConnection owns composition here; a visible Gboard would
+            // finish an unfamiliar synthetic composing span in response to updateSelection.
+            hideKeyboard()
+            val composingConnection = main { connection() }
+            main { check(composingConnection.setComposingText("zh", 1)); check(composingConnection.setComposingText("zhong", 1)) }; parsed()
+            main { check(composingConnection.setComposingText("中文", 1)); composingConnection.finishComposingText() }; saved(); parsed()
+            verify(cell("表格第 2 行，第 1 列").text?.contains("中文") == true && !body().contains("zhong"), "Real cell InputConnection composition replaces candidates without duplicating text")
+            main { connection().setComposingText("读", 1) }; val composing = body()
+            click("阅读"); saved(); parsed()
+            verify(body() == composing && nodes().none { it.isEditable }, "Switching to reading during cell composition keeps visible input and becomes read-only")
+            click("源码"); verify(body() == composing && source(id, DocumentKind.Markdown) == composing, "Source view receives exact cell edits")
+            click("排版")
+            val pending = File(workspaceDirectory(), "documents/$id/body.md.new")
+            check(pending.mkdir())
+            try {
+                setText("表格第 2 行，第 1 列", "保存失败保留")
+                waitFor("cell save failure") { main { model.save?.status?.value?.phase == SavePhase.Failed } }
+                click("阅读"); parsed()
+                verify(body().contains("保存失败保留") && source(id, DocumentKind.Markdown) == composing, "A failed cell save retains latest memory text in reading and the last confirmed disk file")
+            } finally { check(pending.delete()); main { model.retrySave() }; saved() }
+            click("排版"); main { model.preferences(theme = ColorTheme.Paper) }; ready(); hideKeyboard(); tableBackground("表格第 1 行，第 1 列"); screenshot("table-typeset-light")
+            click("文本"); verify(nodes().none { it.text?.toString()?.contains("· 1/3") == true }, "Toolbar removes group position label")
+            click("条目操作"); verify(nodes().any { it.text?.toString() == "导出 .md 副本" } && nodes().none { it.text?.toString() == "导出 .txt 副本" }, "Markdown menu exports only a Markdown copy")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); SystemClock.sleep(250)
+            main { model.preferences(theme = ColorTheme.Ink) }; ready(); tableBackground("表格第 1 行，第 1 列"); screenshot("table-typeset-dark")
+            main { model.editorMode(EditorMode.Reading) }; ready(); screenshot("table-reading-dark")
+            main { model.editorMode(EditorMode.Typeset); model.changeLanguage("en") }; ready()
+            shell("settings put system font_scale 2.0")
+            val density = Regex("(?:Override|Physical) density: (\\d+)").findAll(shell("wm density")).last().groupValues[1].toInt()
+            shell("wm size ${320 * density / 160}x${720 * density / 160}"); SystemClock.sleep(800); ready()
+            screenshot("table-en-narrow-200")
+            verify(cell("Table row 1, column 1").isEditable, "Cell input remains accessible in English at 320dp and 200% font size")
+        } catch (e: Exception) { screenshot("table-failure"); throw e } finally {
+            shell("settings put system font_scale $oldFont"); shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+            main { model.changeLanguage("zh-Hans") }; ready(); hideKeyboard()
+            if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
+            main { model.delete(id) }; ready(); main { model.preferences(theme = oldTheme) }; ready()
+        }
+    }
+
     private fun markdownToolbarTest() {
         val oldKeyboard = shell("settings get secure show_ime_with_hard_keyboard").trim()
         main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Markdown) }; ready()
@@ -2151,8 +2258,6 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.exportCopy() }; waitFor("Markdown export prepared") { main { !model.files.ui.busy && model.files.ui.export != null } }
             val export = main { checkNotNull(model.files.ui.export) }
             verify(export.name.endsWith(".md") && export.mime == "text/markdown" && export.file.readText() == sample, "Default Markdown export preserves source and MIME")
-            main { model.files.close(); model.exportCopy(true) }; waitFor("TXT export prepared") { main { !model.files.ui.busy && model.files.ui.export != null } }
-            verify(main { model.files.ui.export!!.name.endsWith(".txt") && model.files.ui.export!!.mime == "text/plain" } && main { model.files.ui.export!!.file }.readText() == sample, "TXT alternative preserves Markdown source as an independent snapshot")
             main { model.files.close() }
             click("源码")
             val pending = File(workspaceDirectory(), "documents/$id/body.md.new")

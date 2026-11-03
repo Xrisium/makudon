@@ -402,10 +402,8 @@
     <string name="md_close">Close</string>
     <string name="md_apply">Apply</string>
     <string name="md_export_md">Export .md copy</string>
-    <string name="md_export_txt">Export .txt copy</string>
     <string name="md_immersive">Show or hide reading controls</string>
     <string name="md_toggle_task">Toggle task</string>
-    <string name="md_edit_table">Edit table source</string>
     <string name="md_link_unavailable">This link cannot be opened here.</string>
     <string name="notice_commonmark" translatable="false">CommonMark Java</string>
     <string name="notice_bsd">BSD 2-Clause</string>
@@ -416,5 +414,5 @@
     <string name="md_group_text">Text</string>
     <string name="md_group_paragraph">Paragraph</string>
     <string name="md_group_insert">Insert</string>
-    <string name="md_group_position">%1$s · %2$d/%3$d</string>
+    <string name="md_table_cell">Table row %1$d, column %2$d</string>
 </resources>

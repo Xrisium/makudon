@@ -36,13 +36,12 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     var visibleSourceStart by remember(field) { mutableIntStateOf(0) }
     var visibleSourceEnd by remember(field) { mutableIntStateOf(2048) }
     val requester = remember { FocusRequester() }
-    val keyboard = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     val parsed = remember(model.markdownDocument, source) { provisionalDocument(model.markdownDocument, source) }
     val sourceSelection = field.selection.let { TextSelection(it.start, it.end) }
     val composition = field.composition?.let { SourceRange(it.start, it.end) }
     val active = if (focused || findOpen) sourceSelection else null
-    val tables = if (typeset) parsed.elements.filter { it.kind == "TableBlock" && (active == null || !it.range.intersects(active.min, active.max)) && (composition == null || !it.range.intersects(composition.start, composition.end)) } else emptyList()
+    val tables = if (typeset) parsed.elements.filter { it.kind == "TableBlock" } else emptyList()
     val projection = if (typeset) projection(parsed, active, composition, tables) else MarkdownProjection(emptyList())
     val tableHeight = 180.dp
     val tableHeightSp = with(density) { tableHeight.toSp().value }
@@ -117,9 +116,8 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
                     val heightPx = with(density) { tableHeight.toPx() }
                     if (top + heightPx >= 0 && top < with(density) { 2000.dp.toPx() }) {
                         Column(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() }, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
-                            .fillMaxWidth().padding(end = 48.dp).height(tableHeight).background(colors.surface)) {
-                            TextButton(onClick = { field.edit { selection = TextRange(table.range.start) }; requester.requestFocus(); keyboard?.show() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.md_edit_table)) }
-                            MarkdownTable(table, parsed, bodyStyle, modifier = Modifier.weight(1f).fillMaxWidth())
+                            .fillMaxWidth().padding(end = 48.dp).height(tableHeight).background(colors.background)) {
+                            MarkdownEditableTable(model, table, parsed, bodyStyle, editable, Modifier.fillMaxSize(), onFocus)
                         }
                     }
                 }

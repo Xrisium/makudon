@@ -96,7 +96,7 @@ private fun ReadingNode(node: MdElement, document: MarkdownDocument, style: Text
 internal fun MarkdownTable(node: MdElement, document: MarkdownDocument, style: TextStyle, modifier: Modifier = Modifier, query: String = "", caseSensitive: Boolean = true) {
     val colors = MaterialTheme.colorScheme
     val rows = remember(node) { node.descendants().filter { it.kind == "TableRow" }.toList() }
-    Column(modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState()).background(colors.surface)) {
+    Column(modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState()).background(colors.background)) {
         rows.forEachIndexed { row, item ->
             Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.Top) {
                 item.children.forEach { cell ->

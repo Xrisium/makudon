@@ -359,10 +359,8 @@
     <string name="md_close">关闭</string>
     <string name="md_apply">应用</string>
     <string name="md_export_md">导出 .md 副本</string>
-    <string name="md_export_txt">导出 .txt 副本</string>
     <string name="md_immersive">显示或隐藏阅读控件</string>
     <string name="md_toggle_task">切换任务完成状态</string>
-    <string name="md_edit_table">编辑表格源码</string>
     <string name="md_link_unavailable">此处暂不支持打开该链接。</string>
     <string name="notice_bsd">BSD 二条款许可证</string>
     <string name="md_parse_failed">Markdown 预览失败，仍可使用源码编辑。</string>
@@ -372,5 +370,5 @@
     <string name="md_group_text">文本</string>
     <string name="md_group_paragraph">段落</string>
     <string name="md_group_insert">插入</string>
-    <string name="md_group_position">%1$s · %2$d/%3$d</string>
+    <string name="md_table_cell">表格第 %1$d 行，第 %2$d 列</string>
 </resources>

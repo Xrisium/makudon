@@ -80,8 +80,16 @@ internal fun provisionalDocument(previous: MarkdownDocument?, source: String): M
     val affected = previous.root.children.subList(before.size, previous.root.children.size - after.size)
     val start = minOf(prefix, affected.firstOrNull()?.range?.start ?: prefix).coerceAtMost(source.length)
     val end = ((maxOf(oldEnd, affected.lastOrNull()?.range?.end ?: oldEnd)) + delta).coerceIn(start, source.length)
+    // Cell input must keep its native field mounted while the background AST catches up.
+    val table = affected.singleOrNull()?.takeIf { container ->
+        container.descendants().any { it.kind == "TableBlock" && prefix >= it.range.start && oldEnd <= it.range.end } &&
+        old.substring(prefix, oldEnd).none { c -> c == '\n' } && source.substring(prefix, source.length - suffix).none { c -> c == '\n' } }
+    fun rebased(n: MdElement): MdElement {
+        fun offset(at: Int) = when { at <= prefix -> at; at >= oldEnd -> at + delta; else -> prefix }
+        return n.copy(range = SourceRange(offset(n.range.start), offset(n.range.end)), children = n.children.map(::rebased))
+    }
     // One replacement may cover thousands of old blocks. Copy its source only once.
-    val children = before + MdElement("Raw", SourceRange(start, end), source.substring(start, end)) + after.map(::shifted)
+    val children = before + (table?.let(::rebased) ?: MdElement("Raw", SourceRange(start, end), source.substring(start, end))) + after.map(::shifted)
     return MarkdownDocument(source, MdElement("Document", SourceRange(0, source.length), children = children))
 }
 

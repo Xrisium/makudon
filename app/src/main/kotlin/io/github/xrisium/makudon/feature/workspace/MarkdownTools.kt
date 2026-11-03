@@ -71,9 +71,6 @@ internal fun MarkdownTools(model: WorkspaceViewModel, enabled: Boolean, group: M
                 MarkdownToolRow(model, enabled, shown, onLink)
             }
         }
-        Text(stringResource(R.string.md_group_position, stringResource(group.label), group.ordinal + 1, MarkdownToolGroup.entries.size),
-            Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

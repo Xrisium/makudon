@@ -572,14 +572,14 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     fun fontSettings(uiFont: Boolean) { if (!ui.busy && !ui.transitioning) navigate(if (uiFont) Page.UiFont else Page.EditorFont) }
-    fun prepareExport(plainCopy: Boolean = false): Boolean {
+    fun prepareExport(): Boolean {
         val text = textState?.text?.toString() ?: return false
         exportText = text
-        exportName = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty().ifBlank { localized().getString(R.string.untitled) } + if (!plainCopy && ui.workspace?.entry(ui.activeId.orEmpty())?.kind == DocumentKind.Markdown) ".md" else ".txt"
+        exportName = ui.workspace?.entry(ui.activeId.orEmpty())?.name.orEmpty().ifBlank { localized().getString(R.string.untitled) } + if (ui.workspace?.entry(ui.activeId.orEmpty())?.kind == DocumentKind.Markdown) ".md" else ".txt"
         return true
     }
-    fun exportCopy(plainCopy: Boolean = false) {
-        if (prepareExport(plainCopy)) files.text(exportName, checkNotNull(exportText))
+    fun exportCopy() {
+        if (prepareExport()) files.text(exportName, checkNotNull(exportText))
     }
     fun licenses() { launchWork {
         licenseTexts = disk { licenseEntries.map { entry -> getApplication<Application>().resources.openRawResource(entry.resource).bufferedReader().use { it.readText() } } }
