@@ -159,7 +159,7 @@ internal fun projection(document: MarkdownDocument, selection: TextSelection?, c
     return MarkdownProjection(nonOverlapping)
 }
 
-internal fun liveTransformation(document: MarkdownDocument, projection: MarkdownProjection, body: TextStyle, link: Color, surface: Color, tableHeightSp: Float, windows: List<SourceRange>): OutputTransformation = OutputTransformation {
+internal fun liveTransformation(document: MarkdownDocument, projection: MarkdownProjection, body: TextStyle, link: Color, surface: Color, tableHeights: Map<Int, Float>, windows: List<SourceRange>): OutputTransformation = OutputTransformation {
     if (asCharSequence().toString() != document.source) return@OutputTransformation
     projection.outputChanges(document.source, windows).asReversed().forEach { replace(it.range.start, it.range.end, it.text) }
     for (node in document.elements) {
@@ -179,10 +179,11 @@ internal fun liveTransformation(document: MarkdownDocument, projection: Markdown
             if (start < end) addStyle(style, start, end)
         }
     }
-    projection.changes.filter { it.text == "\uFFFC" && (document.source.length <= 8192 || windows.any { window -> window.intersects(it.range.start, it.range.end) }) }.forEach {
+    // Table heights also matter off screen: they determine document scroll and anchors.
+    projection.changes.filter { it.text == "\uFFFC" }.forEach {
         val at = projection.offset(it.range.start)
         addStyle(SpanStyle(color = Color.Transparent), at, at + 1)
-        addStyle(ParagraphStyle(lineHeight = tableHeightSp.sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None)), at, at + 1)
+        addStyle(ParagraphStyle(lineHeight = tableHeights.getValue(it.range.start).sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None)), at, at + 1)
     }
 }
 

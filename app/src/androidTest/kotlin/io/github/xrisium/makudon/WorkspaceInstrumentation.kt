@@ -2022,6 +2022,49 @@ class WorkspaceInstrumentation : Instrumentation() {
             boundaryInput("$boundary\n", typeset = false)
             main { check(connection().commitText("原样", 1)) }; saved(); parsed()
             verify(body() == "$boundary\n原样", "Source mode preserves literal input below a table")
+            val flowing = "表前\n\n| A | B |\n| --- | --- |\n" + (1..14).joinToString("\n") { "| 行$it | 内容$it |" } + "\n\n表后"
+            setText("编辑正文", flowing); saved(); parsed()
+            main { model.textState!!.edit { selection = androidx.compose.ui.text.TextRange(0) }; model.editorMode(EditorMode.Typeset) }
+            hideKeyboard(); runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }; ready()
+            fun rect(label: String) = Rect().also { find(label).getBoundsInScreen(it) }
+            val firstRow = rect("表格第 1 行，第 1 列")
+            val fifthRow = rect("表格第 5 行，第 1 列")
+            val px = targetContext.resources.displayMetrics.density
+            verify(fifthRow.top - firstRow.top >= 192 * px, "Tall tables expand beyond the former fixed height without internal vertical clipping")
+            screenshot("table-flow-tall")
+            val scrollBefore = main { model.editorScroll.value }
+            swipe(.2f, .7f, .2f, .4f)
+            verify(main { model.editorScroll.value > scrollBefore } && body() == flowing, "A vertical drag inside a table scrolls the document without editing its source")
+            runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(model.editorScroll.maxValue) } }; ready()
+            verify(nodes().any { it.contentDescription?.toString() == "表格第 15 行，第 1 列" }, "Document scrolling reaches the last table row")
+            setText("表格第 15 行，第 1 列", "末行编辑"); saved(); parsed()
+            verify(body() == flowing.replace("行14", "末行编辑"), "The final row remains directly editable after document scrolling")
+            click("撤销"); saved(); parsed()
+            verify(body() == flowing, "Undo restores a cell edited after document scrolling")
+            click("阅读"); ready()
+            runBlocking { withContext(Dispatchers.Main) { model.readingList.scrollToItem(0) } }; ready()
+            val readingBefore = main { model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset }
+            swipe(.2f, .7f, .2f, .4f)
+            verify(main { (model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset) != readingBefore }, "Reading table drags scroll the document rather than a nested table")
+            click("源码"); setText("编辑正文", "| A | B |\n| --- | --- |\n| 短 | 后 |\n\n表后"); saved(); parsed()
+            main { model.textState!!.edit { selection = androidx.compose.ui.text.TextRange(0) }; model.editorMode(EditorMode.Typeset) }; hideKeyboard(); ready()
+            val compact = rect("表格第 2 行，第 1 列")
+            verify(compact.bottom - rect("表格第 1 行，第 1 列").top < 180 * px, "Short tables occupy their content height without fixed blank space")
+            setText("表格第 1 行，第 1 列", "换行正文".repeat(20)); saved(); parsed(); hideKeyboard(); ready()
+            val expanded = rect("表格第 1 行，第 1 列")
+            verify(expanded.height() > compact.height() * 2 && rect("表格第 2 行，第 1 列").top >= expanded.bottom - 2, "Wrapped cell text grows its row and pushes the next row down without overlap")
+            screenshot("table-flow-wrapped")
+            click("撤销"); saved(); parsed(); ready()
+            verify(rect("表格第 1 行，第 1 列").height() < expanded.height(), "Undo shrinks the table's document height again")
+            click("源码")
+            val twoTables = "| 一 | B |\n| --- | --- |\n| 短 | 后 |\n\n| 二 | B |\n| --- | --- |\n| 短 | 后 |"
+            setText("编辑正文", twoTables); saved(); parsed()
+            main { model.textState!!.edit { selection = androidx.compose.ui.text.TextRange(0) }; model.editorMode(EditorMode.Typeset) }; hideKeyboard(); ready()
+            val headers = nodes().filter { it.contentDescription?.toString() == "表格第 1 行，第 1 列" }
+                .map { node -> Rect().also { node.getBoundsInScreen(it) } }.distinctBy { it.top }.sortedBy { it.top }
+            verify(headers.size == 2 && headers[1].top > headers[0].bottom + 48 * px, "Multiple tables reserve their own measured height without overlapping")
+            screenshot("table-flow-multiple")
+            click("源码")
             setText("编辑正文", composing); saved(); parsed()
             click("排版"); main { model.preferences(theme = ColorTheme.Paper) }; ready(); hideKeyboard(); tableBackground("表格第 1 行，第 1 列"); screenshot("table-typeset-light")
             click("文本"); verify(nodes().none { it.text?.toString()?.contains("· 1/3") == true }, "Toolbar removes group position label")

@@ -45,12 +45,12 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     val active = if (focused || findOpen) sourceSelection else null
     val tables = if (typeset) parsed.elements.filter { it.kind == "TableBlock" } else emptyList()
     val projection = if (typeset) projection(parsed, active, composition, tables) else MarkdownProjection(emptyList())
-    val tableHeight = 180.dp
-    val tableHeightSp = with(density) { tableHeight.toSp().value }
+    val tableLayouts = tables.associate { table -> table.range.start to key(table.range.start) { rememberTableLayout(table, parsed, bodyStyle) } }
+    val tableHeights = tableLayouts.mapValues { with(density) { it.value.height.toSp().value } }
     fun window(start: Int, end: Int) = SourceRange((start - 1024).coerceAtLeast(0), (end + 1024).coerceAtMost(source.length))
     val windows = listOf(window(visibleSourceStart.coerceAtMost(source.length), visibleSourceEnd.coerceAtMost(source.length)), window(sourceSelection.min, sourceSelection.min), window(sourceSelection.max, sourceSelection.max))
-    val output = remember(typeset, parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeightSp, windows) {
-        if (typeset) liveTransformation(parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeightSp, windows) else null
+    val output = remember(typeset, parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, windows) {
+        if (typeset) liveTransformation(parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, windows) else null
     }
     val currentOutput by rememberUpdatedState(output)
     // AST/style refreshes must not restart the native IME's composing session.
@@ -128,11 +128,14 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
                 val offset = projection.offset(table.range.start)
                 if (offset < result.layoutInput.text.length && result.layoutInput.text[offset] == '\uFFFC') {
                     val top = result.getLineTop(result.getLineForOffset(offset)) - model.editorScroll.value
-                    val heightPx = with(density) { tableHeight.toPx() }
-                    if (top + heightPx >= 0 && top < with(density) { 2000.dp.toPx() }) {
+                    val tableLayout = tableLayouts.getValue(table.range.start)
+                    val heightPx = tableLayout.height.toFloat()
+                    if (top + heightPx >= 0 && top < viewportHeight) {
                         Column(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() }, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
-                            .fillMaxWidth().padding(end = 48.dp).height(tableHeight).background(colors.background)) {
-                            MarkdownEditableTable(model, table, parsed, bodyStyle, editable, Modifier.fillMaxSize(), onFocus)
+                            .fillMaxWidth().padding(end = 48.dp).wrapContentHeight(align = androidx.compose.ui.Alignment.Top, unbounded = true)
+                            .height(with(density) { heightPx.toDp() }).background(colors.background)) {
+                            MarkdownEditableTable(model, parsed, bodyStyle, editable, Modifier.fillMaxSize(), tableLayout,
+                                -top - 200f, viewportHeight - top + 200f, onFocus)
                         }
                     }
                 }

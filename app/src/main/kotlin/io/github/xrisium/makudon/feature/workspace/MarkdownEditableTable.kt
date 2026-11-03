@@ -2,8 +2,8 @@ package io.github.xrisium.makudon.feature.workspace
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.InputTransformation
@@ -16,6 +16,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -23,29 +24,66 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
 
+internal data class TableRowLayout(val cells: List<MarkdownCellText>, val styled: List<AnnotatedString>, val top: Int, val height: Int)
+internal data class TableLayout(val rows: List<TableRowLayout>, val height: Int)
+
 @Composable
-internal fun MarkdownEditableTable(model: WorkspaceViewModel, node: MdElement, document: MarkdownDocument,
-    style: TextStyle, editable: Boolean, modifier: Modifier, onFocus: (Boolean) -> Unit) {
+internal fun rememberTableLayout(node: MdElement, document: MarkdownDocument, style: TextStyle): TableLayout {
+    val measurer = rememberTextMeasurer(cacheSize = 256)
+    val density = LocalDensity.current
+    val link = MaterialTheme.colorScheme.primary
+    return remember(node, document, style, density, measurer, link) {
+        val width = with(density) { 140.dp.roundToPx() }
+        val padding = with(density) { 20.dp.roundToPx() }
+        val minimum = with(density) { 48.dp.roundToPx() }
+        var top = 0
+        val rows = node.descendants().filter { it.kind == "TableRow" }.mapIndexed { index, row ->
+            val cells = MarkdownTableEdits.cells(document, row)
+            val styled = row.children.map { mdText(it, document, link) }
+            val rowStyle = if (index == 0) style.copy(fontWeight = FontWeight.Bold) else style
+            val height = maxOf(minimum, styled.mapIndexed { column, text ->
+                // Provisional AST literals can lag behind native input; measure the current cell.
+                val visible = if (text.text == cells[column].text) text else AnnotatedString(cells[column].text)
+                measurer.measure(if (visible.isEmpty()) AnnotatedString(" ") else visible, rowStyle, constraints = Constraints(maxWidth = width)).size.height + padding
+            }.maxOrNull() ?: minimum)
+            TableRowLayout(cells, styled, top, height).also { top += height }
+        }.toList()
+        TableLayout(rows, top)
+    }
+}
+
+@Composable
+internal fun MarkdownEditableTable(model: WorkspaceViewModel, document: MarkdownDocument,
+    style: TextStyle, editable: Boolean, modifier: Modifier, layout: TableLayout, visibleTop: Float, visibleBottom: Float, onFocus: (Boolean) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val rows = remember(node) { node.descendants().filter { it.kind == "TableRow" }.toList() }
-    Box(modifier.horizontalScroll(rememberScrollState()).background(colors.background)) {
-        LazyColumn(Modifier.width(160.dp * (rows.firstOrNull()?.children?.size ?: 1)).fillMaxHeight()) {
-            itemsIndexed(rows, key = { row, _ -> row }) { row, item ->
-                Row(Modifier.height(IntrinsicSize.Min)) {
-                    MarkdownTableEdits.cells(document, item).forEachIndexed { column, cell ->
-                        key(row, column) {
-                            EditableCell(model, document, cell, mdText(item.children[column], document, colors.primary), if (row == 0) style.copy(fontWeight = FontWeight.Bold) else style,
-                                editable, stringResource(R.string.md_table_cell, row + 1, column + 1),
-                                Modifier.width(160.dp).fillMaxHeight().heightIn(min = 48.dp).border(1.dp, colors.outlineVariant).padding(10.dp)
-                                    .testTag("table-cell-$row-$column"), onFocus)
+    val density = LocalDensity.current
+    Box(modifier.scrollable(model.editorScroll, Orientation.Vertical, reverseDirection = true)
+        .horizontalScroll(rememberScrollState()).background(colors.background)) {
+        Column(Modifier.width(160.dp * (layout.rows.firstOrNull()?.cells?.size ?: 1))) {
+            var position = 0
+            layout.rows.forEachIndexed { row, item ->
+                if (item.top + item.height >= visibleTop && item.top <= visibleBottom) key(row) {
+                    if (item.top > position) Spacer(Modifier.height(with(density) { (item.top - position).toDp() }))
+                    Row(Modifier.height(with(density) { item.height.toDp() })) {
+                        item.cells.forEachIndexed { column, cell ->
+                            key(row, column) {
+                                EditableCell(model, document, cell, item.styled[column], if (row == 0) style.copy(fontWeight = FontWeight.Bold) else style,
+                                    editable, stringResource(R.string.md_table_cell, row + 1, column + 1),
+                                    Modifier.width(160.dp).fillMaxHeight().heightIn(min = 48.dp).border(1.dp, colors.outlineVariant).padding(10.dp)
+                                        .testTag("table-cell-$row-$column"), onFocus)
+                            }
                         }
                     }
+                    position = item.top + item.height
                 }
             }
+            if (position < layout.height) Spacer(Modifier.height(with(density) { (layout.height - position).toDp() }))
         }
     }
 }
