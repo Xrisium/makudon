@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, bodyStyle: TextStyle, editable: Boolean, findOpen: Boolean, modifier: Modifier, onFocus: (Boolean) -> Unit) {
+internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, bodyStyle: TextStyle, editable: Boolean, findOpen: Boolean, modifier: Modifier, outlineJump: OutlineJump?, onOutlineJumped: () -> Unit, onFocus: (Boolean) -> Unit) {
     val field = model.textState ?: return
     val colors = MaterialTheme.colorScheme
     val source = field.text.toString()
@@ -93,6 +93,14 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             val at = projection.offset(restoreAnchor.first).coerceIn(0, result.layoutInput.text.length)
             model.editorScroll.scrollTo(result.getLineTop(result.getLineForOffset(at)).roundToInt() + restoreAnchor.second)
         }
+    }
+    LaunchedEffect(outlineJump, layout, projection) {
+        val jump = outlineJump ?: return@LaunchedEffect
+        if (jump.source != field.text.toString()) { onOutlineJumped(); return@LaunchedEffect }
+        val result = layout ?: return@LaunchedEffect
+        val at = projection.offset(jump.offset).coerceIn(0, result.layoutInput.text.length)
+        model.editorScroll.scrollTo(result.getLineTop(result.getLineForOffset(at)).roundToInt())
+        onOutlineJumped()
     }
     LaunchedEffect(layout, projection, parsed, viewportHeight) {
         val result = layout ?: return@LaunchedEffect

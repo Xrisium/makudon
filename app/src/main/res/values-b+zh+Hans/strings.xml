@@ -346,6 +346,13 @@
     <string name="md_stale">正文已变化，请重新选择后操作。</string>
     <string name="md_unavailable">当前结构不支持此格式，请调整选区。</string>
     <string name="md_preparing">正在解析 Markdown，请稍后重试。</string>
+    <string name="md_outline">大纲</string>
+    <string name="md_outline_close">关闭大纲</string>
+    <string name="md_outline_current">当前章节</string>
+    <string name="md_outline_loading">正在查找标题…</string>
+    <string name="md_outline_empty">这篇文稿还没有标题</string>
+    <string name="md_outline_untitled">无标题</string>
+    <string name="md_outline_level">H%1$d</string>
     <string name="md_find">查找与替换</string>
     <string name="md_find_reading">查找</string>
     <string name="md_query">查找内容</string>

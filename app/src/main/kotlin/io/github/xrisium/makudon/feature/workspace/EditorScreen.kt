@@ -28,6 +28,8 @@ import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
 import io.github.xrisium.makudon.ui.theme.EditorStyle
 
+private data class OpenOutline(val anchor: Int, val source: String, val selection: TextRange?)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (String) -> Unit) {
@@ -57,6 +59,8 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     var caseSensitive by rememberSaveable(entry.id) { mutableStateOf(true) }
     var target by rememberSaveable(entry.id) { mutableIntStateOf(0) }
     var linkToken by remember { mutableStateOf<WorkspaceViewModel.EditToken?>(null) }
+    var openOutline by remember(entry.id) { mutableStateOf<OpenOutline?>(null) }
+    var outlineJump by remember(entry.id) { mutableStateOf<OutlineJump?>(null) }
     val source = field.text.toString()
     val document = model.markdownDocument?.takeIf { it.source == source }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -89,6 +93,14 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         else if (reading) { model.editorAnchor = model.readingAnchor; model.editorAnchorOffset = model.readingAnchorOffset }
         model.editorMode(mode)
     }
+    fun dismissOutline(outline: OpenOutline) {
+        openOutline = null
+        val selection = outline.selection ?: return
+        // Native focus loss may collapse the selection. Restore it only in the same buffer revision.
+        if (editable && field.selection != selection && outline.source == field.text.toString()) {
+            field.edit { this.selection = selection }
+        }
+    }
     fun replace(all: Boolean) {
         if (reading || !editable || query.isEmpty()) return
         try {
@@ -115,6 +127,19 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         if (!model.immersive) PageBar(entry.name, model::back, onTitleClick = { if (editable) onAction("rename") }, titleEnabled = controlsEnabled) {
             if (!reading) Tool(R.drawable.ic_undo_2, stringResource(R.string.undo), enabled = controlsEnabled && model.canUndo, onClick = { model.undo() })
             if (!reading) Tool(R.drawable.ic_redo_2, stringResource(R.string.redo), enabled = controlsEnabled && model.canRedo, onClick = { model.undo(true) })
+            if (markdown) Tool(R.drawable.ic_list, stringResource(R.string.md_outline), enabled = controlsEnabled, onClick = {
+                if (editable) {
+                    more = false
+                    formatMenu = 0
+                    openOutline = OpenOutline(
+                        if (reading) model.readingAnchor else model.editorAnchor,
+                        field.text.toString(),
+                        field.selection.takeIf { !reading && field.composition == null },
+                    )
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                }
+            })
             Box {
                 Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = controlsEnabled, onClick = { if (editable) more = !more })
                 DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 260.dp, max = 300.dp)) {
@@ -151,9 +176,9 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         if (findOpen) EditorFindBar(reading, query, replacement, caseSensitive, matches.size, target,
             { query = it; target = 0 }, { replacement = it }, { caseSensitive = it; target = 0 }, { target = it }, ::replace, { findOpen = false })
         if (reading) {
-            if (document != null) MarkdownReader(model, document, bodyStyle, Modifier.weight(1f).fillMaxWidth().testTag("reading-view"), if (findOpen) query else "", caseSensitive, target)
+            if (document != null) MarkdownReader(model, document, bodyStyle, Modifier.weight(1f).fillMaxWidth().testTag("reading-view"), if (findOpen) query else "", caseSensitive, target, outlineJump) { outlineJump = null }
             else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.md_preparing)) }
-        } else MarkdownEditingField(model, markdown, bodyStyle, editable, findOpen, Modifier.weight(1f).fillMaxWidth()) { focused = it }
+        } else MarkdownEditingField(model, markdown, bodyStyle, editable, findOpen, Modifier.weight(1f).fillMaxWidth(), outlineJump, { outlineJump = null }) { focused = it }
         if (!model.immersive) {
             val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             val keyboardTools = markdown && !reading && focused && imeVisible && !findOpen
@@ -169,6 +194,15 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             }
         }
     }
+    }
+    openOutline?.let { outline ->
+        MarkdownOutline(document, outline.anchor, onDismiss = { dismissOutline(outline) }) { jump ->
+            dismissOutline(outline)
+            if (editable && jump.source == field.text.toString()) {
+                findOpen = false
+                outlineJump = jump
+            }
+        }
     }
     linkToken?.let { token -> MarkdownLinkDialog(model, token, { linkToken = null }, uriHandler::openUri) }
 }

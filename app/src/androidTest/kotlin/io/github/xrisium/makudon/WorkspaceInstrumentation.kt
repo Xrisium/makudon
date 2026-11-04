@@ -31,6 +31,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyMarkdownVisual = false
     private var onlyMarkdown = false
     private var onlyMarkdownTable = false
+    private var onlyMarkdownOutline = false
     private var onlyLong = false
     private var onlyMotion = false
     private var onlyVisual = false
@@ -59,6 +60,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyMarkdownVisual = arguments?.getString("case") == "markdown-visual"
         onlyMarkdown = arguments?.getString("case") == "markdown"
         onlyMarkdownTable = arguments?.getString("case") == "markdown-table"
+        onlyMarkdownOutline = arguments?.getString("case") == "markdown-outline"
         onlyLong = arguments?.getString("case") == "long"
         onlyMotion = arguments?.getString("case") == "motion"
         onlyVisual = arguments?.getString("case") == "motion-visual"
@@ -81,7 +83,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     override fun onStart() {
         try {
-            if (onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+            if (onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitFor("language bootstrap and first workspace frame") {
                 val label = main { currentActivity?.getString(R.string.recent) }
@@ -94,7 +96,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -122,7 +124,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
         visit(root)
-        if (onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable) {
+        if (onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
             val activeLayer = uiAutomation.windows.firstOrNull { it.id == root.windowId }?.layer ?: 0
             uiAutomation.windows.filter { it.layer > activeLayer && it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.forEach { window -> window.root?.let(::visit) }
         }
@@ -2192,6 +2194,91 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.textState!!.text.toString() == body || model.textState!!.text.toString() == body.replace("####### 更深标题", "更深标题") }, "Toolbar navigation never rewrites unrelated source")
         } catch (e: Exception) { screenshot("markdown-toolbar-failure"); throw e } finally {
             hideKeyboard()
+            shell(if (oldKeyboard == "null") "settings delete secure show_ime_with_hard_keyboard" else "settings put secure show_ime_with_hard_keyboard $oldKeyboard")
+            if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
+            main { model.delete(id) }; ready()
+        }
+    }
+
+    private fun markdownOutlineTest() {
+        main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Markdown) }; ready()
+        val id = main { checkNotNull(model.ui.activeId) }
+        val oldKeyboard = shell("settings get secure show_ime_with_hard_keyboard").trim()
+        fun keyboardVisible() = main { currentActivity!!.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true }
+        fun visible(label: String) = nodes().any { it.text?.toString() == label || it.contentDescription?.toString() == label }
+        fun activeSection(label: String): Boolean = find(label).let { node ->
+            generateSequence(node) { it.parent }.any { it.stateDescription?.toString() == "当前章节" }
+        }
+        try {
+            click("大纲")
+            screenshot("outline-empty")
+            waitFor("empty outline") { visible("这篇文稿还没有标题") }
+            verify(visible("这篇文稿还没有标题"), "Empty Markdown outline gives a useful explanation")
+            click("关闭大纲")
+            val body = (1..28).joinToString("\n\n") { "这是一段正文 $it" }
+            val source = "# 开始\n\n$body\n\n```md\n## 围栏伪标题\n```\n\n## 同名\n\n$body\n\n### 同名\n\n$body\n\n排版 **终点**\n---------\n\n$body"
+            val second = source.indexOf("### 同名")
+            val setext = source.indexOf("排版 **终点**")
+            main { model.applyEditorEdit(EditResult(source, TextSelection(0))) }
+            waitFor("outline parse") { main { model.markdownDocument?.source == source } }
+            click("源码")
+            shell("settings put secure show_ime_with_hard_keyboard 1")
+            tap("编辑正文")
+            waitFor("outline opened from a live keyboard") { keyboardVisible() }
+            main { model.textState!!.edit { selection = androidx.compose.ui.text.TextRange(2, 4) } }
+            waitFor("editor starts at first section") { main { model.editorAnchor == 0 } }
+            click("大纲")
+            verify(activeSection("开始") && !visible("围栏伪标题"), "Outline marks the viewport section and excludes fenced examples")
+            screenshot("outline-source")
+            click("H3")
+            waitFor("source jumped to second duplicate") { main { model.editorAnchor == second } }
+            verify(main { model.textState!!.text.toString() == source && model.currentSelection() == TextSelection(2, 4) && model.canUndo } &&
+                !keyboardVisible(), "Source jump disambiguates duplicate titles without changing selection, text, undo or showing the keyboard")
+            click("大纲")
+            verify(activeSection("H3"), "Reopening highlights the section reached by the jump")
+            val beforeCancel = main { model.editorScroll.value }
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            waitFor("outline dismissed by Back") { !visible("关闭大纲") }
+            verify(main { model.ui.page == Page.Editor && model.editorScroll.value == beforeCancel }, "Back closes the outline and preserves the viewport")
+            click("排版")
+            click("大纲"); click("排版 终点")
+            waitFor("typeset jumped to formatted Setext heading") { main { model.editorAnchor == setext } }
+            verify(main { model.currentSelection() == TextSelection(2, 4) }, "Typeset maps a formatted Setext heading to its displayed line without moving the selection")
+            click("阅读")
+            waitFor("reading retained outline anchor") { main { model.readingAnchor == setext } }
+            click("大纲"); click("开始")
+            waitFor("reader jumped to document start") { main { model.readingAnchor == 0 } }
+            click("大纲")
+            verify(activeSection("开始") && !activeSection("H3"), "Reading highlights its own viewport position")
+            click("H3")
+            waitFor("reading jumped by source identity") { main { model.readingAnchor == second } }
+            click("源码"); click("大纲")
+            val matches = nodes().filter { it.text?.toString() == "同名" }
+            verify(matches.size >= 2 && activeSection("H3"), "Reading to source retains the exact duplicate section")
+            click("关闭大纲")
+            val updated = source.replaceFirst("## 同名", "## 改名")
+            main { model.applyEditorEdit(EditResult(updated, model.currentSelection())) }
+            click("大纲")
+            verify(visible("改名"), "Opening after an in-memory edit shows the current title")
+            click("关闭大纲")
+
+            val styled = (1..180).joinToString("\n\n") { "第 $it 段含有 **多处加粗**、*斜体文本* 和 `原样代码`，用来检查长文中重新排版后是否仍对准目标。" }
+            val longSource = "# 开头\n\n$styled\n\n## 长文目标\n\n$body"
+            main { model.applyEditorEdit(EditResult(longSource, TextSelection(0))) }
+            waitFor("long outline parse") { main { model.markdownDocument?.source == longSource } }
+            click("排版")
+            runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }
+            click("大纲"); click("长文目标")
+            waitFor("long typeset outline anchor") { main { model.editorAnchor == longSource.indexOf("## 长文目标") } }
+            click("大纲")
+            verify(activeSection("长文目标"), "A far jump remains on the target after rich text is laid out in the new viewport")
+            click("关闭大纲")
+        } catch (e: Exception) {
+            screenshot("outline-failure")
+            val outlineState = main { "anchor=${model.editorAnchor}, readingAnchor=${model.readingAnchor}, selection=${model.currentSelection()}, undo=${model.canUndo}" }
+            sendStatus(0, Bundle().apply { putString("stream", "Outline state: $outlineState, keyboard=${keyboardVisible()}\n") })
+            throw e
+        } finally {
             shell(if (oldKeyboard == "null") "settings delete secure show_ime_with_hard_keyboard" else "settings put secure show_ime_with_hard_keyboard $oldKeyboard")
             if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
             main { model.delete(id) }; ready()

@@ -25,7 +25,7 @@ import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
 
 @Composable
-internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocument, style: TextStyle, modifier: Modifier, query: String, caseSensitive: Boolean, target: Int) {
+internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocument, style: TextStyle, modifier: Modifier, query: String, caseSensitive: Boolean, target: Int, outlineJump: OutlineJump?, onOutlineJumped: () -> Unit) {
     val blocks = document.root.children
     val found = remember(document, query, caseSensitive) {
         blocks.flatMapIndexed { index, node -> LiteralSearch.matches(mdText(node, document, androidx.compose.ui.graphics.Color.Unspecified).text, query, caseSensitive).map { index } }
@@ -38,6 +38,14 @@ internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocumen
     LaunchedEffect(document) {
         val index = blocks.indexOfLast { it.range.start <= restoreAnchor.first }.coerceAtLeast(0)
         if (blocks.isNotEmpty()) model.readingList.scrollToItem(index, restoreAnchor.second)
+    }
+    LaunchedEffect(outlineJump, document) {
+        val jump = outlineJump ?: return@LaunchedEffect
+        if (jump.source == document.source) {
+            val index = blocks.indexOfFirst { it.range.start == jump.offset && it.kind == "Heading" }
+            if (index >= 0) model.readingList.scrollToItem(index)
+        }
+        onOutlineJumped()
     }
     LaunchedEffect(model.readingList, document) {
         snapshotFlow { model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset }.collect { (index, offset) ->
