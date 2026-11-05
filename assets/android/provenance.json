@@ -485,5 +485,20 @@
       "source": "Resolved lifecycle-common 2.9.0 META-INF/androidx/lifecycle/lifecycle-common/LICENSE.txt",
       "license_sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0"
     }
-  ]
+  ],
+  "startup_brand": {
+    "date": "2026-11-05",
+    "source": "app/src/main/res/drawable/makudon_lockup.xml",
+    "conversion": "Split existing vector groups into symbol and outlined wordmark; preserve all paths; tightly crop symbol viewport; tint by current application theme.",
+    "resources": [
+      {
+        "path": "app/src/main/res/drawable/makudon_symbol.xml",
+        "sha256": "373794818ac99b3610c5d49e0d4aea9a6e55364374ef227428ab349c3003a243"
+      },
+      {
+        "path": "app/src/main/res/drawable/makudon_wordmark.xml",
+        "sha256": "a7a4790ae9ec91fbdda6e9b793e4eaf7d00d8a328eae996637d039e690733fc6"
+      }
+    ]
+  }
 }

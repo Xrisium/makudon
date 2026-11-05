@@ -5,9 +5,6 @@ import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.*
-import androidx.compose.material3.*
-import androidx.compose.ui.res.stringResource
-import io.github.xrisium.makudon.ui.theme.MakudonTheme
 import kotlinx.coroutines.launch
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,9 +20,18 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestId = savedInstanceState?.getString("importRequestId") ?: UUID.randomUUID().toString()
+        // Keep the platform starting window until the existing catalog supplies the theme.
+        // No extra theme file, main-thread disk reads, or minimum logo display duration.
+        val content = findViewById<android.view.View>(android.R.id.content)
+        content.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                val canDraw = ready && (workspace.launchTheme != null || !workspace.ui.busy)
+                if (canDraw) content.viewTreeObserver.removeOnPreDrawListener(this)
+                return canDraw
+            }
+        })
         setContent {
             if (ready) MakudonApp(workspace)
-            else MakudonTheme { Surface { Text(stringResource(R.string.loading)) } }
         }
         lifecycleScope.launch {
             if ((application as MakudonApplication).languages.initialize(this@MainActivity)) {

@@ -51,6 +51,8 @@ data class WorkspaceUi(
 )
 
 class WorkspaceViewModel(application: Application) : AndroidViewModel(application) {
+    var launchTheme by mutableStateOf<ColorTheme?>(null)
+        private set
     var ui by mutableStateOf(WorkspaceUi())
         private set
     var textState by mutableStateOf<TextFieldState?>(null)
@@ -156,7 +158,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         library.beforeChange = { if (!trash.ready) throw WorkspaceException(Failure.Corrupt) }
         reload()
     }
-    private suspend fun <T> disk(reloading: Boolean = false, block: () -> T): T = withContext(Dispatchers.IO + NonCancellable) {
+    private suspend fun <T> disk(reloading: Boolean = false, block: suspend () -> T): T = withContext(Dispatchers.IO + NonCancellable) {
         ioLock.withLock {
             if (!reloading && !trash.ready) throw WorkspaceException(Failure.Corrupt)
             block()
@@ -178,7 +180,12 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(busy = true, error = null)
         loading = viewModelScope.launch {
             try {
-                val (current, inventory) = disk(reloading = true) { library.load(); val inventory = trash.load(); store.refresh() to inventory }
+                val (current, inventory) = disk(reloading = true) {
+                    val loaded = library.load()
+                    withContext(Dispatchers.Main) { launchTheme = loaded.theme }
+                    val inventory = trash.load()
+                    store.refresh() to inventory
+                }
                 acceptWorkspace(current)
                 acceptTrash(inventory)
                 ui = ui.copy(storageBlocked = false)

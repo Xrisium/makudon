@@ -32,6 +32,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyMarkdown = false
     private var onlyMarkdownTable = false
     private var onlyMarkdownOutline = false
+    private var onlyLaunch = false
     private var onlyLong = false
     private var onlyMotion = false
     private var onlyVisual = false
@@ -61,6 +62,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyMarkdown = arguments?.getString("case") == "markdown"
         onlyMarkdownTable = arguments?.getString("case") == "markdown-table"
         onlyMarkdownOutline = arguments?.getString("case") == "markdown-outline"
+        onlyLaunch = arguments?.getString("case") == "launch"
         onlyLong = arguments?.getString("case") == "long"
         onlyMotion = arguments?.getString("case") == "motion"
         onlyVisual = arguments?.getString("case") == "motion-visual"
@@ -96,7 +98,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -116,6 +118,48 @@ class WorkspaceInstrumentation : Instrumentation() {
         waitForIdleSync()
     }
     private fun ready() { waitFor("workspace ready") { main { !model.ui.busy && !model.ui.transitioning && !model.ui.tabTransitioning } }; SystemClock.sleep(350); waitForIdleSync() }
+    private fun launchTest() {
+        val original = main { checkNotNull(model.ui.workspace).theme }
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        @Suppress("UNCHECKED_CAST")
+        val state = WorkspaceViewModel::class.java.getDeclaredField("ui\$delegate").apply { isAccessible = true }.get(model) as androidx.compose.runtime.MutableState<WorkspaceUi>
+        try {
+            for (theme in listOf(ColorTheme.Paper, ColorTheme.Cream, ColorTheme.Mist, ColorTheme.Sage, ColorTheme.Ink, ColorTheme.System)) {
+                main { model.preferences(theme = theme) }; ready()
+                main { model.reload() }; ready()
+                verify(main { model.launchTheme == theme }, "$theme reads saved theme before loading completes")
+                runBlocking { lock.lock() }
+                try {
+                    main { state.value = model.ui.copy(workspace = null); model.reload() }
+                    waitFor("$theme loading semantics") {
+                        nodes().any { it.contentDescription?.toString() == "Makudon" && it.stateDescription?.toString() == targetContext.getString(R.string.loading) }
+                    }
+                    val brand = find("Makudon")
+                    verify(brand.stateDescription?.toString() == targetContext.getString(R.string.loading), "$theme accessible loading state")
+                    val bounds = Rect().also(brand::getBoundsInScreen)
+                    val bitmap = checkNotNull(uiAutomation.takeScreenshot())
+                    try {
+                        verify(kotlin.math.abs(bounds.centerX() - bitmap.width / 2) <= 3 && kotlin.math.abs(bounds.centerY() - bitmap.height / 2) <= 3, "$theme complete lockup centered on screen")
+                        val expected = main {
+                            val dark = targetContext.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                            io.github.xrisium.makudon.ui.theme.themePalette(if (theme == ColorTheme.System) { if (dark) ColorTheme.Ink else ColorTheme.Paper } else theme)[0]
+                        }
+                        val color = android.graphics.Color.rgb((expected.red * 255).toInt(), (expected.green * 255).toInt(), (expected.blue * 255).toInt())
+                        verify(bitmap.getPixel(10, bitmap.height / 2) == color, "$theme exact background while IO is blocked")
+                    } finally { bitmap.recycle() }
+                    screenshot("launch-${theme.name}")
+                } finally { lock.unlock() }
+                ready()
+                verify(nodes().none { it.contentDescription?.toString() == "Makudon" && it.stateDescription != null }, "$theme leaves loading page after IO completes")
+            }
+            main { state.value = model.ui.copy(workspace = null, busy = false, error = Failure.Corrupt) }
+            verify(find(targetContext.getString(R.string.retry)).isEnabled, "failed startup exposes retry")
+            main { model.reload() }; ready()
+            verify(main { model.ui.workspace != null && model.ui.error == null }, "retry recovers workspace")
+        } finally {
+            main { model.preferences(theme = original) }; ready()
+        }
+    }
     private fun verify(value: Boolean, label: String) { check(value) { label }; checks += label; sendStatus(0, Bundle().apply { putString("stream", "PASS ${checks.size}: $label\n") }) }
     private fun nodes(): List<AccessibilityNodeInfo> {
         // Restore steps replace large semantic subtrees without changing Activity/window IDs.

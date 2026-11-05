@@ -9,7 +9,8 @@ import io.github.xrisium.makudon.domain.ColorTheme
 @Composable
 fun MakudonApp(model: WorkspaceViewModel) {
     val workspace = model.ui.workspace
-    MakudonTheme(workspace?.theme ?: ColorTheme.System, ready = workspace != null, uiFont = workspace?.uiFont ?: io.github.xrisium.makudon.domain.FontPreference(), editorFont = workspace?.editorFont ?: io.github.xrisium.makudon.domain.FontPreference()) {
-        WorkspaceScreen(model)
+    MakudonTheme(workspace?.theme ?: model.launchTheme ?: ColorTheme.System, ready = workspace != null, uiFont = workspace?.uiFont ?: io.github.xrisium.makudon.domain.FontPreference(), editorFont = workspace?.editorFont ?: io.github.xrisium.makudon.domain.FontPreference()) {
+        if (workspace == null && model.ui.busy && model.ui.error == null) LaunchScreen()
+        else WorkspaceScreen(model)
     }
 }
