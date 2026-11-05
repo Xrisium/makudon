@@ -6,6 +6,8 @@
 - [makudon-lockup.svg](makudon-lockup.svg)：原始图标几何 + 字标横向组合，透明背景，`currentColor`。
 - [provenance.json](provenance.json)：输入文件固定来源、commit、SHA-256、许可与生成参数。
 
+README 使用的 [圆角图标](../readme/makudon-icon.svg) 和 [白底圆角字标](../readme/makudon-wordmark.svg) 分别保留原始图标路径及上述 Fredoka 轮廓，仅添加裁切、背景和排版；不进入 APK。
+
 文字为首字母大写的 **Makudon**，来自 Google Fonts 的真实 Fredoka 可变字体：`wght=600`（Semibold）、`wdth=100`。HarfBuzz 完成文字 shaping 与 kerning，fontTools 提取轮廓，每字增加 4 个字体单位的微小字距（64px em 时约 0.256px）。保留原字形，不人工改变字符造型。
 
 组合中图形可视宽约 66.2 单位，与字标间距 16 单位；按视觉中心对齐，供后续实际尺寸校正。图标的三条原始路径、线宽比例和圆端点不变；只变换比例与位置，将组合版本的白背景去掉以适应主题。根 `icon.svg` 保持原样。
