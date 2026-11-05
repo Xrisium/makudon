@@ -4,6 +4,12 @@
 
 对外入口：[简体中文 README](../README.md) 与 [English README](../README.en-US.md) 覆盖安装、使用、备份恢复和源码构建；配有中英文模拟器截图。顶部 SVG 图标固定白底黑色，透明 SVG 字标按 GitHub 界面主题切换黑白，尺寸和布局保持原样。README 的维护边界见 `AGENTS.md`。
 
+## 本轮 GitHub CI 修复
+
+- 检查已有 17 次 Actions 运行，均为失败；[最新运行 #17](https://github.com/Xrisium/makudon/actions/runs/42048366229) 的 SDK 准备步骤退出码为 127，构建 / 单测 / Lint 被跳过。该步骤只调用 `sdkmanager`，结合运行器 SDK 布局，定位为命令未在 PATH 中。
+- 工作流改用 `${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager`，固定 Ubuntu 24.04，checkout / setup-java / setup-gradle 迁移 v5，upload-artifact 迁移 v6，均使用 Node 24；项目工具链保持原版本。
+- 本地 JDK 17 `Check` 通过，另重新执行 152 项 JVM 测试，零失败 / 错误。Bash 语法及 SDK 桩验证通过：PATH 不含工具时旧命令复现 127，新命令在带空格 SDK 路径下正确传递两个包名；不等同于真实 SDK 安装。修复后的 Linux / GitHub 运行尚未验证，下一步由用户推送后查看 SDK 准备、构建与报告上传结果。本轮未安装应用或操作设备。
+
 ## 本轮启动产品页
 
 - 大图形 LOGO 上、Makudon 路径字标下，组合相对整屏居中，适配五套应用配色和跟随系统。加载完成即进入工作区，无最短展示时间；失败保留提示与重试。

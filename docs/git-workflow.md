@@ -90,4 +90,6 @@ feat: 修改翻译文件
 
 `.github/workflows/android.yml` 在 main/codex 分支 push、PR 或手动触发时构建 debug、运行已有单测和 Lint，并保留短期 debug APK。它不发布 Release、不签正式包、不运行付费设备测试。GitHub 运行器会准备自身工具，和本机无需安装新工具是两回事。
 
-首次远程执行前该配置只能标记“已配置，未在 GitHub 验证”。
+CI 固定使用 Ubuntu 24.04 和 JDK 17，通过 `${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager` 安装 SDK 36 / Build Tools 36.0.0，不依赖运行器将 `sdkmanager` 加入 PATH。构建仍使用仓库 Wrapper；项目 Gradle / AGP / Kotlin 版本不随 Actions 升级。
+
+2026-11-05 检查时，已有 17 次远程运行均失败；最新一次在 SDK 准备步骤以退出码 127 结束，构建步骤未执行。已修复命令路径并迁移 Node 24 Actions；本地验证通过，修复后的远程运行仍待用户推送后确认，不能标记为 GitHub CI 已通过。
