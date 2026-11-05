@@ -6,7 +6,8 @@
 </div>
 
 <h1 align="center">
-  <img src="assets/readme/makudon-wordmark.svg" width="224" height="70" alt="Makudon">
+  <img src="assets/readme/makudon-wordmark.svg#gh-light-mode-only" width="224" height="70" alt="Makudon">
+  <img src="assets/readme/makudon-wordmark-dark.svg#gh-dark-mode-only" width="224" height="70" alt="Makudon">
 </h1>
 
 Makudon 是一款本地优先、轻量化的 Markdown / 纯文本编辑器，适合随手备忘、知识笔记或旅行日记，也适合慢慢写完一篇故事。柔和的界面、完善的目录管理和便捷的 Markdown 编辑支持，让注意力回到文字本身。

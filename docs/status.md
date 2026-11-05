@@ -2,7 +2,7 @@
 
 更新日期：2026-11-05。阶段：**原生工作区、Markdown 三视图、ZIP 备份与文件管理适配开发版；完整 MVP / 真机验收未完成**。
 
-对外入口：[简体中文 README](../README.md) 与 [English README](../README.en-US.md) 覆盖安装、使用、备份恢复和源码构建；英文已同步中文修订，并配有圆角品牌图形与中英文模拟器截图。README 的维护边界见 `AGENTS.md`。本次未修改应用；应用验证与下一步仍以下文为准。
+对外入口：[简体中文 README](../README.md) 与 [English README](../README.en-US.md) 覆盖安装、使用、备份恢复和源码构建；配有中英文模拟器截图。顶部 SVG 图标固定白底黑色，透明 SVG 字标按 GitHub 界面主题切换黑白，尺寸和布局保持原样。README 的维护边界见 `AGENTS.md`。本次未修改应用；应用验证与下一步仍以下文为准。
 
 ## 本轮 Markdown 大纲
 

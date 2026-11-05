@@ -6,7 +6,8 @@ Read this in other languages: [简体中文](README.md) · **English**
 </div>
 
 <h1 align="center">
-  <img src="assets/readme/makudon-wordmark.svg" width="224" height="70" alt="Makudon">
+  <img src="assets/readme/makudon-wordmark.svg#gh-light-mode-only" width="224" height="70" alt="Makudon">
+  <img src="assets/readme/makudon-wordmark-dark.svg#gh-dark-mode-only" width="224" height="70" alt="Makudon">
 </h1>
 
 Makudon is a lightweight, local-first Markdown and plain text editor for reminders, study notes, travel journals, and stories that take a little longer to tell. A soft interface, full folder management, and convenient Markdown editing help you stay with your words.
