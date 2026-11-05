@@ -1,5 +1,7 @@
 # Android 素材集成
 
+2026-11-05：启动页从现有 `makudon_lockup.xml` 拆出 `makudon_symbol.xml` 和 `makudon_wordmark.xml`，保留原始路径，仅移除组合变换并裁紧图形画布；图形 / 字标均继承应用主题颜色。无新增下载、字体或依赖，来源及转换哈希见 `provenance.json` 的 `startup_brand`。
+
 2026-10-31：文件选择器使用 Google 官方扁平 Android robot 头部 SVG，转换为 28dp VectorDrawable，保留路径与原色；原始来源、SHA-256、CC BY 3.0 许可和署名见[素材记录](../../docs/third-party-assets.md)。
 
 2026-10-25：品牌组合、39 个按需 Lucide 图标、Fluent Markdown 20 Filled 和完整 Noto Sans SC 可变字体已进入 Android 资源。固定来源、下载哈希、转换结果哈希见 [provenance.json](provenance.json)。

@@ -14,6 +14,7 @@
 | Markdown 表格单元格编辑 | [单元格输入 ADR](adr/0012-markdown-table-cells.md)、[实施与验证](tasks/0028-markdown-table-editing.md)、[内容高度与整篇滚动](tasks/0030-markdown-table-flow.md) |
 | Markdown 菜单开关与表后正文 | [边界修复](tasks/0029-markdown-menu-and-table-boundary.md)、[行为规范](specs/0005-markdown-three-modes.md) |
 | Markdown 大纲 | [底部面板与标题跳转](tasks/0031-markdown-outline.md)、[行为规范](specs/0005-markdown-three-modes.md) |
+| 启动产品页 | [品牌布局、主题首帧与验收](tasks/0032-startup-product-page.md) |
 | 审阅首片存储取舍与产品决定 | [已接受存储 ADR](adr/0002-document-storage.md)、[D1–D3 决定记录](specs/0001-open-decisions.md) |
 | 实施后验收首个编辑切片 | [首片验收规范（未执行）](testing/plain-text-editor-acceptance.md) |
 | 分支、提交、发布 | [Git 工作流](git-workflow.md) |
