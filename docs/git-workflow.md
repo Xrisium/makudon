@@ -86,6 +86,49 @@ feat: 修改翻译文件
 - 不添加自动安装依赖、提交后启动模拟器或有网络副作用的 Git hooks。
 - Debug 使用 Android 本机调试签名；正式密钥需单独备份，绝不能入库。开发与正式包隔离。
 
+## 手动发布 Android APK
+
+在仓库根目录用 PowerShell 7 执行构建。`BuildRelease` 使用项目现有的 JDK / SDK 配置，生成未签名 APK 并执行 Release Lint。
+
+```powershell
+pwsh -NoProfile -File scripts/android.ps1 -Action Check
+pwsh -NoProfile -File scripts/android.ps1 -Action BuildRelease
+```
+
+以下命令使用本机标准工具路径。首次发布且没有既有 Makudon 发布密钥时，在自己的终端生成密钥并按提示设置密码。将密钥和密码分别安全备份，后续同包名的更新继续使用该密钥。已有正式密钥时，填写它的实际路径和别名，跳过生成步骤。
+
+```powershell
+$env:JAVA_HOME = "$env:USERPROFILE\DevTools\Android\Jdk\17.0.18+8"
+$buildTools = "$env:USERPROFILE\DevTools\Android\Sdk\build-tools\36.0.0"
+$releaseKey = "$env:USERPROFILE\.android\makudon-release.p12"
+$releaseAlias = 'makudon'
+New-Item -ItemType Directory -Force (Split-Path -Parent $releaseKey) | Out-Null
+if (!(Test-Path -LiteralPath $releaseKey)) {
+    & "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -keystore $releaseKey -storetype PKCS12 -alias $releaseAlias -keyalg RSA -keysize 4096 -validity 10000 -dname 'CN=Makudon'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create the release key.' }
+}
+```
+
+将 `0.1.0` 替换为本次版本。签名工具会提示输入密码，密钥文件和密码只保留在本地。签名与校验通过后，上传签名 APK 和可选的 SHA-256 文件。
+
+```powershell
+$releaseVersion = '0.1.0'
+$unsignedApk = 'app/build/outputs/apk/release/app-release-unsigned.apk'
+New-Item -ItemType Directory -Force .local/release | Out-Null
+$alignedApk = ".local/release/Makudon-$releaseVersion-aligned.apk"
+$signedApk = ".local/release/Makudon-$releaseVersion.apk"
+& "$buildTools\zipalign.exe" -f -P 16 4 $unsignedApk $alignedApk
+if ($LASTEXITCODE -ne 0) { throw 'APK alignment failed.' }
+& "$buildTools\apksigner.bat" sign --ks $releaseKey --ks-key-alias $releaseAlias --out $signedApk $alignedApk
+if ($LASTEXITCODE -ne 0) { throw 'APK signing failed.' }
+& "$buildTools\apksigner.bat" verify --verbose --print-certs $signedApk
+if ($LASTEXITCODE -ne 0) { throw 'APK signature verification failed.' }
+$apkHash = (Get-FileHash -LiteralPath $signedApk -Algorithm SHA256).Hash.ToLowerInvariant()
+"$apkHash  $(Split-Path -Leaf $signedApk)" | Set-Content -LiteralPath "$signedApk.sha256" -Encoding ascii
+```
+
+对已检查的源代码提交打版本标签，由用户推送分支和对应标签。在 [新建 GitHub Release](https://github.com/Xrisium/makudon/releases/new) 选择已推送的标签，填写标题和版本说明，上传 `.local/release/Makudon-<版本>.apk` 及其 `.sha256`，核对附件后选择 **Publish release**。正式版本保持 **This is a pre-release** 未勾选。[GitHub 发布文档](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) · [Android APK 签名文档](https://developer.android.com/tools/apksigner)
+
 ## CI 范围
 
 `.github/workflows/android.yml` 在 main/codex 分支 push、PR 或手动触发时构建 debug、运行已有单测和 Lint，并保留短期 debug APK。它不发布 Release、不签正式包、不运行付费设备测试。GitHub 运行器会准备自身工具，和本机无需安装新工具是两回事。

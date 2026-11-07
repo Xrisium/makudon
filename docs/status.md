@@ -1,8 +1,15 @@
 # 当前状态
 
-更新日期：2026-11-05。阶段：**原生工作区、Markdown 三视图、ZIP 备份与文件管理适配开发版；完整 MVP / 真机验收未完成**。
+更新日期：2026-11-07。阶段：**0.1.0 已本地定版，待正式签名并上传 GitHub；完整 MVP / 真机验收未完成**。
 
 对外入口：[简体中文 README](../README.md) 与 [English README](../README.en-US.md) 覆盖安装、使用、备份恢复和源码构建；配有中英文模拟器截图。顶部 SVG 图标固定白底黑色，透明 SVG 字标按 GitHub 界面主题切换黑白，尺寸和布局保持原样。README 的维护边界见 `AGENTS.md`。
+
+## 0.1.0 首次发布
+
+- 正式包为 `io.github.xrisium.makudon`，版本 `0.1.0`，构建号 `2`，支持 Android 8.0 及以上。开发包仍有独立应用身份，可通过 ZIP 迁移文稿。
+- JDK 17 下 `Check -Offline` 和 `BuildRelease -Offline` 通过，Debug 单测复用 152 项零失败结果，Debug / Release 严格 Lint 均通过。已核对 Release 包身份、APK 对齐与临时密钥的 v2 / v3 签名；正式密钥由用户持有。
+- API 36 模拟器冷启动恢复后，临时签名包安装、应用冷启动和前台活动核对通过；测试包已清理。真机人工验收仍待完成。
+- 未签名构建产物为 `app/build/outputs/apk/release/app-release-unsigned.apk`。接下来由用户在本机签出 `Makudon-0.1.0.apk`，推送 `main` 与 `v0.1.0` 并上传到 GitHub Release。见 [发布步骤](git-workflow.md#手动发布-android-apk)与[发布任务](tasks/0033-release-0.1.0.md)。
 
 ## 本轮 GitHub CI 修复
 

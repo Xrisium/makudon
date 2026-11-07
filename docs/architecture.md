@@ -59,5 +59,5 @@ app → 组装 data 实现与 feature
 
 - namespace / 正式 applicationId：`io.github.xrisium.makudon`。
 - 开发 applicationId：`io.github.xrisium.makudon.debug`，名称 **Makudon Dev**。
-- 开发包和未来正式包数据隔离，不自动迁移；发布前应再次确认正式包名。
-- 当前仅有 debug 本机测试链路。release 未配置签名、混淆或发布流程。
+- 开发包和正式包数据隔离，可通过 ZIP 导出和恢复迁移文稿。
+- Release 保持关闭混淆，使用本机专用密钥手动签名，见 [APK 发布流程](git-workflow.md#手动发布-android-apk)。

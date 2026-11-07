@@ -22,6 +22,12 @@ Makudon 是一款本地优先、轻量化的 Markdown / 纯文本编辑器，适
 
 **系统要求：Android 8.0 及以上（API 26+）。**
 
+### 下载正式版 APK
+
+在 [GitHub Releases](https://github.com/Xrisium/makudon/releases) 打开所需版本，在 **Assets** 中下载 `Makudon-<版本>.apk`。在手机上打开 APK，按系统提示允许当前文件管理器或浏览器安装应用，然后打开 **Makudon**。
+
+正式版与 **Makudon Dev** 可并存，各自保存文稿。若要将开发版文稿带入正式版，请先在开发版导出 ZIP，再在正式版恢复。
+
 ### 下载开发版 APK
 
 1. 打开 [GitHub Actions · Android checks](https://github.com/Xrisium/makudon/actions/workflows/android.yml)，选择目标分支上一次成功的构建。

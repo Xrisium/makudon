@@ -22,6 +22,12 @@ Makudon is a lightweight, local-first Markdown and plain text editor for reminde
 
 **Requires Android 8.0 or later (API 26+).**
 
+### Download a release APK
+
+Open the version you want on [GitHub Releases](https://github.com/Xrisium/makudon/releases) and download `Makudon-<version>.apk` under **Assets**. Open the APK on your phone, allow your file manager or browser to install apps when prompted, then open **Makudon**.
+
+The release and **Makudon Dev** can coexist, with separate document libraries. To move documents from the development build, export a ZIP there and restore it in the release.
+
 ### Download a development APK
 
 1. Open [GitHub Actions · Android checks](https://github.com/Xrisium/makudon/actions/workflows/android.yml) and select a successful run on the branch you want to try.
