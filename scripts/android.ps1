@@ -1,7 +1,7 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param(
-    [ValidateSet('Setup', 'Doctor', 'Build', 'Check', 'Run', 'InstallDevice', 'Emulator', 'Devices', 'Logcat', 'Screenshot')]
+    [ValidateSet('Setup', 'Doctor', 'Build', 'BuildRelease', 'Check', 'Run', 'InstallDevice', 'Emulator', 'Devices', 'Logcat', 'Screenshot')]
     [string]$Action = 'Run',
     [string]$SdkPath,
     [string]$JdkPath,
@@ -172,6 +172,7 @@ try {
             if (!(Test-Path (Join-Path $projectRoot 'local.properties'))) { throw 'Run Setup first.' }
         }
         'Build' { Invoke-Build @(':app:assembleDebug') }
+        'BuildRelease' { Invoke-Build @(':app:assembleRelease', ':app:lintRelease') }
         'Check' { Invoke-Build @(':app:assembleDebug', ':app:testDebugUnitTest', ':app:lintDebug') }
         'Devices' { Invoke-Native $adb @('devices', '-l') }
         'Emulator' { $target = Get-TestDevice; Write-Host "Ready: $target" }
