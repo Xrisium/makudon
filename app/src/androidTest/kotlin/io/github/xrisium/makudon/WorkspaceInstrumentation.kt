@@ -1174,16 +1174,46 @@ class WorkspaceInstrumentation : Instrumentation() {
         }
         val missingBody = File(workspaceDirectory(), "documents/${ids[2]}/body.txt")
         val oldFont = shell("settings get system font_scale")
+        val oldAnimation = shell("settings get global animator_duration_scale")
         val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
         fun shown(text: String) = nodes().any { it.isVisibleToUser && it.text?.toString() == text }
         fun reveal(text: String) {
             repeat(12) {
-                if (shown(text)) return
+                if (shown(text)) {
+                    val bounds = Rect().also { find(text).getBoundsInScreen(it) }
+                    if (bounds.bottom < targetContext.resources.displayMetrics.heightPixels * .78f) return
+                }
                 swipe(.5f, .75f, .5f, .3f)
             }
             error("Missing overview control: $text")
         }
         fun settings() { main { model.go(Page.Settings) }; ready(); reveal(targetContext.getString(R.string.show_recent_excerpt)) }
+        fun toggle() = nodes().first { it.isCheckable && it.contentDescription?.toString() == targetContext.getString(R.string.show_recent_excerpt) }
+        fun touch(x: Float, y: Float, hold: () -> Unit = {}) {
+            val time = SystemClock.uptimeMillis()
+            fun send(action: Int) {
+                MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, x, y, 0).let {
+                    it.source = InputDevice.SOURCE_TOUCHSCREEN
+                    check(uiAutomation.injectInputEvent(it, true)); it.recycle()
+                }
+            }
+            send(MotionEvent.ACTION_DOWN)
+            try { hold() } finally { send(MotionEvent.ACTION_UP) }
+        }
+        fun touchSwitch() {
+            val bounds = Rect().also { toggle().getBoundsInScreen(it) }
+            touch(bounds.exactCenterX(), bounds.exactCenterY())
+        }
+        fun thumbX(): Float {
+            val bounds = Rect().also { toggle().getBoundsInScreen(it) }
+            val density = targetContext.resources.displayMetrics.density
+            val image = checkNotNull(uiAutomation.takeScreenshot())
+            try {
+                val track = image.getPixel(bounds.centerX(), bounds.centerY() - (13 * density).toInt())
+                fun distance(color: Int) = kotlin.math.abs(android.graphics.Color.red(color) - android.graphics.Color.red(track)) + kotlin.math.abs(android.graphics.Color.green(color) - android.graphics.Color.green(track)) + kotlin.math.abs(android.graphics.Color.blue(color) - android.graphics.Color.blue(track))
+                return ((bounds.left + (4 * density).toInt())..(bounds.right - (4 * density).toInt())).filter { distance(image.getPixel(it, bounds.centerY())) > 24 }.average().toFloat() - bounds.left
+            } finally { image.recycle() }
+        }
         fun recent() {
             main { model.go(Page.Recent) }; ready()
             repeat(20) {
@@ -1202,10 +1232,61 @@ class WorkspaceInstrumentation : Instrumentation() {
             screenshot("recent-overview-on")
             settings()
             val label = targetContext.getString(R.string.show_recent_excerpt)
-            val toggle = find(label).let { if (it.isCheckable) it else it.parent }
-            verify(toggle.isCheckable && toggle.isChecked, "Settings row exposes one checked accessible switch")
-            tap(label)
-            verify(main { model.ui.workspace?.showRecentExcerpt == false }, "Tapping settings row disables overview")
+            val control = toggle()
+            @Suppress("DEPRECATION")
+            val checked = control.isChecked
+            verify(checked && control.isClickable && !find(label).isClickable && !find(label).parent.isClickable, "Only the named switch exposes a toggle action; title and card are passive")
+            val textBounds = Rect().also { find(label).getBoundsInScreen(it) }
+            val before = checkNotNull(uiAutomation.takeScreenshot())
+            try {
+                touch(textBounds.exactCenterX(), textBounds.exactCenterY()) {
+                    SystemClock.sleep(160)
+                    val during = checkNotNull(uiAutomation.takeScreenshot())
+                    try {
+                        val a = android.graphics.Bitmap.createBitmap(before, textBounds.left, textBounds.top, textBounds.width(), textBounds.height())
+                        val b = android.graphics.Bitmap.createBitmap(during, textBounds.left, textBounds.top, textBounds.width(), textBounds.height())
+                        try { verify(a.sameAs(b), "Pressing title produces no card ripple or text recoloring") } finally { a.recycle(); b.recycle() }
+                    } finally { during.recycle() }
+                }
+            } finally { before.recycle() }
+            ready()
+            val switchBounds = Rect().also { toggle().getBoundsInScreen(it) }
+            touch(switchBounds.exactCenterX(), switchBounds.top - 8f); ready()
+            verify(main { model.ui.workspace?.showRecentExcerpt == true }, "Title and card padding taps do not change the preference")
+            shell("settings put global animator_duration_scale 3"); SystemClock.sleep(600)
+            for (target in listOf(false, true)) {
+                val start = thumbX()
+                runBlocking { lock.lock() }
+                try {
+                    touchSwitch()
+                    waitFor("immediate switch response") { main { model.ui.busy && model.ui.workspace?.showRecentExcerpt == target } }
+                    val positions = mutableListOf(start)
+                    val until = SystemClock.uptimeMillis() + 900
+                    while (SystemClock.uptimeMillis() < until) { positions += thumbX(); SystemClock.sleep(20) }
+                    val visiblePositions = positions.filter { it.isFinite() }
+                    val end = visiblePositions.last()
+                    val direction = if (target) 1 else -1
+                    verify((end - start) * direction > 20 && visiblePositions.zipWithNext().all { (a, b) -> (b - a) * direction >= -1.5f }, "Switch to $target moves smoothly in one direction while IO is blocked")
+                    verify(visiblePositions.count { kotlin.math.abs(it - start) > 2 && kotlin.math.abs(it - end) > 2 } >= 2, "Switch to $target includes multiple intermediate thumb positions")
+                    touchSwitch()
+                    verify(main { model.ui.workspace?.showRecentExcerpt == target }, "Repeated switch input stays gated while saving $target")
+                    main { currentActivity?.recreate() }; SystemClock.sleep(200)
+                    verify(main { model.ui.workspace?.showRecentExcerpt == target && model.ui.busy }, "Pending switch to $target survives Activity recreation")
+                } finally { lock.unlock() }
+                ready(); settings()
+            }
+            shell("settings put global animator_duration_scale 0"); SystemClock.sleep(600)
+            touchSwitch(); ready()
+            verify(main { model.ui.workspace?.showRecentExcerpt == false }, "Zero animation scale closes the switch without a stale state")
+            val pending = File(workspaceDirectory(), "catalog.properties.new")
+            check(pending.mkdir())
+            try {
+                touchSwitch(); ready()
+                verify(main { model.ui.workspace?.showRecentExcerpt == false && model.ui.error != null }, "Failed preference write rolls the switch back and exposes an error")
+            } finally { check(pending.delete()) }
+            main { model.reload() }; ready(); settings()
+            verify(main { model.ui.workspace?.showRecentExcerpt == false && model.ui.error == null }, "Reload after failed write retains the last saved switch state")
+            shell(if (oldAnimation == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $oldAnimation")
             main { currentActivity?.recreate() }; ready()
             main { model.reload() }; ready()
             verify(main { model.ui.workspace?.showRecentExcerpt == false }, "Hidden overview survives recreation and disk reload")
@@ -1215,20 +1296,20 @@ class WorkspaceInstrumentation : Instrumentation() {
             val collapsed = Rect().also { find("概览普通-$suffix").parent.getBoundsInScreen(it) }
             verify(collapsed.height() < expanded.height() && nodes().any { it.text?.toString()?.contains("·") == true }, "Card contracts while retaining title and metadata")
             screenshot("recent-overview-off")
-            settings(); tap(label); recent()
+            settings(); touchSwitch(); ready(); recent()
             verify(shown(body), "Re-enabling overview immediately restores content")
             verify(disk { store.read(ids[0]) } == body, "Switching overview preserves saved document body")
             shell("wm size 840x1890"); shell("settings put system font_scale 2.0"); SystemClock.sleep(1200); ready()
             for (language in listOf("zh-Hans", "en")) {
                 main { model.changeLanguage(language) }; SystemClock.sleep(900); ready()
                 settings()
-                val translated = targetContext.getString(R.string.show_recent_excerpt)
-                tap(translated)
+                touchSwitch(); ready()
                 verify(main { model.ui.workspace?.showRecentExcerpt == false }, "$language overview switch is reachable and operable at 320dp / 200%")
                 screenshot("recent-overview-$language-200")
-                tap(translated)
+                touchSwitch(); ready()
             }
         } finally {
+            shell(if (oldAnimation == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $oldAnimation")
             shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
             shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
             main { model.changeLanguage("zh-Hans") }; ready()

@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -91,15 +90,17 @@ fun SettingsPage(model: WorkspaceViewModel) {
         item {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
                 Row(
-                    Modifier.fillMaxWidth().toggleable(
-                        value = workspace.showRecentExcerpt, enabled = enabled, role = Role.Switch,
-                        onValueChange = { model.preferences(showRecentExcerpt = it) },
-                    ).padding(18.dp).heightIn(min = 48.dp),
+                    Modifier.fillMaxWidth().padding(18.dp).heightIn(min = 48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     Text(stringResource(R.string.show_recent_excerpt), Modifier.weight(1f))
-                    Switch(checked = workspace.showRecentExcerpt, onCheckedChange = null, enabled = enabled)
+                    RecentOverviewSwitch(
+                        checked = workspace.showRecentExcerpt,
+                        enabled = enabled,
+                        label = stringResource(R.string.show_recent_excerpt),
+                        onCheckedChange = { model.preferences(showRecentExcerpt = it) },
+                    )
                 }
             }
         }

@@ -614,8 +614,15 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         val nextShowRecentExcerpt = showRecentExcerpt ?: w.showRecentExcerpt
         if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt) return
         launchWork(savingPreferences = true) {
-            disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt) }
-            ui = ui.copy(workspace = disk { store.refresh() })
+            // Animate this switch on input, independently of catalog writes and body refreshes.
+            ui = ui.copy(workspace = w.copy(showRecentExcerpt = nextShowRecentExcerpt))
+            try {
+                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt) }
+                ui = ui.copy(workspace = disk { store.refresh() })
+            } catch (e: Exception) {
+                ui = ui.copy(workspace = ui.workspace?.copy(showRecentExcerpt = w.showRecentExcerpt))
+                throw e
+            }
         }
     }
     fun fontSettings(uiFont: Boolean) { if (!ui.busy && !ui.transitioning) navigate(if (uiFont) Page.UiFont else Page.EditorFont) }
