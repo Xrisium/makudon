@@ -12,6 +12,12 @@
 - 2026-11-11 按用户授权创建专用 RSA 4096 发布密钥，密钥与随机密码保存在仅当前用户及 SYSTEM 可访问的 `%USERPROFILE%/.android/makudon-signing/`。复用与原记录 SHA-256 一致的已验证产物，正式 APK 为 `.local/release/Makudon-0.1.0.apk`，v2 / v3 验签、16 KiB 对齐及包身份核对通过；SHA-256 为 `3B2BAD6E899B906807C39AF72071462AE0EE94E1DE213E62A528C0FCD3924664`。接下来由用户备份密钥与密码，推送 `main` 与 `v0.1.0` 并上传到 GitHub Release。见 [发布步骤](git-workflow.md#手动发布-android-apk)与[发布任务](tasks/0033-release-0.1.0.md)。
 - 2026-11-12 按用户要求向重新识别的唯一在线华为 LIO-AN00 推送上述正式 APK，并单次发起保留数据安装。正式版与 `.debug` 测试版可并存、文稿独立；手机端确认及人工验收由用户完成。交付记录见发布任务，本次结果为“已推送并发起安装”。
 
+## 本轮最近内容概览开关
+
+- 设置 → 最近新增“显示文稿内容概览”开关，默认开启；关闭时收起最近卡片的正文概览及空稿占位，保留标题、路径 / 日期 / 类型和读取失败提示。中英文与整行开关语义已接入。
+- 偏好沿用既有 IO 互斥与原子索引，旧库默认开启，重读 / 重启保留；正文与 ZIP 格式不变。JDK 17 `Check -Offline` 通过（154 项 JVM 测试零失败、严格 Lint）；API 36 模拟器概览专项 11 项及最近 / 编辑菜单回归 22 项通过，开启 / 关闭和中英文 320dp / 200% 字号截图已查看。
+- 已向重新识别的唯一在线华为 LIO-AN00 单次推送并发起开发版保留数据覆盖安装，初始等待未取得完成回执；未轮询、启动或调试真机，未重置真机文稿。APK 为 `io.github.xrisium.makudon.debug` / `0.1.0-dev` / 构建号 2，SHA-256 `8777192799FABC646A847604ECFF962FCD1DEDD7A227F0F43E30179377D626D2`。真机人工体验待验，步骤见[任务 0034](tasks/0034-recent-content-overview.md)。
+
 ## 本轮 GitHub CI 修复
 
 - 检查已有 17 次 Actions 运行，均为失败；[最新运行 #17](https://github.com/Xrisium/makudon/actions/runs/42048366229) 的 SDK 准备步骤退出码为 127，构建 / 单测 / Lint 被跳过。该步骤只调用 `sdkmanager`，结合运行器 SDK 布局，定位为命令未在 PATH 中。
