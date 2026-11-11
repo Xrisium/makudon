@@ -4,6 +4,9 @@
   <string name="brand_name" translatable="false">Makudon</string>
   <string name="recent">Recent</string>
   <string name="show_recent_excerpt">Show document content overview</string>
+  <string name="recent_date_display">Date shown on cards</string>
+  <string name="recent_modified">Last modified</string>
+  <string name="recent_opened">Last opened</string>
   <string name="date_today">Today</string>
   <string name="date_yesterday">Yesterday</string>
   <string name="date_day_before_yesterday">Two days ago</string>
@@ -121,7 +124,6 @@
   <string name="create">Create</string>
   <string name="location">Location: %1$s</string>
   <string name="new_location">Create in</string>
-  <string name="type_unchanged">File type stays unchanged</string>
   <!-- %1$s: filename; %2$s: localized kind; %3$s: display location; %4$d: exact UTF-8 byte count. -->
   <string name="info_details">%1$s\n\nType: %2$s\nLocation: %3$s\nSize (UTF-8 bytes): %4$d\nCreated: %5$s\nLast modified: %6$s</string>
   <!-- %1$s: folder name; %2$s: display location; %3$d: direct child count. -->
@@ -130,9 +132,6 @@
   <string name="source_view">Source</string>
   <string name="typeset_view">Formatted</string>
   <string name="edit_body">Edit document text</string>
-  <string name="save_saved">Saved on device</string>
-  <string name="save_waiting">Waiting to autosave</string>
-  <string name="save_saving">Autosaving</string>
   <string name="save_failed">Changes not saved</string>
   <string name="save_failure_help">Saving failed. Your latest input is still in the editor. Retry or export a copy before leaving.</string>
   <string name="retry">Retry</string>

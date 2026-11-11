@@ -2,6 +2,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
   <string name="recent">最近</string>
   <string name="show_recent_excerpt">显示文稿内容概览</string>
+  <string name="recent_date_display">卡片显示时间</string>
+  <string name="recent_modified">最近修改</string>
+  <string name="recent_opened">最近打开</string>
   <string name="date_today">今天</string>
   <string name="date_yesterday">昨天</string>
   <string name="date_day_before_yesterday">前天</string>
@@ -110,16 +113,12 @@
   <string name="create">创建</string>
   <string name="location">位置：%1$s</string>
   <string name="new_location">新建位置</string>
-  <string name="type_unchanged">文件类型保持不变</string>
   <string name="info_details">%1$s\n\n类型：%2$s\n位置：%3$s\nUTF-8 大小：%4$d 字节\n创建时间：%5$s\n最近修改时间：%6$s</string>
   <string name="folder_details">%1$s\n\n位置：%2$s\n直接包含 %3$d 个子项\n总磁盘大小：%4$s\n创建时间：%5$s\n最近修改时间：%6$s</string>
   <string name="folder">文件夹</string>
   <string name="source_view">源码</string>
   <string name="typeset_view">排版</string>
   <string name="edit_body">编辑正文</string>
-  <string name="save_saved">已保存到本机</string>
-  <string name="save_waiting">等待自动保存</string>
-  <string name="save_saving">正在自动保存</string>
   <string name="save_failed">修改尚未保存</string>
   <string name="save_failure_help">保存失败，当前输入仍在编辑器中。请重试或导出副本后再离开。</string>
   <string name="retry">重试</string>

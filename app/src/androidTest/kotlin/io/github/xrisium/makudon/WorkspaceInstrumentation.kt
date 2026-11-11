@@ -1204,8 +1204,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             val bounds = Rect().also { toggle().getBoundsInScreen(it) }
             touch(bounds.exactCenterX(), bounds.exactCenterY())
         }
-        fun thumbX(): Float {
-            val bounds = Rect().also { toggle().getBoundsInScreen(it) }
+        fun thumbX(bounds: Rect): Float {
             val density = targetContext.resources.displayMetrics.density
             val image = checkNotNull(uiAutomation.takeScreenshot())
             try {
@@ -1255,14 +1254,16 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.ui.workspace?.showRecentExcerpt == true }, "Title and card padding taps do not change the preference")
             shell("settings put global animator_duration_scale 3"); SystemClock.sleep(600)
             for (target in listOf(false, true)) {
-                val start = thumbX()
+                // Resolve stable bounds before animation; accessibility traversal can wait for idle and miss frames.
+                val thumbBounds = Rect().also { toggle().getBoundsInScreen(it) }
+                val start = thumbX(thumbBounds)
                 runBlocking { lock.lock() }
                 try {
                     touchSwitch()
                     waitFor("immediate switch response") { main { model.ui.busy && model.ui.workspace?.showRecentExcerpt == target } }
                     val positions = mutableListOf(start)
                     val until = SystemClock.uptimeMillis() + 900
-                    while (SystemClock.uptimeMillis() < until) { positions += thumbX(); SystemClock.sleep(20) }
+                    while (SystemClock.uptimeMillis() < until) { positions += thumbX(thumbBounds); SystemClock.sleep(20) }
                     val visiblePositions = positions.filter { it.isFinite() }
                     val end = visiblePositions.last()
                     val direction = if (target) 1 else -1
@@ -1322,6 +1323,10 @@ class WorkspaceInstrumentation : Instrumentation() {
 
     private fun recentTest() {
         main { model.go(Page.Recent) }; ready()
+        val originalTimestamp = main { checkNotNull(model.ui.workspace).recentTimestamp }
+        val originalFontScale = shell("settings get system font_scale")
+        val originalSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        main { model.preferences(recentTimestamp = RecentTimestamp.Modified) }; ready()
         val store = currentStore()
         val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
         val calendar = RecentCalendar.current()
@@ -1380,6 +1385,48 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
             scrollTo(names[3])
             verify(nodes().any { it.text?.toString()?.contains(calendar.today.minusDays(400).year.toString()) == true }, "Other-year card retains its year")
+            fun dateSettings() {
+                main { model.go(Page.Settings) }; ready()
+                scrollTo("最近打开")
+            }
+            dateSettings()
+            fun selected(label: String) = generateSequence(find(label)) { it.parent }.take(3).any { it.isChecked }
+            verify(selected("最近修改") && !selected("最近打开"), "Date settings expose mutually exclusive radio selection")
+            click("最近打开"); ready()
+            verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Opened }, "Last opened radio persists its selection")
+            main { currentActivity?.recreate() }; ready()
+            main { model.reload() }; ready()
+            verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Opened }, "Date selection survives recreation and disk reload")
+            main { model.go(Page.Recent) }; ready()
+            scrollTo(names[1])
+            val openedCard = generateSequence(find(names[1])) { it.parent }.first { it.isClickable }
+            fun containsText(node: AccessibilityNodeInfo, text: String): Boolean = node.text?.toString()?.contains(text) == true ||
+                (0 until node.childCount).any { child -> node.getChild(child)?.let { containsText(it, text) } == true }
+            verify(containsText(openedCard, "·  前天 ") && !containsText(openedCard, "·  昨天 "), "Last opened card uses two-day-old open time instead of yesterday modification")
+            verify(main { checkNotNull(model.ui.workspace).recentGroups(calendar) } == groups, "Changing displayed date preserves grouping, order and document metadata")
+            dateSettings()
+            val preferencePending = File(workspaceDirectory(), "catalog.properties.new")
+            check(preferencePending.mkdir())
+            try {
+                click("最近修改"); ready()
+                verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Opened && model.ui.error != null }, "Failed date preference write retains saved choice and exposes an error")
+            } finally { check(preferencePending.delete()) }
+            main { model.reload() }; ready()
+            dateSettings(); click("最近修改"); ready()
+            verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Modified }, "Last modified radio restores original date mode")
+            screenshot("recent-date-settings")
+            shell("wm size 840x1890"); shell("settings put system font_scale 2.0"); SystemClock.sleep(1200); ready()
+            for ((language, openedLabel, modifiedLabel) in listOf(Triple("zh-Hans", "最近打开", "最近修改"), Triple("en", "Last opened", "Last modified"))) {
+                main { model.changeLanguage(language) }; ready()
+                scrollTo(openedLabel); click(openedLabel); ready()
+                verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Opened } && selected(openedLabel) && !selected(modifiedLabel), "$language radio controls work at 320dp / 200% font")
+                screenshot("recent-date-$language-200")
+                click(modifiedLabel); ready()
+            }
+            shell(if (originalSize == null) "wm size reset" else "wm size $originalSize")
+            shell(if (originalFontScale == "null") "settings delete system font_scale" else "settings put system font_scale $originalFontScale")
+            main { model.changeLanguage("zh-Hans") }; ready()
+            main { model.go(Page.Recent) }; ready()
             screenshot("recent-earlier")
             scrollTo(names[0]); screenshot("recent-groups")
             val originalTime = System.currentTimeMillis()
@@ -1409,6 +1456,8 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(shown("更多信息") && shown("重命名") && shown("删除") && !shown("复制"), "Recent card keeps its three-action long-press menu")
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
             click(names[0]); ready()
+            verify(!shown("纯文本") && !shown("已保存到本机") && !shown("等待自动保存") && !shown("正在自动保存"), "Plain editor removes type and routine save labels")
+            screenshot("editor-plain-clean")
             click("条目操作")
             verify(listOf("详细信息", "重命名", "删除", "导出 .txt 副本").all(::shown), "Editor overflow exposes all new and existing actions")
             screenshot("editor-menu")
@@ -1416,6 +1465,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(shown("详细信息") && nodes().any { it.text?.toString()?.contains(names[0] + ".txt") == true }, "Editor details opens the active document")
             click("关闭")
             click("条目操作"); click("重命名")
+            verify(!shown("文件类型保持不变") && shown(".txt"), "Rename removes explanatory text and retains protected extension")
             setText("名称", names[1]); click("重命名")
             verify(shown("此位置已有同名条目，请换一个名称；未覆盖原条目。"), "Editor rename rejects sibling conflicts")
             setText("名称", names[0] + "-改名"); click("重命名"); ready()
@@ -1430,6 +1480,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 setText("编辑正文", "删除前保存屏障保留的最新输入")
                 click("条目操作"); click("删除"); click("删除"); ready()
                 verify(main { model.ui.page == Page.Editor && model.ui.workspace?.entry(ids[0]) != null && model.save?.status?.value?.phase == SavePhase.Failed }, "Failed save prevents active-document deletion and keeps editable buffer")
+                verify(shown("修改尚未保存") && shown("重试") && shown("导出 .txt 副本"), "Save failure remains visible with retry and export actions")
             } finally { check(pending.delete()) }
             click("重试"); ready(); saved()
             click("条目操作"); click("删除"); click("删除"); ready()
@@ -1440,6 +1491,9 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("条目操作"); click("删除"); click("删除"); ready()
             verify(main { model.ui.page == Page.Directory && model.ui.activeId == null }, "Deleting an editor opened from directory returns to directory")
         } finally {
+            shell(if (originalSize == null) "wm size reset" else "wm size $originalSize")
+            shell(if (originalFontScale == "null") "settings delete system font_scale" else "settings put system font_scale $originalFontScale")
+            main { model.changeLanguage("zh-Hans") }; ready()
             main { if (model.ui.page == Page.Editor) model.back() }; ready()
             runBlocking { withContext(Dispatchers.IO) { lock.withLock {
                 ids.forEach { if (store.refresh().entry(it) != null) store.delete(it) }
@@ -1451,6 +1505,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 store.load()
             } } }
             main { model.reload() }; ready()
+            main { model.preferences(recentTimestamp = originalTimestamp) }; ready()
         }
     }
 

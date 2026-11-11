@@ -80,6 +80,34 @@ class WorkspaceStoreTest {
         catalog.writeText(legacy + "\nshowRecentExcerpt=unknown\n")
         assertTrue(store(dir).refresh().showRecentExcerpt)
     }
+    @Test fun recentTimestampSurvivesRestartAndOtherPreferencesWithoutChangingDocumentsOrGroups() {
+        val dir = temp.newFolder()
+        val original = store(dir)
+        val id = original.create("日期", Workspace.ROOT, DocumentKind.Markdown, "# 原稿😀")
+        val before = original.refresh()
+        original.settings(ColorTheme.System, SortKey.Name, false, true, recentTimestamp = RecentTimestamp.Opened)
+        val reopened = store(dir)
+        assertEquals(RecentTimestamp.Opened, reopened.refresh().recentTimestamp)
+        reopened.settings(ColorTheme.Ink, SortKey.Size, true, false, showRecentExcerpt = false)
+        val final = store(dir)
+        assertEquals(RecentTimestamp.Opened, final.refresh().recentTimestamp)
+        assertEquals("# 原稿😀", final.read(id))
+        assertEquals(before.entry(id), final.refresh().entry(id))
+        val calendar = RecentCalendar.current()
+        assertEquals(before.recentGroups(calendar), final.refresh().recentGroups(calendar))
+        final.settings(ColorTheme.Ink, SortKey.Size, true, false, recentTimestamp = RecentTimestamp.Modified)
+        assertEquals(RecentTimestamp.Modified, store(dir).refresh().recentTimestamp)
+    }
+    @Test fun missingOrUnknownRecentTimestampDefaultsToModified() {
+        val dir = temp.newFolder()
+        store(dir)
+        val catalog = File(dir, "catalog.properties")
+        val legacy = catalog.readText().lineSequence().filterNot { it.startsWith("recentTimestamp=") }.joinToString("\n")
+        catalog.writeText(legacy)
+        assertEquals(RecentTimestamp.Modified, store(dir).refresh().recentTimestamp)
+        catalog.writeText(legacy + "\nrecentTimestamp=unknown\n")
+        assertEquals(RecentTimestamp.Modified, store(dir).refresh().recentTimestamp)
+    }
     @Test fun legacyInboxKeepsItsBodyAndBehavesAsAnOrdinaryFolderWithoutRecreation() {
         val dir = temp.newFolder()
         val catalog = File(dir, "catalog.properties")

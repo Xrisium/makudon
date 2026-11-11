@@ -156,18 +156,16 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             }
         }
         if (!model.immersive) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                if (markdown) {
+            if (markdown) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                     MarkdownModePicker(ui.editorMode, controlsEnabled) { if (editable) changeMode(it) }
-                } else Text(stringResource(R.string.plain_text), style = MaterialTheme.typography.bodySmall)
-                Text(stringResource(when (status.phase) { SavePhase.Saved -> R.string.save_saved; SavePhase.Waiting -> R.string.save_waiting; SavePhase.Saving -> R.string.save_saving; SavePhase.Failed -> R.string.save_failed }),
-                    Modifier.padding(top = 4.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }, style = MaterialTheme.typography.labelSmall,
-                    color = if (status.phase == SavePhase.Failed) colors.error else colors.onSurfaceVariant)
+                }
             }
             HorizontalDivider(color = colors.outlineVariant)
         }
         if (status.phase == SavePhase.Failed) Surface(color = colors.errorContainer, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(12.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
+                Text(stringResource(R.string.save_failed), style = MaterialTheme.typography.labelSmall)
                 Text(stringResource(R.string.save_failure_help), style = MaterialTheme.typography.bodySmall)
                 Row { TextButton(onClick = model::retrySave, enabled = !ui.busy) { Text(stringResource(R.string.retry)) }; TextButton(onClick = onExport) { Text(stringResource(if (markdown) R.string.md_export_md else R.string.export_copy)) } }
             }

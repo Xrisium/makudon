@@ -55,6 +55,7 @@ class WorkspaceStore(
             val sized = candidate.copy(
                 editorTextSize = EditorTextSize.entries.firstOrNull { it.name == p.getProperty("editorTextSize") } ?: EditorTextSize.Medium,
                 showRecentExcerpt = p.getProperty("showRecentExcerpt")?.toBooleanStrictOrNull() ?: true,
+                recentTimestamp = RecentTimestamp.entries.firstOrNull { it.name == p.getProperty("recentTimestamp") } ?: RecentTimestamp.Modified,
             )
             validate(sized)
             workspace = sized
@@ -90,6 +91,7 @@ class WorkspaceStore(
         p["editorFont.choice"] = next.editorFont.choice.name; p["editorFont.thickness"] = next.editorFont.thickness.name
         p["editorTextSize"] = next.editorTextSize.name
         p["showRecentExcerpt"] = next.showRecentExcerpt.toString()
+        p["recentTimestamp"] = next.recentTimestamp.name
         next.lastImportRequestId?.let { p["lastImportRequest"] = it }
         next.trashOperation?.let { p["trashOperation"] = it }
         next.entries.forEachIndexed { n, entry ->
@@ -282,8 +284,8 @@ class WorkspaceStore(
         }
         if (incomplete) throw WorkspaceException(Failure.Cleanup)
     }
-    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt) {
-        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt))
+    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt, recentTimestamp: RecentTimestamp = state().recentTimestamp) {
+        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt, recentTimestamp = recentTimestamp))
     }
 }
 
