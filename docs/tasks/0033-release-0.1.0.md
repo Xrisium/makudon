@@ -1,6 +1,6 @@
 # 任务：准备 Makudon 0.1.0 首次 GitHub 发布
 
-- 状态：本地准备完成，待用户签名并发布
+- 状态：正式 APK 已签名，待用户上传发布
 - 用户目标与范围：定版 0.1.0，验证 Release 构建并交接 GitHub Release 发布步骤。
 - 不在范围：改动产品功能或引入自动发布流水线。
 - 相关规范：[Git 工作流](../git-workflow.md)、[设备约定](../device-policy.md)。
@@ -23,7 +23,10 @@
 - `aapt2` 核对正式包名、版本、构建号、`minSdk=26`、`targetSdk=36` 以及非可调试包。使用临时测试密钥完成 `zipalign -P 16`、签名和 `apksigner verify`，v2 / v3 验签通过。
 - 配置的 `Android_API_36` 初次启动超时，跳过快照冷启动后恢复。`emulator-5554` 安装临时签名包成功，`am start -W` 回报冷启动成功，系统报告主活动在前台且应用进程存活。测试包已清理；真机未安装。
 - 未签名 `app-release-unsigned.apk` 为 76,419,288 字节，SHA-256 为 `EF25038648F9654CC8748074ECB862511A9F17306B185AB1AAB16926AAB44EBB`。正式签名后应使用新文件的 SHA-256。
-- [GitHub Releases](https://github.com/Xrisium/makudon/releases) 检查时尚无公开版本；本机 Git 远程查询因 TLS 握手失败未取得分支 / 标签状态。由用户使用自己的签名密钥生成正式附件，推送已定版的源码和标签，再按 [Git 工作流](../git-workflow.md#手动发布-android-apk)上传发布。
+- 2026-11-07 [GitHub Releases](https://github.com/Xrisium/makudon/releases) 检查时尚无公开版本；当时本机 Git 远程查询因 TLS 握手失败未取得分支 / 标签状态。
+- 2026-11-11 用户授权直接签名。创建长期 RSA 4096 / PKCS12 发布密钥，别名 `makudon`、有效期 10,000 天。密钥 `makudon-release.p12` 和随机密码文件 `makudon-release-password.txt` 保存在 `%USERPROFILE%/.android/makudon-signing/`，目录限制为当前用户及 SYSTEM 可访问。用户需备份并在后续更新继续使用。
+- 正式 APK `.local/release/Makudon-0.1.0.apk` 为 76,473,249 字节，SHA-256 为 `3B2BAD6E899B906807C39AF72071462AE0EE94E1DE213E62A528C0FCD3924664`，旁附 `.sha256`。v2 / v3 验签、16 KiB ZIP 对齐及非调试的 0.1.0 / 构建号 2 包身份核对通过，证书 SHA-256 为 `AD3706A2271363143AE516D8F677D84A5BC1B19438E303B7B90C14E083C59EAB`。本次仅签名与校验，复用原构建验证，设备验收沿用前述范围。
+- 用户下一步推送已定版的源码和标签，再按 [Git 工作流](../git-workflow.md#手动发布-android-apk)上传正式 APK。
 
 ## GitHub Release 文案
 

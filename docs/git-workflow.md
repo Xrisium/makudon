@@ -100,7 +100,7 @@ pwsh -NoProfile -File scripts/android.ps1 -Action BuildRelease
 ```powershell
 $env:JAVA_HOME = "$env:USERPROFILE\DevTools\Android\Jdk\17.0.18+8"
 $buildTools = "$env:USERPROFILE\DevTools\Android\Sdk\build-tools\36.0.0"
-$releaseKey = "$env:USERPROFILE\.android\makudon-release.p12"
+$releaseKey = "$env:USERPROFILE\.android\makudon-signing\makudon-release.p12"
 $releaseAlias = 'makudon'
 New-Item -ItemType Directory -Force (Split-Path -Parent $releaseKey) | Out-Null
 if (!(Test-Path -LiteralPath $releaseKey)) {
@@ -109,7 +109,7 @@ if (!(Test-Path -LiteralPath $releaseKey)) {
 }
 ```
 
-将 `0.1.0` 替换为本次版本。签名工具会提示输入密码，密钥文件和密码只保留在本地。签名与校验通过后，上传签名 APK 和可选的 SHA-256 文件。
+将 `0.1.0` 替换为本次版本。签名工具会提示输入密码，密钥文件和密码只保留在本地。本机 0.1.0 已于 2026-11-11 创建上述专用密钥，随机密码保存在同目录的 `makudon-release-password.txt`；后续继续复用并自行安全备份。签名与校验通过后，上传签名 APK 和可选的 SHA-256 文件。
 
 ```powershell
 $releaseVersion = '0.1.0'

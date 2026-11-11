@@ -1,6 +1,6 @@
 # 当前状态
 
-更新日期：2026-11-07。阶段：**0.1.0 已本地定版，待正式签名并上传 GitHub；完整 MVP / 真机验收未完成**。
+更新日期：2026-11-11。阶段：**0.1.0 已本地定版并正式签名，待上传 GitHub；完整 MVP / 真机验收未完成**。
 
 对外入口：[简体中文 README](../README.md) 与 [English README](../README.en-US.md) 覆盖安装、使用、备份恢复和源码构建；配有中英文模拟器截图。顶部 SVG 图标固定白底黑色，透明 SVG 字标按 GitHub 界面主题切换黑白，尺寸和布局保持原样。README 的维护边界见 `AGENTS.md`。
 
@@ -9,7 +9,7 @@
 - 正式包为 `io.github.xrisium.makudon`，版本 `0.1.0`，构建号 `2`，支持 Android 8.0 及以上。开发包仍有独立应用身份，可通过 ZIP 迁移文稿。
 - JDK 17 下 `Check -Offline` 和 `BuildRelease -Offline` 通过，Debug 单测复用 152 项零失败结果，Debug / Release 严格 Lint 均通过。已核对 Release 包身份、APK 对齐与临时密钥的 v2 / v3 签名；正式密钥由用户持有。
 - API 36 模拟器冷启动恢复后，临时签名包安装、应用冷启动和前台活动核对通过；测试包已清理。真机人工验收仍待完成。
-- 未签名构建产物为 `app/build/outputs/apk/release/app-release-unsigned.apk`。接下来由用户在本机签出 `Makudon-0.1.0.apk`，推送 `main` 与 `v0.1.0` 并上传到 GitHub Release。见 [发布步骤](git-workflow.md#手动发布-android-apk)与[发布任务](tasks/0033-release-0.1.0.md)。
+- 2026-11-11 按用户授权创建专用 RSA 4096 发布密钥，密钥与随机密码保存在仅当前用户及 SYSTEM 可访问的 `%USERPROFILE%/.android/makudon-signing/`。复用与原记录 SHA-256 一致的已验证产物，正式 APK 为 `.local/release/Makudon-0.1.0.apk`，v2 / v3 验签、16 KiB 对齐及包身份核对通过；SHA-256 为 `3B2BAD6E899B906807C39AF72071462AE0EE94E1DE213E62A528C0FCD3924664`。接下来由用户备份密钥与密码，推送 `main` 与 `v0.1.0` 并上传到 GitHub Release。见 [发布步骤](git-workflow.md#手动发布-android-apk)与[发布任务](tasks/0033-release-0.1.0.md)。
 
 ## 本轮 GitHub CI 修复
 
