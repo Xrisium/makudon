@@ -27,6 +27,7 @@
 - 2026-11-11 用户授权直接签名。创建长期 RSA 4096 / PKCS12 发布密钥，别名 `makudon`、有效期 10,000 天。密钥 `makudon-release.p12` 和随机密码文件 `makudon-release-password.txt` 保存在 `%USERPROFILE%/.android/makudon-signing/`，目录限制为当前用户及 SYSTEM 可访问。用户需备份并在后续更新继续使用。
 - 正式 APK `.local/release/Makudon-0.1.0.apk` 为 76,473,249 字节，SHA-256 为 `3B2BAD6E899B906807C39AF72071462AE0EE94E1DE213E62A528C0FCD3924664`，旁附 `.sha256`。v2 / v3 验签、16 KiB ZIP 对齐及非调试的 0.1.0 / 构建号 2 包身份核对通过，证书 SHA-256 为 `AD3706A2271363143AE516D8F677D84A5BC1B19438E303B7B90C14E083C59EAB`。本次仅签名与校验，复用原构建验证，设备验收沿用前述范围。
 - 用户下一步推送已定版的源码和标签，再按 [Git 工作流](../git-workflow.md#手动发布-android-apk)上传正式 APK。
+- 2026-11-12 用户要求在已连接真机安装正式版。核对正式包身份、上述 SHA-256 及证书后，重新识别唯一在线华为 LIO-AN00，向 `/data/local/tmp/` 推送 APK 成功并单次发起 `pm install -r`。按设备约定交付即收尾，结果记录为“已推送 APK 并发起安装”，手机确认及人工验收待用户完成。正式包与 `io.github.xrisium.makudon.debug` 测试包独立，可共存，文稿可通过 ZIP 迁移。本机序列号和命令日志保存在被忽略的 `.local/release/2026-11-12-device-delivery.json`。
 
 ## GitHub Release 文案
 
