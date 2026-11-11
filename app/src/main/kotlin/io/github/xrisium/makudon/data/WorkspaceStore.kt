@@ -52,7 +52,10 @@ class WorkspaceStore(
                 p.getProperty("$prefix.thickness")?.let { value -> FontThickness.entries.firstOrNull { it.name == value } } ?: FontThickness.Normal,
             )
             val candidate = Workspace(entries, ColorTheme.valueOf(p.getProperty("theme")), SortKey.valueOf(p.getProperty("sort")), p.getProperty("descending").toBooleanStrict(), p.getProperty("foldersFirst").toBooleanStrict(), p.getProperty("lastImportRequest"), font("uiFont"), font("editorFont"), p.getProperty("trashOperation"))
-            val sized = candidate.copy(editorTextSize = EditorTextSize.entries.firstOrNull { it.name == p.getProperty("editorTextSize") } ?: EditorTextSize.Medium)
+            val sized = candidate.copy(
+                editorTextSize = EditorTextSize.entries.firstOrNull { it.name == p.getProperty("editorTextSize") } ?: EditorTextSize.Medium,
+                showRecentExcerpt = p.getProperty("showRecentExcerpt")?.toBooleanStrictOrNull() ?: true,
+            )
             validate(sized)
             workspace = sized
         }
@@ -86,6 +89,7 @@ class WorkspaceStore(
         p["uiFont.choice"] = next.uiFont.choice.name; p["uiFont.thickness"] = next.uiFont.thickness.name
         p["editorFont.choice"] = next.editorFont.choice.name; p["editorFont.thickness"] = next.editorFont.thickness.name
         p["editorTextSize"] = next.editorTextSize.name
+        p["showRecentExcerpt"] = next.showRecentExcerpt.toString()
         next.lastImportRequestId?.let { p["lastImportRequest"] = it }
         next.trashOperation?.let { p["trashOperation"] = it }
         next.entries.forEachIndexed { n, entry ->
@@ -278,8 +282,8 @@ class WorkspaceStore(
         }
         if (incomplete) throw WorkspaceException(Failure.Cleanup)
     }
-    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize) {
-        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize))
+    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt) {
+        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt))
     }
 }
 

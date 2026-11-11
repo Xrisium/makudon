@@ -3,6 +3,7 @@
   <string name="app_name" translatable="false">Makudon</string>
   <string name="brand_name" translatable="false">Makudon</string>
   <string name="recent">Recent</string>
+  <string name="show_recent_excerpt">Show document content overview</string>
   <string name="date_today">Today</string>
   <string name="date_yesterday">Yesterday</string>
   <string name="date_day_before_yesterday">Two days ago</string>

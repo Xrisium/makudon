@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
   <string name="recent">最近</string>
+  <string name="show_recent_excerpt">显示文稿内容概览</string>
   <string name="date_today">今天</string>
   <string name="date_yesterday">昨天</string>
   <string name="date_day_before_yesterday">前天</string>

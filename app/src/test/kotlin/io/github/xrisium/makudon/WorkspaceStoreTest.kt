@@ -55,6 +55,31 @@ class WorkspaceStoreTest {
         catalog.writeText(catalog.readText().lineSequence().filterNot { it.startsWith("editorTextSize=") }.joinToString("\n"))
         assertEquals(EditorTextSize.Medium, store(dir).refresh().editorTextSize)
     }
+    @Test fun recentExcerptPreferenceSurvivesRestartAndOtherSettingsWithoutChangingDocuments() {
+        val dir = temp.newFolder()
+        val original = store(dir)
+        val id = original.create("概览", Workspace.ROOT, DocumentKind.Markdown, "# 标题\n\n正文😀")
+        original.settings(ColorTheme.System, SortKey.Name, false, true, showRecentExcerpt = false)
+        val reopened = store(dir)
+        assertFalse(reopened.refresh().showRecentExcerpt)
+        reopened.settings(ColorTheme.Ink, SortKey.Modified, true, false)
+        val final = store(dir)
+        assertFalse(final.refresh().showRecentExcerpt)
+        assertEquals("# 标题\n\n正文😀", final.read(id))
+        assertEquals("标题 正文😀", final.refresh().entry(id)?.excerpt)
+        final.settings(ColorTheme.Ink, SortKey.Modified, true, false, showRecentExcerpt = true)
+        assertTrue(store(dir).refresh().showRecentExcerpt)
+    }
+    @Test fun missingOrUnknownRecentExcerptPreferenceDefaultsToExistingVisibleBehavior() {
+        val dir = temp.newFolder()
+        store(dir)
+        val catalog = File(dir, "catalog.properties")
+        val legacy = catalog.readText().lineSequence().filterNot { it.startsWith("showRecentExcerpt=") }.joinToString("\n")
+        catalog.writeText(legacy)
+        assertTrue(store(dir).refresh().showRecentExcerpt)
+        catalog.writeText(legacy + "\nshowRecentExcerpt=unknown\n")
+        assertTrue(store(dir).refresh().showRecentExcerpt)
+    }
     @Test fun legacyInboxKeepsItsBodyAndBehavesAsAnOrdinaryFolderWithoutRecreation() {
         val dir = temp.newFolder()
         val catalog = File(dir, "catalog.properties")

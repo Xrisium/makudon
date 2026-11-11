@@ -41,6 +41,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlySelection = false
     private var onlySelectionVisual = false
     private var onlyRecent = false
+    private var onlyRecentOverview = false
     private var onlyDetails = false
     private var onlyTextSize = false
     private var onlyBackup = false
@@ -71,6 +72,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlySelection = arguments?.getString("case") == "selection"
         onlySelectionVisual = arguments?.getString("case") == "selection-visual"
         onlyRecent = arguments?.getString("case") == "recent"
+        onlyRecentOverview = arguments?.getString("case") == "recent-overview"
         onlyDetails = arguments?.getString("case") == "details"
         onlyTextSize = arguments?.getString("case") == "text-size"
         onlyBackup = arguments?.getString("case") == "backup"
@@ -98,7 +100,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -1153,6 +1155,87 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.go(Page.Directory) }; ready()
             disk { store.delete(ids[0]) }
             main { model.reload() }; ready(); main { model.preferences(theme = oldTheme) }; ready()
+        }
+    }
+
+    private fun recentOverviewTest() {
+        val original = main { checkNotNull(model.ui.workspace) }
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        fun <T> disk(block: () -> T): T = runBlocking { withContext(Dispatchers.IO) { lock.withLock { block() } } }
+        val store = currentStore()
+        val suffix = SystemClock.uptimeMillis()
+        val body = "内容概览验收😀 $suffix"
+        val ids = disk {
+            listOf(
+                store.create("概览普通-$suffix", Workspace.ROOT, DocumentKind.Plain, body),
+                store.create("概览空稿-$suffix", Workspace.ROOT, DocumentKind.Markdown),
+                store.create("概览损坏-$suffix", Workspace.ROOT, DocumentKind.Plain, "原始内容"),
+            ).also { created -> created.forEach { store.open(it) } }
+        }
+        val missingBody = File(workspaceDirectory(), "documents/${ids[2]}/body.txt")
+        val oldFont = shell("settings get system font_scale")
+        val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        fun shown(text: String) = nodes().any { it.isVisibleToUser && it.text?.toString() == text }
+        fun reveal(text: String) {
+            repeat(12) {
+                if (shown(text)) return
+                swipe(.5f, .75f, .5f, .3f)
+            }
+            error("Missing overview control: $text")
+        }
+        fun settings() { main { model.go(Page.Settings) }; ready(); reveal(targetContext.getString(R.string.show_recent_excerpt)) }
+        fun recent() {
+            main { model.go(Page.Recent) }; ready()
+            repeat(20) {
+                if (shown("概览损坏-$suffix")) return
+                swipe(.5f, .3f, .5f, .8f)
+            }
+            error("Missing overview fixtures at the top of recent")
+        }
+        try {
+            disk { check(missingBody.delete()) }
+            main { model.reload() }; ready()
+            main { model.preferences(showRecentExcerpt = true) }; ready()
+            recent()
+            verify(shown(body) && shown(targetContext.getString(R.string.empty_excerpt)), "Enabled overview displays plain text and empty Markdown placeholder")
+            val expanded = Rect().also { find("概览普通-$suffix").parent.getBoundsInScreen(it) }
+            screenshot("recent-overview-on")
+            settings()
+            val label = targetContext.getString(R.string.show_recent_excerpt)
+            val toggle = find(label).let { if (it.isCheckable) it else it.parent }
+            verify(toggle.isCheckable && toggle.isChecked, "Settings row exposes one checked accessible switch")
+            tap(label)
+            verify(main { model.ui.workspace?.showRecentExcerpt == false }, "Tapping settings row disables overview")
+            main { currentActivity?.recreate() }; ready()
+            main { model.reload() }; ready()
+            verify(main { model.ui.workspace?.showRecentExcerpt == false }, "Hidden overview survives recreation and disk reload")
+            recent()
+            verify(!shown(body) && !shown(targetContext.getString(R.string.empty_excerpt)), "Disabled overview removes content and empty placeholder semantics")
+            verify(shown(targetContext.getString(R.string.open_failed)), "Disabled overview retains unreadable-document warning")
+            val collapsed = Rect().also { find("概览普通-$suffix").parent.getBoundsInScreen(it) }
+            verify(collapsed.height() < expanded.height() && nodes().any { it.text?.toString()?.contains("·") == true }, "Card contracts while retaining title and metadata")
+            screenshot("recent-overview-off")
+            settings(); tap(label); recent()
+            verify(shown(body), "Re-enabling overview immediately restores content")
+            verify(disk { store.read(ids[0]) } == body, "Switching overview preserves saved document body")
+            shell("wm size 840x1890"); shell("settings put system font_scale 2.0"); SystemClock.sleep(1200); ready()
+            for (language in listOf("zh-Hans", "en")) {
+                main { model.changeLanguage(language) }; SystemClock.sleep(900); ready()
+                settings()
+                val translated = targetContext.getString(R.string.show_recent_excerpt)
+                tap(translated)
+                verify(main { model.ui.workspace?.showRecentExcerpt == false }, "$language overview switch is reachable and operable at 320dp / 200%")
+                screenshot("recent-overview-$language-200")
+                tap(translated)
+            }
+        } finally {
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
+            main { model.changeLanguage("zh-Hans") }; ready()
+            disk { store.deleteAll(ids) }
+            main { model.reload() }; ready()
+            main { model.preferences(showRecentExcerpt = original.showRecentExcerpt) }; ready()
+            main { model.go(Page.Recent) }; ready()
         }
     }
 

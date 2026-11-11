@@ -188,7 +188,9 @@ internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) ->
                             .semantics { customActions = listOf(CustomAccessibilityAction(actionLabel) { if (!busy) menu = true; !busy }) }) {
                             Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text(item.name, style = MaterialTheme.typography.titleMedium)
-                                Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (workspace.showRecentExcerpt || item.unreadable) {
+                                    Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
                                 Text(displayPath(workspace, item.parent ?: Workspace.ROOT) + "  ·  " + recentDate(item.modified, calendar) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }

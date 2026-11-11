@@ -601,7 +601,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(selected = restored.parent ?: Workspace.ROOT, revealFolder = restored.parent ?: Workspace.ROOT, directoryRevision = ui.directoryRevision + 1)
         navigate(Page.Directory, backwards = true)
     }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null) {
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme
         val nextSort = sort ?: w.sort
@@ -611,9 +611,10 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         val nextUiFont = uiFont ?: w.uiFont
         val nextEditorFont = editorFont ?: w.editorFont
         val nextEditorTextSize = editorTextSize ?: w.editorTextSize
-        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize) return
+        val nextShowRecentExcerpt = showRecentExcerpt ?: w.showRecentExcerpt
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt) return
         launchWork(savingPreferences = true) {
-            disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize) }
+            disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt) }
             ui = ui.copy(workspace = disk { store.refresh() })
         }
     }

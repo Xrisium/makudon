@@ -39,6 +39,7 @@ data class Workspace(
     val editorFont: FontPreference = FontPreference(),
     val trashOperation: String? = null,
     val editorTextSize: EditorTextSize = EditorTextSize.Medium,
+    val showRecentExcerpt: Boolean = true,
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {
