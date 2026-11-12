@@ -42,6 +42,8 @@ ZIP 的 BackupCoordinator 与原 ViewModel 共用 IO Mutex / 保存屏障，Comp
 
 图片为目录的一等二进制材料，图像标识独立于节点 ID；库内 Markdown 使用稳定 URI，对外 ZIP 转相对路径。复制快照独立放在 image-clipboard，不进入库代际；缩略图仅放 cache/image-thumbnails，由统一加载器进行内存 / 磁盘 LRU 和清理代际门控。图像元数据 / 引用规则属于 domain，原图和缓存读写属于 data，Compose 只消费加载结果，见 ADR 0013。
 
+缩略图缓存二级页的三个场景偏好以可选字段写入现有版本 2 索引，缺省开启，复用设置写盘互斥与失败处理。加载器按目录树、长按菜单、信息预览区分请求；关闭的场景绕过内存 / 磁盘缓存，正文预览保留原策略。开启的场景仍按摘要与尺寸共用同一派生文件，避免重复占用；偏好变更使旧请求失去缓存写回资格，统一清理仍使用独立代际屏障。已有缓存仅经显式清理或 LRU 回收，开关不删除原图或其他材料。
+
 ## 按需增长的依赖方向
 
 文件交互由 FileExchange 协调、FileExchangeDialog 显示应用与导出方式；AndroidFileAccess 处理 Intent / URI / Downloads，ExportFiles 管理独立生命周期的分享副本。四个文稿 / ZIP 出入口共用这条链路，不改变私有库格式。正文与 ZIP 复制 / 回读 / 清理均在 IO dispatcher；FileProvider 仅开放 files/shared-exports，见 [ADR 0007](adr/0007-file-manager-first.md)。
