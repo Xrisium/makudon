@@ -1252,7 +1252,8 @@ class WorkspaceInstrumentation : Instrumentation() {
             val switchBounds = Rect().also { toggle().getBoundsInScreen(it) }
             touch(switchBounds.exactCenterX(), switchBounds.top - 8f); ready()
             verify(main { model.ui.workspace?.showRecentExcerpt == true }, "Title and card padding taps do not change the preference")
-            shell("settings put global animator_duration_scale 3"); SystemClock.sleep(600)
+            // Software rendering may deliver screenshots too slowly for a 3x animation.
+            shell("settings put global animator_duration_scale 10"); SystemClock.sleep(600)
             for (target in listOf(false, true)) {
                 // Resolve stable bounds before animation; accessibility traversal can wait for idle and miss frames.
                 val thumbBounds = Rect().also { toggle().getBoundsInScreen(it) }
@@ -1262,13 +1263,13 @@ class WorkspaceInstrumentation : Instrumentation() {
                     touchSwitch()
                     waitFor("immediate switch response") { main { model.ui.busy && model.ui.workspace?.showRecentExcerpt == target } }
                     val positions = mutableListOf(start)
-                    val until = SystemClock.uptimeMillis() + 900
+                    val until = SystemClock.uptimeMillis() + 2800
                     while (SystemClock.uptimeMillis() < until) { positions += thumbX(thumbBounds); SystemClock.sleep(20) }
                     val visiblePositions = positions.filter { it.isFinite() }
                     val end = visiblePositions.last()
                     val direction = if (target) 1 else -1
                     verify((end - start) * direction > 20 && visiblePositions.zipWithNext().all { (a, b) -> (b - a) * direction >= -1.5f }, "Switch to $target moves smoothly in one direction while IO is blocked")
-                    verify(visiblePositions.count { kotlin.math.abs(it - start) > 2 && kotlin.math.abs(it - end) > 2 } >= 2, "Switch to $target includes multiple intermediate thumb positions")
+                    verify(visiblePositions.count { kotlin.math.abs(it - start) > 2 && kotlin.math.abs(it - end) > 2 } >= 2, "Switch to $target includes multiple intermediate thumb positions: $visiblePositions")
                     touchSwitch()
                     verify(main { model.ui.workspace?.showRecentExcerpt == target }, "Repeated switch input stays gated while saving $target")
                     main { currentActivity?.recreate() }; SystemClock.sleep(200)
@@ -1323,17 +1324,17 @@ class WorkspaceInstrumentation : Instrumentation() {
 
     private fun recentTest() {
         main { model.go(Page.Recent) }; ready()
-        val originalTimestamp = main { checkNotNull(model.ui.workspace).recentTimestamp }
+        val originalSort = main { checkNotNull(model.ui.workspace).recentSort }
         val originalFontScale = shell("settings get system font_scale")
         val originalSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
-        main { model.preferences(recentTimestamp = RecentTimestamp.Modified) }; ready()
+        main { model.preferences(recentSort = RecentSort.Opened) }; ready()
         val store = currentStore()
         val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
         val calendar = RecentCalendar.current()
         val suffix = SystemClock.uptimeMillis().toString()
         val names = listOf("日期今天-$suffix", "日期前天-$suffix", "日期本周-$suffix", "日期往年-$suffix")
         val openedDays = listOf(0L, 2L, 5L, 400L)
-        val modifiedDays = listOf(0L, 1L, 2L, 400L)
+        val modifiedDays = listOf(0L, 2L, 1L, 400L)
         val catalog = File(workspaceDirectory(), "catalog.properties")
         val originalOpened = mutableMapOf<String, String>()
         fun day(days: Long) = calendar.today.minusDays(days).atTime(12, 0).atZone(calendar.zone).toInstant().toEpochMilli()
@@ -1379,7 +1380,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 scrollTo(label)
                 verify(shown(label), "Recent renders section $label")
             }
-            for ((index, label) in listOf("今天", "昨天", "前天").withIndex()) {
+            for ((index, label) in listOf("今天", "前天", "昨天").withIndex()) {
                 scrollTo(names[index])
                 verify(nodes().any { it.text?.toString()?.contains("·  $label ") == true }, "Card modification date renders $label")
             }
@@ -1391,37 +1392,46 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
             dateSettings()
             fun selected(label: String) = generateSequence(find(label)) { it.parent }.take(3).any { it.isChecked }
-            verify(selected("最近修改") && !selected("最近打开"), "Date settings expose mutually exclusive radio selection")
-            click("最近打开"); ready()
-            verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Opened }, "Last opened radio persists its selection")
+            verify(selected("最近打开") && !selected("最近修改"), "Sort settings expose mutually exclusive radio selection")
+            verify(shown("排列依据") && !shown("卡片显示时间"), "Recent setting configures order rather than displayed timestamp")
+            click("最近修改"); ready()
+            verify(main { model.ui.workspace?.recentSort == RecentSort.Modified }, "Last modified radio persists its selection")
             main { currentActivity?.recreate() }; ready()
             main { model.reload() }; ready()
-            verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Opened }, "Date selection survives recreation and disk reload")
+            verify(main { model.ui.workspace?.recentSort == RecentSort.Modified }, "Sort selection survives recreation and disk reload")
             main { model.go(Page.Recent) }; ready()
             scrollTo(names[1])
-            val openedCard = generateSequence(find(names[1])) { it.parent }.first { it.isClickable }
+            val modifiedCard = generateSequence(find(names[1])) { it.parent }.first { it.isClickable }
             fun containsText(node: AccessibilityNodeInfo, text: String): Boolean = node.text?.toString()?.contains(text) == true ||
                 (0 until node.childCount).any { child -> node.getChild(child)?.let { containsText(it, text) } == true }
-            verify(containsText(openedCard, "·  前天 ") && !containsText(openedCard, "·  昨天 "), "Last opened card uses two-day-old open time instead of yesterday modification")
-            verify(main { checkNotNull(model.ui.workspace).recentGroups(calendar) } == groups, "Changing displayed date preserves grouping, order and document metadata")
+            verify(containsText(modifiedCard, "·  前天 "), "Modified sorting keeps modification date on the card")
+            val modifiedGroups = main { checkNotNull(model.ui.workspace).recentGroups(calendar) }
+            verify(modifiedGroups.values.flatten().map { it.id } == listOf(ids[0], ids[2], ids[1], ids[3]) && RecentPeriod.WithinSevenDays !in modifiedGroups,
+                "Modified sorting changes global order and calendar groups")
+            val newer = Rect().also { find(names[2]).getBoundsInScreen(it) }
+            val older = Rect().also { find(names[1]).getBoundsInScreen(it) }
+            verify(newer.top < older.top, "Recent renders newer modification before newer open time")
             dateSettings()
             val preferencePending = File(workspaceDirectory(), "catalog.properties.new")
             check(preferencePending.mkdir())
             try {
-                click("最近修改"); ready()
-                verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Opened && model.ui.error != null }, "Failed date preference write retains saved choice and exposes an error")
+                click("最近打开"); ready()
+                verify(main { model.ui.workspace?.recentSort == RecentSort.Modified && model.ui.error != null }, "Failed sort preference write retains saved choice and exposes an error")
             } finally { check(preferencePending.delete()) }
             main { model.reload() }; ready()
-            dateSettings(); click("最近修改"); ready()
-            verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Modified }, "Last modified radio restores original date mode")
-            screenshot("recent-date-settings")
+            dateSettings(); click("最近打开"); ready()
+            verify(main { model.ui.workspace?.recentSort == RecentSort.Opened && checkNotNull(model.ui.workspace).recentGroups(calendar) == groups }, "Last opened restores original ordering and metadata")
+            main { model.go(Page.Recent) }; ready(); scrollTo(names[2])
+            val openedCard = generateSequence(find(names[2])) { it.parent }.first { it.isClickable }
+            verify(containsText(openedCard, "·  昨天 "), "Opened sorting still displays yesterday modification rather than five-day-old open time")
+            dateSettings(); screenshot("recent-sort-settings")
             shell("wm size 840x1890"); shell("settings put system font_scale 2.0"); SystemClock.sleep(1200); ready()
             for ((language, openedLabel, modifiedLabel) in listOf(Triple("zh-Hans", "最近打开", "最近修改"), Triple("en", "Last opened", "Last modified"))) {
                 main { model.changeLanguage(language) }; ready()
-                scrollTo(openedLabel); click(openedLabel); ready()
-                verify(main { model.ui.workspace?.recentTimestamp == RecentTimestamp.Opened } && selected(openedLabel) && !selected(modifiedLabel), "$language radio controls work at 320dp / 200% font")
-                screenshot("recent-date-$language-200")
-                click(modifiedLabel); ready()
+                scrollTo(modifiedLabel); click(modifiedLabel); ready()
+                verify(main { model.ui.workspace?.recentSort == RecentSort.Modified } && selected(modifiedLabel) && !selected(openedLabel), "$language radio controls work at 320dp / 200% font")
+                screenshot("recent-sort-$language-200")
+                click(openedLabel); ready()
             }
             shell(if (originalSize == null) "wm size reset" else "wm size $originalSize")
             shell(if (originalFontScale == "null") "settings delete system font_scale" else "settings put system font_scale $originalFontScale")
@@ -1441,9 +1451,11 @@ class WorkspaceInstrumentation : Instrumentation() {
                 verify(shown(names[0]) && nodes().any { it.text?.toString()?.contains("·  昨天 ") == true }, "System date change refreshes relative card dates without navigation")
                 val alternateZone = if (calendar.zone.id == "Pacific/Kiritimati") "America/Los_Angeles" else "Pacific/Kiritimati"
                 shell("cmd alarm set-timezone $alternateZone")
-                val expectedTime = android.text.format.DateFormat.getTimeFormat(targetContext).apply {
-                    timeZone = java.util.TimeZone.getTimeZone(alternateZone)
-                }.format(java.util.Date(day(0)))
+                val expectedTime = main {
+                    android.text.format.DateFormat.getTimeFormat(model.languages.context()).apply {
+                        timeZone = java.util.TimeZone.getTimeZone(alternateZone)
+                    }.format(java.util.Date(day(0)))
+                }
                 waitFor("timezone refresh") { nodes().any { it.text?.toString()?.contains("$expectedTime  ·") == true } }
                 verify(nodes().any { it.text?.toString()?.contains("$expectedTime  ·") == true }, "System timezone broadcast refreshes visible card time without navigation")
             } finally {
@@ -1505,7 +1517,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 store.load()
             } } }
             main { model.reload() }; ready()
-            main { model.preferences(recentTimestamp = originalTimestamp) }; ready()
+            main { model.preferences(recentSort = originalSort) }; ready()
         }
     }
 

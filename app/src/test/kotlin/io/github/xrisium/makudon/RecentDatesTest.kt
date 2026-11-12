@@ -66,6 +66,24 @@ class RecentDatesTest {
         assertEquals(RecentPeriod.Earlier, calendar.copy(today = today.plusDays(7)).period(opened))
     }
 
+    @Test fun selectedSortControlsGlobalOrderAndCalendarGroupsWithoutChangingMetadata() {
+        fun document(id: String, openedDays: Long, modifiedDays: Long) = Entry(id, id, Workspace.ROOT, DocumentKind.Plain,
+            timestamp(today.minusDays(400)), opened = timestamp(today.minusDays(openedDays)), modified = timestamp(today.minusDays(modifiedDays)))
+        val newestOpened = document("opened-today", 0, 400)
+        val newestModified = document("modified-today", 400, 0)
+        val older = document("modified-two-days", 5, 2)
+        val unopened = document("unopened", 0, 0).copy(opened = 0)
+        val workspace = Workspace(listOf(newestModified, older, newestOpened, unopened, newestOpened.copy(id = "folder", kind = DocumentKind.Folder)))
+        val opened = workspace.recentGroups(calendar)
+        assertEquals(listOf(newestOpened, older, newestModified), opened.values.flatten())
+        assertEquals(listOf(RecentPeriod.Today, RecentPeriod.WithinSevenDays, RecentPeriod.Earlier), opened.keys.toList())
+        val modified = workspace.copy(recentSort = RecentSort.Modified).recentGroups(calendar)
+        assertEquals(listOf(newestModified, older, newestOpened), modified.values.flatten())
+        assertEquals(listOf(RecentPeriod.Today, RecentPeriod.WithinThreeDays, RecentPeriod.Earlier), modified.keys.toList())
+        assertEquals(listOf(newestOpened), modified[RecentPeriod.Earlier])
+        assertEquals(RecentDateLabel.OtherYear, calendar.label(newestOpened.modified))
+    }
+
     @Test fun recentGroupsKeepLastOpenedOrderExcludeFoldersAndHideEmptyGroups() {
         fun document(id: String, days: Long) = Entry(id, id, Workspace.ROOT, DocumentKind.Plain,
             timestamp(today), opened = timestamp(today.minusDays(days)), modified = timestamp(today))

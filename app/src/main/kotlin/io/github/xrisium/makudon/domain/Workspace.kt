@@ -9,7 +9,7 @@ enum class ColorTheme { System, Paper, Cream, Mist, Sage, Ink }
 enum class FontChoice { Sans, Serif, WenKai, System }
 enum class FontThickness { Light, Normal, Bold }
 enum class EditorTextSize(val sp: Int) { Small(16), Medium(18), Large(20) }
-enum class RecentTimestamp { Modified, Opened }
+enum class RecentSort { Modified, Opened }
 data class FontPreference(val choice: FontChoice = FontChoice.Sans, val thickness: FontThickness = FontThickness.Normal)
 
 data class Entry(
@@ -41,7 +41,7 @@ data class Workspace(
     val trashOperation: String? = null,
     val editorTextSize: EditorTextSize = EditorTextSize.Medium,
     val showRecentExcerpt: Boolean = true,
-    val recentTimestamp: RecentTimestamp = RecentTimestamp.Modified,
+    val recentSort: RecentSort = RecentSort.Opened,
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {

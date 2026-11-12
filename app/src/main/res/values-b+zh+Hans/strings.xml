@@ -2,7 +2,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
   <string name="recent">最近</string>
   <string name="show_recent_excerpt">显示文稿内容概览</string>
-  <string name="recent_date_display">卡片显示时间</string>
+  <string name="recent_sort">排列依据</string>
   <string name="recent_modified">最近修改</string>
   <string name="recent_opened">最近打开</string>
   <string name="date_today">今天</string>

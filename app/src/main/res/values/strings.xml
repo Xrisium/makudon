@@ -4,7 +4,7 @@
   <string name="brand_name" translatable="false">Makudon</string>
   <string name="recent">Recent</string>
   <string name="show_recent_excerpt">Show document content overview</string>
-  <string name="recent_date_display">Date shown on cards</string>
+  <string name="recent_sort">Sort by</string>
   <string name="recent_modified">Last modified</string>
   <string name="recent_opened">Last opened</string>
   <string name="date_today">Today</string>

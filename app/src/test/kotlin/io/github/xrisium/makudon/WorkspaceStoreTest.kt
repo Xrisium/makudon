@@ -80,33 +80,33 @@ class WorkspaceStoreTest {
         catalog.writeText(legacy + "\nshowRecentExcerpt=unknown\n")
         assertTrue(store(dir).refresh().showRecentExcerpt)
     }
-    @Test fun recentTimestampSurvivesRestartAndOtherPreferencesWithoutChangingDocumentsOrGroups() {
+    @Test fun recentSortSurvivesRestartAndOtherPreferencesWithoutChangingDocuments() {
         val dir = temp.newFolder()
         val original = store(dir)
         val id = original.create("日期", Workspace.ROOT, DocumentKind.Markdown, "# 原稿😀")
         val before = original.refresh()
-        original.settings(ColorTheme.System, SortKey.Name, false, true, recentTimestamp = RecentTimestamp.Opened)
+        original.settings(ColorTheme.System, SortKey.Name, false, true, recentSort = RecentSort.Modified)
         val reopened = store(dir)
-        assertEquals(RecentTimestamp.Opened, reopened.refresh().recentTimestamp)
+        assertEquals(RecentSort.Modified, reopened.refresh().recentSort)
         reopened.settings(ColorTheme.Ink, SortKey.Size, true, false, showRecentExcerpt = false)
         val final = store(dir)
-        assertEquals(RecentTimestamp.Opened, final.refresh().recentTimestamp)
+        assertEquals(RecentSort.Modified, final.refresh().recentSort)
         assertEquals("# 原稿😀", final.read(id))
         assertEquals(before.entry(id), final.refresh().entry(id))
-        val calendar = RecentCalendar.current()
-        assertEquals(before.recentGroups(calendar), final.refresh().recentGroups(calendar))
-        final.settings(ColorTheme.Ink, SortKey.Size, true, false, recentTimestamp = RecentTimestamp.Modified)
-        assertEquals(RecentTimestamp.Modified, store(dir).refresh().recentTimestamp)
+        final.settings(ColorTheme.Ink, SortKey.Size, true, false, recentSort = RecentSort.Opened)
+        assertEquals(RecentSort.Opened, store(dir).refresh().recentSort)
     }
-    @Test fun missingOrUnknownRecentTimestampDefaultsToModified() {
+    @Test fun missingOrUnknownRecentSortIgnoresLegacyDisplayPreferenceAndDefaultsToOpened() {
         val dir = temp.newFolder()
         store(dir)
         val catalog = File(dir, "catalog.properties")
-        val legacy = catalog.readText().lineSequence().filterNot { it.startsWith("recentTimestamp=") }.joinToString("\n")
-        catalog.writeText(legacy)
-        assertEquals(RecentTimestamp.Modified, store(dir).refresh().recentTimestamp)
-        catalog.writeText(legacy + "\nrecentTimestamp=unknown\n")
-        assertEquals(RecentTimestamp.Modified, store(dir).refresh().recentTimestamp)
+        val legacy = catalog.readText().lineSequence().filterNot { it.startsWith("recentSort=") }.joinToString("\n")
+        for (display in listOf("", "\nrecentTimestamp=Modified\n", "\nrecentTimestamp=Opened\n")) {
+            catalog.writeText(legacy + display)
+            assertEquals(RecentSort.Opened, store(dir).refresh().recentSort)
+        }
+        catalog.writeText(legacy + "\nrecentSort=unknown\n")
+        assertEquals(RecentSort.Opened, store(dir).refresh().recentSort)
     }
     @Test fun legacyInboxKeepsItsBodyAndBehavesAsAnOrdinaryFolderWithoutRecreation() {
         val dir = temp.newFolder()

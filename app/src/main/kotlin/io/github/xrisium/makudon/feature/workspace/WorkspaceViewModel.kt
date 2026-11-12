@@ -601,7 +601,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(selected = restored.parent ?: Workspace.ROOT, revealFolder = restored.parent ?: Workspace.ROOT, directoryRevision = ui.directoryRevision + 1)
         navigate(Page.Directory, backwards = true)
     }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentTimestamp: RecentTimestamp? = null) {
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme
         val nextSort = sort ?: w.sort
@@ -612,13 +612,13 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         val nextEditorFont = editorFont ?: w.editorFont
         val nextEditorTextSize = editorTextSize ?: w.editorTextSize
         val nextShowRecentExcerpt = showRecentExcerpt ?: w.showRecentExcerpt
-        val nextRecentTimestamp = recentTimestamp ?: w.recentTimestamp
-        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentTimestamp == w.recentTimestamp) return
+        val nextRecentSort = recentSort ?: w.recentSort
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort) return
         launchWork(savingPreferences = true) {
             // Animate this switch on input, independently of catalog writes and body refreshes.
             ui = ui.copy(workspace = w.copy(showRecentExcerpt = nextShowRecentExcerpt))
             try {
-                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentTimestamp) }
+                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort) }
                 ui = ui.copy(workspace = disk { store.refresh() })
             } catch (e: Exception) {
                 ui = ui.copy(workspace = ui.workspace?.copy(showRecentExcerpt = w.showRecentExcerpt))

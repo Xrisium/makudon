@@ -191,7 +191,7 @@ internal fun RecentPage(workspace: Workspace, busy: Boolean, onOpen: (String) ->
                                 if (workspace.showRecentExcerpt || item.unreadable) {
                                     Text(if (item.unreadable) stringResource(R.string.open_failed) else item.excerpt.ifBlank { stringResource(R.string.empty_excerpt) }, style = EditorStyle.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
-                                Text(displayPath(workspace, item.parent ?: Workspace.ROOT) + "  ·  " + recentDate(if (workspace.recentTimestamp == RecentTimestamp.Opened) item.opened else item.modified, calendar) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(displayPath(workspace, item.parent ?: Workspace.ROOT) + "  ·  " + recentDate(item.modified, calendar) + "  ·  " + stringResource(kindLabel(item.kind)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(20.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 240.dp, max = 290.dp)) {

@@ -89,32 +89,31 @@ fun SettingsPage(model: WorkspaceViewModel) {
         item { Text(stringResource(R.string.recent), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
-                Row(
-                    Modifier.fillMaxWidth().padding(18.dp).heightIn(min = 48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text(stringResource(R.string.show_recent_excerpt), Modifier.weight(1f))
-                    RecentOverviewSwitch(
-                        checked = workspace.showRecentExcerpt,
-                        enabled = enabled,
-                        label = stringResource(R.string.show_recent_excerpt),
-                        onCheckedChange = { model.preferences(showRecentExcerpt = it) },
-                    )
-                }
-            }
-        }
-        item {
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
-                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp).selectableGroup()) {
-                    Text(stringResource(R.string.recent_date_display), Modifier.padding(horizontal = 18.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    RecentTimestamp.entries.forEach { option ->
-                        val selected = workspace.recentTimestamp == option
-                        Row(Modifier.fillMaxWidth().selectable(selected, enabled = enabled, role = Role.RadioButton) {
-                            model.preferences(recentTimestamp = option)
-                        }.padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            RadioButton(selected = selected, onClick = null, enabled = enabled)
-                            Text(stringResource(if (option == RecentTimestamp.Modified) R.string.recent_modified else R.string.recent_opened), Modifier.weight(1f))
+                Column {
+                    Row(
+                        Modifier.fillMaxWidth().padding(18.dp).heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Text(stringResource(R.string.show_recent_excerpt), Modifier.weight(1f))
+                        RecentOverviewSwitch(
+                            checked = workspace.showRecentExcerpt,
+                            enabled = enabled,
+                            label = stringResource(R.string.show_recent_excerpt),
+                            onCheckedChange = { model.preferences(showRecentExcerpt = it) },
+                        )
+                    }
+                    HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp).selectableGroup()) {
+                        Text(stringResource(R.string.recent_sort), Modifier.padding(horizontal = 18.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        RecentSort.entries.forEach { option ->
+                            val selected = workspace.recentSort == option
+                            Row(Modifier.fillMaxWidth().selectable(selected, enabled = enabled, role = Role.RadioButton) {
+                                model.preferences(recentSort = option)
+                            }.padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                RadioButton(selected = selected, onClick = null, enabled = enabled)
+                                Text(stringResource(if (option == RecentSort.Modified) R.string.recent_modified else R.string.recent_opened), Modifier.weight(1f))
+                            }
                         }
                     }
                 }
