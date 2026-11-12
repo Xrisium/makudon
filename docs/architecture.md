@@ -40,6 +40,8 @@ ZIP 的 BackupCoordinator 与原 ViewModel 共用 IO Mutex / 保存屏障，Comp
 
 编辑菜单的字号偏好同样将控件外观与实际动作门控分开：savingPreferences 期间保留菜单文字、工具和双视图按钮的启用外观，回调仍检查原有 busy 门控，禁止误开弹窗、导出或关闭菜单。正文编辑保护和存储互斥不变，避免以短暂禁用颜色表示普通偏好写盘。
 
+图片为目录的一等二进制材料，图像标识独立于节点 ID；库内 Markdown 使用稳定 URI，对外 ZIP 转相对路径。复制快照独立放在 image-clipboard，不进入库代际；缩略图仅放 cache/image-thumbnails，由统一加载器进行内存 / 磁盘 LRU 和清理代际门控。图像元数据 / 引用规则属于 domain，原图和缓存读写属于 data，Compose 只消费加载结果，见 ADR 0013。
+
 ## 按需增长的依赖方向
 
 文件交互由 FileExchange 协调、FileExchangeDialog 显示应用与导出方式；AndroidFileAccess 处理 Intent / URI / Downloads，ExportFiles 管理独立生命周期的分享副本。四个文稿 / ZIP 出入口共用这条链路，不改变私有库格式。正文与 ZIP 复制 / 回读 / 清理均在 IO dispatcher；FileProvider 仅开放 files/shared-exports，见 [ADR 0007](adr/0007-file-manager-first.md)。

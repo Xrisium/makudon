@@ -13,6 +13,7 @@
 | Markdown 三视图、实时预览与写作工具 | [行为规范](specs/0005-markdown-three-modes.md)、[连续源码 ADR](adr/0011-markdown-source-projection.md)、[任务](tasks/0026-markdown-three-modes.md)、[页签与分组工具栏](tasks/0027-markdown-toolbar-layout.md) |
 | Markdown 表格单元格编辑 | [单元格输入 ADR](adr/0012-markdown-table-cells.md)、[实施与验证](tasks/0028-markdown-table-editing.md)、[内容高度与整篇滚动](tasks/0030-markdown-table-flow.md) |
 | Markdown 菜单开关与表后正文 | [边界修复](tasks/0029-markdown-menu-and-table-boundary.md)、[行为规范](specs/0005-markdown-three-modes.md) |
+| Markdown 图片、目录预览与缓存 | [实施与验收](tasks/0037-markdown-images.md)、[引用与存储协议](adr/0013-library-images.md) |
 | Markdown 大纲 | [底部面板与标题跳转](tasks/0031-markdown-outline.md)、[行为规范](specs/0005-markdown-three-modes.md) |
 | 启动产品页 | [品牌布局、主题首帧与验收](tasks/0032-startup-product-page.md) |
 | 最近卡片内容概览开关 | [偏好、显示范围与验证](tasks/0034-recent-content-overview.md) |

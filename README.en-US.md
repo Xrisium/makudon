@@ -41,6 +41,7 @@ Debug signing keys may differ between build environments. If an update reports a
 
 - **Three Markdown views**: edit precisely in **Source**, write with live formatting in **Formatted**, and review in **Reading**. Switch instantly without closing and reopening the editor.
 - **Convenient Markdown tools**: headings, bold and italic text, lists, tasks, quotes, links, code, and tables. Includes undo/redo, find and replace, and heading navigation.
+- **Local images**: import originals, insert them into Markdown, zoom to view, manage image files, preview thumbnails, and clear the thumbnail cache.
 - **Automatic saving**: documents save automatically to private app storage as you edit.
 - **Folder management**: a folder tree, name search, sorting, recently opened documents, and batch copy, cut, and delete for documents and folders.
 - **Portable files**: import UTF-8 `.md` and `.txt` files, export source copies, and back up the library as a standard ZIP that preserves folders. Extract and edit it on a PC, or use the ZIP to restore a backup.
@@ -67,6 +68,14 @@ Touch and hold a document or folder to open its action menu for cut, copy, paste
   <img src="assets/readme/folders-en.png" width="420" alt="Folder management: an expanded hierarchy of folders and documents">
 </p>
 
+### Images
+
+Choose **Insert image** in the Markdown **Insert** tool group, then import from your device or select an existing library image. JPEG, PNG, and static WebP are supported, up to 20 MiB and 100 million pixels per image. Imports preserve the original bytes and leave the source unchanged. Standalone image paragraphs appear in Formatted and Reading; tap an image to zoom. Inline and table images retain their Markdown syntax.
+
+Manage images alongside documents in Folders: move, rename, copy, or delete them to the recycle bin. Settings → Folders switches between thumbnails and icons; context menus and information panels always show previews. Settings → Data management → Thumbnail cache shows disk use and lets you clear thumbnails while keeping originals and documents.
+
+To take a document and its images with you, choose **Export document and images as ZIP** in the editor menu. A standalone `.md` export does not include image files. Library ZIP backups include folder images and use ordinary relative image paths. Restore image ZIPs with a version that supports images, and keep the external ZIP.
+
 ### Write Markdown
 
 Switch between the three views at the top of the Markdown editor:
@@ -87,7 +96,7 @@ Use Markdown shortcuts in the bottom toolbar, grouped under **Text / Paragraph /
 
 Use **Outline** at the top right to jump to a section heading. The more menu contains find and replace, text size, and export actions.
 
-Supported Markdown includes H1–H6, nested lists, task lists, quotes, links, code blocks, strikethrough, and tables. Images and HTML are preserved as source but are not rendered. In the formatted view, tables support editing cell contents; use Source to change rows and columns.
+Supported Markdown includes H1–H6, nested lists, task lists, quotes, links, code blocks, strikethrough, and tables. Standalone library images are rendered. Inline and table images, remote images, and HTML remain as source; no resources are downloaded. In the formatted view, tables support editing cell contents; use Source to change rows and columns.
 
 ### Import and export individual documents
 
@@ -112,19 +121,19 @@ The app currently supports Simplified Chinese and English. Under **Settings → 
 
 **Documents live in private app storage. Uninstalling the app or clearing its data deletes them.** Automatic saving, the recycle bin, and local restore snapshots do not replace an external backup.
 
-Open **Settings → Backup and restore**, export the library as a ZIP, and save it outside the app. The archive contains ordinary folders and UTF-8 `.md` / `.txt` files you can extract, read, and edit on a PC. You can also create a ZIP on your PC containing ordinary folders and UTF-8 `.md` / `.txt` files, then import it into Makudon on your Android device.
+Open **Settings → Backup and restore**, export the library as a ZIP, and save it outside the app. The archive contains ordinary folders, UTF-8 `.md` / `.txt` files, and original images you can extract, read, and edit on a PC. You can also create a ZIP on your PC containing ordinary folders, UTF-8 `.md` / `.txt` files, and JPEG / PNG / WebP images, then import it into Makudon on your Android device.
 
 To restore, select a ZIP from your phone’s storage, review the preview, and confirm a restore mode:
 
 | Mode | When to use it and what happens |
 | --- | --- |
 | **Restore to a new folder** (default) | Place the archive in a separate folder to inspect a backup or bring in another library. |
-| **Update existing library** | Compare by path. Identical text is skipped; for different text, choose Keep local, Use backup, or Keep both. Local-only content is preserved. |
+| **Update existing library** | Compare by path. Identical content is skipped; for different content, choose Keep local, Use backup, or Keep both. Local-only content is preserved. |
 | **Replace entire library** | Replace the whole library with the ZIP contents, removing all existing documents and folder structure. A second confirmation is required. |
 
 The library from before the latest restore is kept as a local snapshot. Choose **Undo last restore** on the same page to switch back; edits made after restoring become part of the new snapshot.
 
-ZIP backups contain current documents and folders only: **no recycle bin, document history, or app settings**. They do not automatically sync devices. To recover an accidental deletion, open **Settings → Recycle bin** and preview or restore the item. Emptying the bin or permanently deleting an item removes the ability to recover it from the bin.
+ZIP backups contain current documents, images, and folders only: **no recycle bin, document history, or app settings**. They do not automatically sync devices. To recover an accidental deletion, open **Settings → Recycle bin** and preview or restore the item. Emptying the bin or permanently deleting an item removes the ability to recover it from the bin.
 
 ## Build from source
 

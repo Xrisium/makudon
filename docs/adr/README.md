@@ -15,4 +15,6 @@
 | [0011](0011-markdown-source-projection.md) | 接受并实施 | 同一源码连续编辑、实时预览与只读阅读 |
 | [0012](0012-markdown-table-cells.md) | 接受并实施 | 表格单元格原位编辑、正文背景与 Markdown 单一导出 |
 
+| [0013](0013-library-images.md) | 接受并实施 | 私有图片、稳定引用、图片 ZIP 与可清理缩略图缓存 |
+
 新决定使用 [模板](../templates/adr.md)，顺序编号。已接入原生工作区、私有保存和文件出入口；实现与未覆盖验收以 [当前状态](../status.md) 为准。

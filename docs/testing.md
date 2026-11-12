@@ -117,3 +117,7 @@ ZIP 备份恢复使用 `-e case backup`（27 项），真实 320dp / 200% 字号
 
 
 Markdown 三视图专项使用 `-e case markdown`，覆盖原生连续选区、格式工具、共享撤销及选区恢复、真实 InputConnection 回车 / 中文 composition、查找替换、阅读只读、Activity 重建及双格式导出。`markdown-visual` 覆盖英文浅色、320dp / 200% 字号、六项工具热区与横屏；`markdown-long` 记录 10 万码点密集 Markdown 与单段高比例 emoji 的保存 / 解析 / 切换单次耗时，不把单次样本作为 p95。仅在模拟器运行，合成资料与临时系统设置按用例清理 / 恢复。
+
+## 图片管理与缓存
+
+`-e case images` 执行最终 51 项图片专项，覆盖真实 content URI 导入、EXIF、双指缩放 / 双击复位、两处面板、目录显示偏好、缓存命中 / 重建 / 并发清理、迟到插入、缺图恢复和单篇 ZIP。语言、主题、临时屏幕尺寸与字号在 finally 恢复，合成材料独立清理。APK 与本轮其余回归见[图片验收记录](testing/2026-11-12-images.md)。
