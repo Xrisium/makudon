@@ -17,6 +17,7 @@
 | 启动产品页 | [品牌布局、主题首帧与验收](tasks/0032-startup-product-page.md) |
 | 最近卡片内容概览开关 | [偏好、显示范围与验证](tasks/0034-recent-content-overview.md) |
 | 最近卡片时间选择、编辑页精简与文案筛查 | [实施与验证](tasks/0035-recent-date-and-copy.md)、[文案筛查报告](reviews/2026-11-12-ui-copy.md) |
+| 最近排列依据、设置卡片归并与文案精简 | [修正与验证](tasks/0036-recent-sort-and-copy.md)、[同类设置归并规范](design.md) |
 | 审阅首片存储取舍与产品决定 | [已接受存储 ADR](adr/0002-document-storage.md)、[D1–D3 决定记录](specs/0001-open-decisions.md) |
 | 实施后验收首个编辑切片 | [首片验收规范（未执行）](testing/plain-text-editor-acceptance.md) |
 | 分支、提交、发布 | [Git 工作流](git-workflow.md) |
