@@ -47,7 +47,6 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     val editable = !ui.busy && !ui.transitioning && !ui.storageBlocked && ui.page == Page.Editor
     val controlsEnabled = (!ui.busy || ui.savingPreferences) && !ui.transitioning && !ui.storageBlocked && ui.page == Page.Editor
     var more by remember { mutableStateOf(false) }
-    var focused by remember { mutableStateOf(false) }
     var tools by rememberSaveable(entry.id) { mutableStateOf(false) }
     var toolGroup by rememberSaveable(entry.id) { mutableStateOf(MarkdownToolGroup.Text) }
     var formatMenu by remember(entry.id, toolGroup) { mutableIntStateOf(0) }
@@ -176,17 +175,15 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         if (reading) {
             if (document != null) MarkdownReader(model, document, bodyStyle, Modifier.weight(1f).fillMaxWidth().testTag("reading-view"), if (findOpen) query else "", caseSensitive, target, outlineJump) { outlineJump = null }
             else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.md_preparing)) }
-        } else MarkdownEditingField(model, markdown, bodyStyle, editable, findOpen, Modifier.weight(1f).fillMaxWidth(), outlineJump, { outlineJump = null }) { focused = it }
+        } else MarkdownEditingField(model, markdown, bodyStyle, editable, findOpen, Modifier.weight(1f).fillMaxWidth(), outlineJump, { outlineJump = null })
         if (!model.immersive) {
-            val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-            val keyboardTools = markdown && !reading && focused && imeVisible && !findOpen
-            if (markdown && !reading && !findOpen && (tools || keyboardTools)) MarkdownTools(model, controlsEnabled, toolGroup,
+            if (markdown && !reading && !findOpen && tools) MarkdownTools(model, controlsEnabled, toolGroup,
                 formatMenu, { formatMenu = it }, { formatAnchor = it },
                 onGroup = { toolGroup = it }, onLink = { if (editable) linkToken = model.editToken() })
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp).testTag("editor-info"), verticalAlignment = Alignment.CenterVertically) {
                 Text(pluralStringResource(R.plurals.document_count, source.codePointCount(0, source.length), source.codePointCount(0, source.length)), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                 Text(displayPath(checkNotNull(ui.workspace), entry.parent ?: Workspace.ROOT), Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
-                if (markdown && !reading) MarkdownGroupButtons(toolGroup.takeIf { tools || keyboardTools }, controlsEnabled) { chosen ->
+                if (markdown && !reading) MarkdownGroupButtons(toolGroup.takeIf { tools }, controlsEnabled) { chosen ->
                     if (editable) { tools = !tools || chosen != toolGroup; toolGroup = chosen }
                 }
             }

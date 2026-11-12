@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, bodyStyle: TextStyle, editable: Boolean, findOpen: Boolean, modifier: Modifier, outlineJump: OutlineJump?, onOutlineJumped: () -> Unit, onFocus: (Boolean) -> Unit) {
+internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, bodyStyle: TextStyle, editable: Boolean, findOpen: Boolean, modifier: Modifier, outlineJump: OutlineJump?, onOutlineJumped: () -> Unit) {
     val field = model.textState ?: return
     val colors = MaterialTheme.colorScheme
     val source = field.text.toString()
@@ -122,7 +122,7 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     val editToken = model.editToken()
     Box(modifier.clipToBounds().onSizeChanged { viewportHeight = it.height }) {
         BasicTextField(state = field, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp).focusRequester(requester)
-            .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
+            .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key in listOf(Key.Z, Key.Y)) { model.undo(it.key == Key.Y || it.isShiftPressed); true } else false
             }.testTag(if (typeset) "typeset-editor" else "source-editor").semantics { contentDescription = description },
@@ -143,7 +143,7 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
                             .fillMaxWidth().padding(end = 48.dp).wrapContentHeight(align = androidx.compose.ui.Alignment.Top, unbounded = true)
                             .height(with(density) { heightPx.toDp() }).background(colors.background)) {
                             MarkdownEditableTable(model, parsed, bodyStyle, editable, Modifier.fillMaxSize(), tableLayout,
-                                -top - 200f, viewportHeight - top + 200f, onFocus)
+                                -top - 200f, viewportHeight - top + 200f)
                         }
                     }
                 }

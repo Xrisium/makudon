@@ -60,7 +60,7 @@ internal fun rememberTableLayout(node: MdElement, document: MarkdownDocument, st
 
 @Composable
 internal fun MarkdownEditableTable(model: WorkspaceViewModel, document: MarkdownDocument,
-    style: TextStyle, editable: Boolean, modifier: Modifier, layout: TableLayout, visibleTop: Float, visibleBottom: Float, onFocus: (Boolean) -> Unit) {
+    style: TextStyle, editable: Boolean, modifier: Modifier, layout: TableLayout, visibleTop: Float, visibleBottom: Float) {
     val colors = MaterialTheme.colorScheme
     val density = LocalDensity.current
     Box(modifier.scrollable(model.editorScroll, Orientation.Vertical, reverseDirection = true)
@@ -76,7 +76,7 @@ internal fun MarkdownEditableTable(model: WorkspaceViewModel, document: Markdown
                                 EditableCell(model, document, cell, item.styled[column], if (row == 0) style.copy(fontWeight = FontWeight.Bold) else style,
                                     editable, stringResource(R.string.md_table_cell, row + 1, column + 1),
                                     Modifier.width(160.dp).fillMaxHeight().heightIn(min = 48.dp).border(1.dp, colors.outlineVariant).padding(10.dp)
-                                        .testTag("table-cell-$row-$column"), onFocus)
+                                        .testTag("table-cell-$row-$column"))
                             }
                         }
                     }
@@ -91,14 +91,13 @@ internal fun MarkdownEditableTable(model: WorkspaceViewModel, document: Markdown
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EditableCell(model: WorkspaceViewModel, document: MarkdownDocument, cell: MarkdownCellText, styled: AnnotatedString, style: TextStyle,
-    editable: Boolean, label: String, modifier: Modifier, onFocus: (Boolean) -> Unit) {
+    editable: Boolean, label: String, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
     val state = remember { TextFieldState(cell.text) }
     val session = remember { model.editToken().session }
     var mapped by remember { mutableStateOf(cell) }
     var snapshot by remember { mutableStateOf(document.source) }
     var focused by remember { mutableStateOf(false) }
-    val currentFocus by rememberUpdatedState(onFocus)
     val currentStyled by rememberUpdatedState(styled)
     // Input is published synchronously; this mirror only owns the platform IME composition.
     // Background parses and undo may refresh the mirror, but never replace an unchanged composition.
@@ -113,7 +112,6 @@ private fun EditableCell(model: WorkspaceViewModel, document: MarkdownDocument, 
         }
     }
     LaunchedEffect(state.text.toString()) { state.undoState.clearHistory() }
-    DisposableEffect(Unit) { onDispose { if (focused) currentFocus(false) } }
     val input = remember(model, state) { InputTransformation {
         val before = model.textState?.text?.toString()
         if (model.editToken().session != session || before != snapshot || originalText.toString() != mapped.text) { revertAllChanges(); return@InputTransformation }
@@ -141,7 +139,7 @@ private fun EditableCell(model: WorkspaceViewModel, document: MarkdownDocument, 
         }
     } }
     BasicTextField(state, modifier.onFocusChanged {
-        focused = it.isFocused; currentFocus(it.isFocused)
+        focused = it.isFocused
         if (it.isFocused && model.textState?.text?.toString() == snapshot) {
             model.textState?.edit { selection = TextRange(mapped.units.firstOrNull()?.start ?: mapped.range.start) }
         }

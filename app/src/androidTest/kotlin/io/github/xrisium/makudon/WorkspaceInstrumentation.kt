@@ -2387,6 +2387,13 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
             SystemClock.sleep(600); waitForIdleSync()
         }
+        fun showKeyboard() {
+            nodes().first { it.isEditable }.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            main { val view = currentActivity!!.window.decorView.findFocus()!!; (currentActivity!!.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(view, 0) }
+            waitFor("IME shown", 20_000) { main { currentActivity!!.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true } }
+            SystemClock.sleep(500); waitForIdleSync()
+        }
+        fun selectedGroup(label: String) = generateSequence(find(label)) { it.parent }.take(3).any { it.isSelected || it.isChecked }
         try {
             click("源码"); val body = "###### 六级标题\n\n####### 更深标题\n\n正文测试"; setText("编辑正文", body); saved(); hideKeyboard()
             val count = main { model.languages.context().resources.getQuantityString(R.plurals.document_count, body.length, body.length) }
@@ -2426,13 +2433,12 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("撤销"); saved()
             verify(main { model.textState!!.text.toString() == body }, "Sixth heading formatting restores in one undo")
             shell("settings put secure show_ime_with_hard_keyboard 1")
-            val edit = nodes().first { it.isEditable }; edit.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-            main { val view = currentActivity!!.window.decorView.findFocus()!!; (currentActivity!!.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(view, 0) }
-            waitFor("IME shown", 20_000) { main { currentActivity!!.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true } }
-            SystemClock.sleep(500); waitForIdleSync()
+            click("文本"); showKeyboard()
+            verify(nodes().none { it.contentDescription?.toString() == "粗体" } && listOf("文本", "段落", "插入").none(::selectedGroup), "Opening IME does not expand a closed toolbar or select a group")
             val selection = main { model.currentSelection() }; val revision = main { model.save!!.revision }
             val density = targetContext.resources.displayMetrics.density
             for (mode in listOf("源码", "排版")) {
+                if (mode == "排版") click("文本")
                 click(mode)
                 val infoWithIme = bounds(count)
                 val groups = listOf("文本", "段落", "插入").map(::bounds)
@@ -2441,6 +2447,21 @@ class WorkspaceInstrumentation : Instrumentation() {
                 val insert = bounds("插入")
                 tapPoint(insert.centerX().toFloat(), insert.centerY().toFloat())
                 verify(nodes().any { it.contentDescription?.toString() == "表格" } && main { model.currentSelection() == selection && model.save!!.revision == revision && currentActivity!!.window.decorView.rootWindowInsets!!.isVisible(android.view.WindowInsets.Type.ime()) }, "$mode group tap switches tools while preserving selection, body and keyboard")
+                verify(selectedGroup("插入") && !selectedGroup("文本") && !selectedGroup("段落"), "$mode highlights only the opened group with IME")
+                tapPoint(insert.centerX().toFloat(), insert.centerY().toFloat())
+                val location = main { model.languages.context().getString(R.string.library) }
+                verify(nodes().none { it.contentDescription?.toString() == "表格" } && listOf("文本", "段落", "插入").none(::selectedGroup) && bounds(count).centerY() == infoWithIme.centerY() && bounds(location).centerY() == infoWithIme.centerY() && main { currentActivity!!.window.decorView.rootWindowInsets!!.isVisible(android.view.WindowInsets.Type.ime()) }, "$mode current-group tap closes tools and keeps information row and keyboard")
+                screenshot("markdown-toolbar-ime-closed-$mode")
+                hideKeyboard()
+                verify(nodes().none { it.contentDescription?.toString() == "表格" } && !selectedGroup("插入"), "$mode closing IME keeps toolbar closed")
+                showKeyboard()
+                verify(nodes().none { it.contentDescription?.toString() == "表格" } && !selectedGroup("插入"), "$mode reopening IME keeps toolbar closed")
+                click("插入")
+                verify(nodes().any { it.contentDescription?.toString() == "表格" } && selectedGroup("插入"), "$mode clicking the closed group reopens the same tools")
+                hideKeyboard()
+                verify(nodes().any { it.contentDescription?.toString() == "表格" } && selectedGroup("插入"), "$mode closing IME preserves the open toolbar and selected group")
+                showKeyboard()
+                verify(nodes().any { it.contentDescription?.toString() == "表格" } && selectedGroup("插入") && main { model.currentSelection() == selection && model.save!!.revision == revision }, "$mode reopening IME preserves the open toolbar, group, selection and body")
                 click("文本")
             }
             screenshot("markdown-toolbar-ime-footer")
