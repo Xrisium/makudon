@@ -2431,6 +2431,19 @@ class WorkspaceInstrumentation : Instrumentation() {
             waitFor("IME shown", 20_000) { main { currentActivity!!.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true } }
             SystemClock.sleep(500); waitForIdleSync()
             val selection = main { model.currentSelection() }; val revision = main { model.save!!.revision }
+            val density = targetContext.resources.displayMetrics.density
+            for (mode in listOf("源码", "排版")) {
+                click(mode)
+                val infoWithIme = bounds(count)
+                val groups = listOf("文本", "段落", "插入").map(::bounds)
+                verify(groups.all { kotlin.math.abs(it.centerY() - infoWithIme.centerY()) <= 1 && it.height() >= (48 * density).toInt() - 1 }, "$mode keeps count and three full-size group buttons in the same row with IME")
+                verify(groups.zipWithNext().all { (a, b) -> a.right <= b.left } && groups.last().right <= targetContext.resources.displayMetrics.widthPixels, "$mode group buttons fit without another footer row")
+                val insert = bounds("插入")
+                tapPoint(insert.centerX().toFloat(), insert.centerY().toFloat())
+                verify(nodes().any { it.contentDescription?.toString() == "表格" } && main { model.currentSelection() == selection && model.save!!.revision == revision && currentActivity!!.window.decorView.rootWindowInsets!!.isVisible(android.view.WindowInsets.Type.ime()) }, "$mode group tap switches tools while preserving selection, body and keyboard")
+                click("文本")
+            }
+            screenshot("markdown-toolbar-ime-footer")
             val toolbar = bounds("粗体")
             // Recognize the gesture during movement, but publish the group only on pointer-up.
             val time = SystemClock.uptimeMillis(); val y = toolbar.centerY().toFloat()
@@ -2450,7 +2463,6 @@ class WorkspaceInstrumentation : Instrumentation() {
             var lastItem = find("取消列表")
             while (!lastItem.isClickable && lastItem.parent != null) lastItem = lastItem.parent
             val last = Rect().also { lastItem.getBoundsInScreen(it) }
-            val density = targetContext.resources.displayMetrics.density
             verify((listTop - last.bottom) in (6 * density).toInt()..(11 * density).toInt(), "Popup anchors 4dp above toolbar plus 4dp content padding with IME")
             screenshot("markdown-toolbar-ime-list")
             val listButton = bounds("列表")

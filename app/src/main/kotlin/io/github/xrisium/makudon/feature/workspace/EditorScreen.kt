@@ -183,10 +183,10 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             if (markdown && !reading && !findOpen && (tools || keyboardTools)) MarkdownTools(model, controlsEnabled, toolGroup,
                 formatMenu, { formatMenu = it }, { formatAnchor = it },
                 onGroup = { toolGroup = it }, onLink = { if (editable) linkToken = model.editToken() })
-            if (!keyboardTools) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp).testTag("editor-info"), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp).testTag("editor-info"), verticalAlignment = Alignment.CenterVertically) {
                 Text(pluralStringResource(R.plurals.document_count, source.codePointCount(0, source.length), source.codePointCount(0, source.length)), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                 Text(displayPath(checkNotNull(ui.workspace), entry.parent ?: Workspace.ROOT), Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
-                if (markdown && !reading && !imeVisible) MarkdownGroupButtons(toolGroup.takeIf { tools }, controlsEnabled) { chosen ->
+                if (markdown && !reading) MarkdownGroupButtons(toolGroup.takeIf { tools || keyboardTools }, controlsEnabled) { chosen ->
                     if (editable) { tools = !tools || chosen != toolGroup; toolGroup = chosen }
                 }
             }
