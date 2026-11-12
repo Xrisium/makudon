@@ -158,6 +158,7 @@
   <string name="loading">正在打开工作区</string>
   <string name="undo">撤销</string>
   <string name="redo">重做</string>
+  <string name="editor_placeholder">文稿内容为空</string>
   <string name="backup_title">备份与恢复</string>
   <string name="backup_summary">卸载应用会导致文稿丢失，请定期导出备份</string>
   <string name="backup_separate">单独保存</string>

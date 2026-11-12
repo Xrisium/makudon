@@ -189,6 +189,7 @@
   <string name="loading">Opening workspace</string>
   <string name="undo">Undo</string>
   <string name="redo">Redo</string>
+  <string name="editor_placeholder">Document is empty</string>
   <string name="backup_title">Backup and restore</string>
   <string name="backup_summary">Uninstalling deletes your documents. Export backups regularly.</string>
   <string name="backup_separate">Restore to a new folder</string>

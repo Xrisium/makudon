@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.TextFieldDecorator
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -127,7 +128,8 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             }.testTag(if (typeset) "typeset-editor" else "source-editor").semantics { contentDescription = description },
             readOnly = !editable, textStyle = bodyStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
             outputTransformation = stableOutput, scrollState = model.editorScroll,
-            onTextLayout = { get -> layout = get() })
+            onTextLayout = { get -> layout = get() },
+            decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = bodyStyle, color = colors.onSurfaceVariant); inner() } })
         val result = layout
         if (typeset && result != null && result.layoutInput.text.text.length > 0) {
             for (table in tables) {
