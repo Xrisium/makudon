@@ -93,7 +93,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                             "select" -> model.startSelection(item.id)
                             "info" -> model.inspect(item.id) { dialog = "info" }
                             "rename" -> dialog = action
-                            "delete" -> if (model.selection != null) model.requestDelete() else dialog = action
+                            "delete" -> if (model.selection != null) model.requestDelete() else model.prepareDelete(listOf(item.id)) { dialog = action }
                             "copy" -> if (model.selection != null) model.copySelection(false) else model.copy(item.id, false)
                             "cut" -> if (model.selection != null) model.copySelection(true) else model.copy(item.id, true)
                             "paste" -> model.requestPaste(if (model.selection != null) null else item.id)
@@ -109,7 +109,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                         Page.Trash -> TrashPage(model)
                         Page.Editor -> EditorScreen(model, onExport = ::export, onAction = { action ->
                             targetId = ui.activeId
-                            if (action == "info") model.inspect { dialog = "editor-info" } else dialog = action
+                            if (action == "info") model.inspect { dialog = "editor-info" } else if (action == "delete") ui.activeId?.let { model.prepareDelete(listOf(it)) { dialog = action } } else dialog = action
                         })
                         Page.Licenses -> LicensesPage(model)
                         Page.UiFont -> FontSettingsPage(model, true)
@@ -122,6 +122,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
         }
     }
     ClipboardDialogs(model)
+    ImageDialogs(model)
     FileExchangeDialog(model)
     val entry = targetId?.let { workspace?.entry(it) }
     when (dialog) {
@@ -137,7 +138,8 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
             val folders = workspace.entries.count { it.folder && it.id != entry.id && it.id in descendants }
             val documents = workspace.entries.count { !it.folder && it.id in descendants }
             AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if (entry.folder) R.string.delete_folder_title else R.string.delete_file_title)) }, text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ImageDeleteImpact(model)
                     Text(stringResource(R.string.location, displayPath(workspace, entry.parent ?: Workspace.ROOT)), style = MaterialTheme.typography.bodySmall)
                     Text(if (entry.folder) stringResource(R.string.delete_folder_warning, entry.name, folders, documents) else stringResource(R.string.delete_file_warning, entry.filename))
                 }
@@ -147,7 +149,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
             val calendar = rememberRecentCalendar()
             val created = detailTimestamp(entry.created, calendar.zone)
             val modified = detailTimestamp(entry.modified, calendar.zone)
-            Text(
+            if (entry.isImage) ImageEntryDetails(model, entry, workspace) else Text(
                 if (entry.folder) stringResource(R.string.folder_details, entry.name, displayPath(workspace, entry.id), workspace.entries.count { it.parent == entry.id },
                     android.text.format.Formatter.formatFileSize(LocalContext.current, ui.infoDiskBytes ?: 0L), created, modified)
                 else stringResource(R.string.info_details, entry.filename, stringResource(kindLabel(entry.kind)), displayPath(workspace, entry.parent ?: Workspace.ROOT), entry.bytes, created, modified),
@@ -223,8 +225,11 @@ fun PageBar(title: String, back: () -> Unit, onTitleClick: (() -> Unit)? = null,
     }
 }
 
-fun kindLabel(kind: DocumentKind) = when (kind) { DocumentKind.Folder -> R.string.folder; DocumentKind.Plain -> R.string.plain_text; DocumentKind.Markdown -> R.string.markdown }
+fun kindLabel(kind: DocumentKind) = when (kind) { DocumentKind.Folder -> R.string.folder; DocumentKind.Plain -> R.string.plain_text; DocumentKind.Markdown -> R.string.markdown; DocumentKind.Image -> R.string.image_file }
 fun errorLabel(failure: Failure) = when (failure) {
+    Failure.InvalidImage -> R.string.image_invalid
+    Failure.ImageTooLarge -> R.string.image_too_large
+    Failure.MissingImage -> R.string.image_missing
     Failure.InvalidArchive -> R.string.backup_invalid_archive
     Failure.ArchiveLimit -> R.string.backup_limit
     Failure.EmptyArchive -> R.string.backup_empty

@@ -54,7 +54,11 @@ class LibraryController(
         Regex("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}").matches(id) -> File(directory, "library-generations/$id")
         else -> throw WorkspaceException(Failure.Corrupt)
     }
-    private fun makeStore(id: String) = WorkspaceStore(path(id), atomic, rootName)
+    private fun makeStore(id: String) = WorkspaceStore(path(id), atomic, rootName, clipboardDirectory = File(directory, "image-clipboard"))
+    fun clearClipboard() {
+        val target = File(directory, "image-clipboard")
+        if (target.exists() && !cleanup(target)) throw WorkspaceException(Failure.Cleanup)
+    }
 
     fun load(): Workspace {
         val existingStore = activeStore
@@ -106,7 +110,7 @@ class LibraryController(
         store.refresh().entries.filter { !it.folder }.sortedBy { it.id }.forEach {
             check()
             digest.update(it.id.toByteArray(Charsets.UTF_8))
-            digest.update(TextRules.bytes(store.read(it.id)))
+            digest.update(store.readMaterial(it.id))
             digest.update(it.modified.toString().toByteArray(Charsets.UTF_8))
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
@@ -128,8 +132,9 @@ class LibraryController(
         try {
             candidate.prepare(plan.workspace, { entry ->
                 val incoming = plan.sources[entry.id]
-                if (incoming != null) TextRules.bytes(archive.text(incoming))
-                else TextRules.bytes(store.read(entry.id))
+                if (incoming != null) {
+                    if (entry.kind == DocumentKind.Markdown) TextRules.bytes(archive.restoredText(incoming, plan.imagePaths)) else archive.material(incoming)
+                } else store.readMaterial(entry.id)
             }, check)
             check()
             if (candidate.load().entries.any { it.unreadable }) throw WorkspaceException(Failure.Corrupt)

@@ -77,7 +77,11 @@ internal fun TrashPage(model: WorkspaceViewModel) {
             if (preview != null) {
                 item { TrashMetadata(preview, model) }
                 item { TrashActions(busy, { model.requestTrashRestore(listOf(preview.id)) }, { purge = listOf(preview.id) }) }
-                item { SelectionContainer { Text(model.trashText.orEmpty(), Modifier.fillMaxWidth(), style = EditorStyle) } }
+                if (preview.entry.isImage) item {
+                    Box(Modifier.fillMaxWidth().height(240.dp).clickable { model.viewImage(preview.entry, preview.id) }, contentAlignment = Alignment.Center) {
+                        ImageThumbnail(model, WorkspaceViewModel.ImageTarget(preview.entry, preview.id), Modifier.fillMaxSize(), 1024, showError = true)
+                    }
+                } else item { SelectionContainer { Text(model.trashText.orEmpty(), Modifier.fillMaxWidth(), style = EditorStyle) } }
             } else {
                 if (folder != null && selection == null) {
                     item { TrashMetadata(folder, model) }
@@ -107,6 +111,7 @@ internal fun TrashPage(model: WorkspaceViewModel) {
                                 io.github.xrisium.makudon.domain.DocumentKind.Folder -> R.drawable.ic_folder
                                 io.github.xrisium.makudon.domain.DocumentKind.Plain -> R.drawable.ic_file_text
                                 io.github.xrisium.makudon.domain.DocumentKind.Markdown -> R.drawable.ic_markdown
+                                io.github.xrisium.makudon.domain.DocumentKind.Image -> R.drawable.ic_image
                             }); Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text(node.entry.name, style = MaterialTheme.typography.titleSmall)

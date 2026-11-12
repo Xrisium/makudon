@@ -31,9 +31,9 @@ class LibraryArchiveTest {
     }
 
     @Test fun computerZipNeedsNoManifestAndPreservesOuterDirectoriesEmptyFoldersAndTextKinds() {
-        val source = archive("电脑项目/日记.md" to "\uFEFF# 中文 😀\r\n\r\n  缩进\r末尾", "电脑项目/空.txt" to "", "空目录/" to "", "电脑项目/photo.png" to "image")
+        val source = archive("电脑项目/日记.md" to "\uFEFF# 中文 😀\r\n\r\n  缩进\r末尾", "电脑项目/空.txt" to "", "空目录/" to "", "电脑项目/photo.bin" to "image")
         assertEquals(2, source.inventory.documents)
-        assertEquals(listOf("电脑项目/photo.png"), source.inventory.skipped)
+        assertEquals(listOf("电脑项目/photo.bin"), source.inventory.skipped)
         assertEquals("# 中文 😀\n\n  缩进\n末尾", source.text(source.inventory.nodes.first { it.kind == DocumentKind.Markdown }.id))
         assertTrue(source.inventory.nodes.any { it.name == "空目录" && it.kind == DocumentKind.Folder })
         val lib = library()
@@ -278,7 +278,8 @@ class LibraryArchiveTest {
     @Test fun malformedEncodingOverlongSupportedTextAndNoDocumentsRejectTheWholePackage() {
         expect(Failure.InvalidText) { LibraryArchive.read(zip("a.md" to byteArrayOf(0xff.toByte())), temp.newFolder()) }
         expect(Failure.TooLarge) { archive("a.md" to "中".repeat(100_001)) }
-        expect(Failure.EmptyArchive) { archive("empty/" to "", "only.png" to "image") }
+        expect(Failure.EmptyArchive) { archive("empty/" to "", "only.bin" to "image") }
+        expect(Failure.InvalidImage) { archive("empty/" to "", "only.png" to "image") }
         expect(Failure.InvalidName) { archive(("a".repeat(121) + ".txt") to "正文") }
     }
 

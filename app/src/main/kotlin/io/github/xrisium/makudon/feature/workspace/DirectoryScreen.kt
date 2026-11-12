@@ -158,7 +158,7 @@ fun DirectoryPage(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit, 
                     placementSpec = if (!search) tween(180, easing = FastOutSlowInEasing) else null,
                     fadeOutSpec = if (!search) tween(180) else null)) {
                     val selection = checked?.let { workspace.selectionOf(it, entry.id) }
-                    EntryRow(if (entry.id == Workspace.ROOT) entry.copy(name = stringResource(R.string.library)) else entry, depth, expanded.contains(entry.id), if (selecting) selection == ItemSelection.Direct else entry.folder && ui.selected == entry.id, busy,
+                    EntryRow(model, if (entry.id == Workspace.ROOT) entry.copy(name = stringResource(R.string.library)) else entry, depth, expanded.contains(entry.id), if (selecting) selection == ItemSelection.Direct else entry.folder && ui.selected == entry.id, busy,
                         model.clipboard?.let { clip -> clip.cut && clip.ids.any { workspace.isWithin(entry.id, it) } } == true,
                         path = if (!selecting && query.isNotBlank()) displayPath(workspace, entry.parent ?: Workspace.ROOT) else null,
                         pasteLocation = displayPath(workspace, if (entry.folder) entry.id else entry.parent ?: Workspace.ROOT),
@@ -183,7 +183,7 @@ fun DirectoryPage(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit, 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EntryRow(entry: Entry, depth: Int, expanded: Boolean, selected: Boolean, busy: Boolean, cut: Boolean, path: String?, pasteLocation: String, onClick: () -> Unit, onToggle: () -> Unit, clipboard: WorkspaceViewModel.Clipboard?, onAction: (String) -> Unit, selection: ItemSelection?, selectionCount: Int) {
+private fun EntryRow(model: WorkspaceViewModel, entry: Entry, depth: Int, expanded: Boolean, selected: Boolean, busy: Boolean, cut: Boolean, path: String?, pasteLocation: String, onClick: () -> Unit, onToggle: () -> Unit, clipboard: WorkspaceViewModel.Clipboard?, onAction: (String) -> Unit, selection: ItemSelection?, selectionCount: Int) {
     var menu by remember(entry.id) { mutableStateOf(false) }
     val actionLabel = stringResource(R.string.item_actions)
     val selectionLabel = stringResource(R.string.multiselect)
@@ -200,7 +200,9 @@ private fun EntryRow(entry: Entry, depth: Int, expanded: Boolean, selected: Bool
             .padding(start = (depth * 17).coerceAtMost(102).dp, end = 10.dp).defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             if (entry.folder) Tool(R.drawable.ic_chevron_down, stringResource(if (expanded) R.string.collapse_folder else R.string.expand_folder, entry.name), enabled = !busy, rotation = angle - 90f, onClick = onToggle)
             else Spacer(Modifier.width(48.dp))
-            Glyph(if (entry.folder) { if (expanded) R.drawable.ic_folder_open else R.drawable.ic_folder } else { if (entry.kind == DocumentKind.Markdown) R.drawable.ic_markdown else R.drawable.ic_file_text }, Modifier.alpha(if (cut) .65f else 1f), tint = colors.onSurfaceVariant)
+            if (entry.isImage && model.ui.workspace?.directoryImages == DirectoryImages.Thumbnail) {
+                ImageThumbnail(model, WorkspaceViewModel.ImageTarget(entry), Modifier.size(20.dp).alpha(if (cut) .65f else 1f))
+            } else Glyph(if (entry.isImage) R.drawable.ic_image else if (entry.folder) { if (expanded) R.drawable.ic_folder_open else R.drawable.ic_folder } else { if (entry.kind == DocumentKind.Markdown) R.drawable.ic_markdown else R.drawable.ic_file_text }, Modifier.alpha(if (cut) .65f else 1f), tint = colors.onSurfaceVariant)
             Column(Modifier.weight(1f).padding(start = 9.dp, top = 10.dp, bottom = 10.dp).alpha(if (cut) .65f else 1f)) {
                 Text(entry.filename, style = MaterialTheme.typography.bodyMedium)
                 if (path != null) Text(path, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
@@ -217,6 +219,7 @@ private fun EntryRow(entry: Entry, depth: Int, expanded: Boolean, selected: Bool
         }
         DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(20.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 240.dp, max = 290.dp)) {
             Text(if (selection != null) pluralStringResource(R.plurals.selected_count, selectionCount, selectionCount) else entry.filename, Modifier.padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.titleSmall)
+            if (selection == null && entry.isImage) Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { ImagePanelPreview(model, entry) }
             HorizontalDivider(Modifier.padding(horizontal = 12.dp))
             val actions = buildList {
                 if (selection == null) {

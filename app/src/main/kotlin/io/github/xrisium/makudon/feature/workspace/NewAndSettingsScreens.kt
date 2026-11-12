@@ -49,6 +49,7 @@ fun NewPage(model: WorkspaceViewModel, import: () -> Unit) {
                 Row(Modifier.padding(24.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) { Glyph(R.drawable.ic_import, Modifier.size(26.dp)); Spacer(Modifier.width(18.dp)); Text(stringResource(R.string.import_document), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Glyph(R.drawable.ic_chevron_right) }
             }
             Text(stringResource(R.string.import_hint), Modifier.padding(horizontal = 4.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            DeviceImageImportButton(model)
         }
     }
     if (locations) AlertDialog(onDismissRequest = { locations = false }, title = { Text(stringResource(R.string.new_location)) }, text = {
@@ -81,6 +82,23 @@ fun SettingsPage(model: WorkspaceViewModel) {
                             ThemeOption(theme, workspace.theme == theme, enabled, Modifier.weight(1f)) {
                                 model.preferences(theme = theme)
                             }
+                        }
+                    }
+                }
+            }
+        }
+        item { Text(stringResource(R.string.directory), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item {
+            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp).selectableGroup()) {
+                    Text(stringResource(R.string.image_display), Modifier.padding(horizontal = 18.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    DirectoryImages.entries.forEach { option ->
+                        val selected = workspace.directoryImages == option
+                        Row(Modifier.fillMaxWidth().selectable(selected, enabled = enabled, role = Role.RadioButton) {
+                            model.preferences(directoryImages = option)
+                        }.padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            RadioButton(selected, onClick = null, enabled = enabled)
+                            Text(stringResource(if (option == DirectoryImages.Thumbnail) R.string.image_thumbnail else R.string.image_icon))
                         }
                     }
                 }
@@ -148,6 +166,11 @@ fun SettingsPage(model: WorkspaceViewModel) {
                             Text(stringResource(R.string.trash_title))
                             Text(pluralStringResource(R.plurals.trash_settings_summary, model.trashInventory.roots.size, model.trashInventory.roots.size, Formatter.formatShortFileSize(LocalContext.current, model.trashInventory.bytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        Glyph(R.drawable.ic_chevron_right)
+                    }
+                    HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth().clickable(onClick = model::showCache).padding(18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) { Text(stringResource(R.string.image_cache)); Text(Formatter.formatFileSize(LocalContext.current, model.cacheBytes), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         Glyph(R.drawable.ic_chevron_right)
                     }
                 }

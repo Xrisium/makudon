@@ -34,6 +34,7 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     var focused by remember { mutableStateOf(false) }
     var layout by remember(field) { mutableStateOf<TextLayoutResult?>(null) }
     var viewportHeight by remember { mutableIntStateOf(0) }
+    var viewportWidth by remember { mutableIntStateOf(0) }
     var visibleSourceStart by remember(field) { mutableIntStateOf(0) }
     var visibleSourceEnd by remember(field) { mutableIntStateOf(2048) }
     val requester = remember { FocusRequester() }
@@ -44,9 +45,26 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     val composition = field.composition?.let { SourceRange(it.start, it.end) }
     val active = if (focused || findOpen) sourceSelection else null
     val tables = if (typeset) parsed.elements.filter { it.kind == "TableBlock" } else emptyList()
-    val projection = if (typeset) projection(parsed, active, composition, tables) else MarkdownProjection(emptyList())
+    val imageParagraphs = if (typeset) ImageReferences.standalone(parsed).filter { node ->
+        active?.let { node.range.intersects(it.min, it.max) } != true && composition?.let { node.range.intersects(it.start, it.end) } != true
+    } else emptyList()
+    val projection = if (typeset) projection(parsed, active, composition, tables + imageParagraphs) else MarkdownProjection(emptyList())
+    val textMeasurer = rememberTextMeasurer()
+    val imageIndents = imageParagraphs.associate { node ->
+        val start = source.lastIndexOf('\n', node.range.start - 1) + 1
+        var prefix = source.substring(start, node.range.start)
+        projection.changes.filter { it.range.start >= start && it.range.end <= node.range.start }.asReversed().forEach { change ->
+            prefix = prefix.replaceRange(change.range.start - start, change.range.end - start, change.text)
+        }
+        node.range.start to if (prefix.isEmpty()) 0 else textMeasurer.measure(prefix, bodyStyle).size.width
+    }
     val tableLayouts = tables.associate { table -> table.range.start to key(table.range.start) { rememberTableLayout(table, parsed, bodyStyle) } }
-    val tableHeights = tableLayouts.mapValues { with(density) { it.value.height.toSp().value } }
+    val imageHeights = imageParagraphs.associate { node ->
+        val info = ImageReferences.key(node.children.single().destination)?.let(model::imageEntry)?.image
+        val width = (viewportWidth - with(density) { 48.dp.roundToPx() } - imageIndents.getValue(node.range.start)).coerceAtLeast(1)
+        node.range.start to if (info == null) with(density) { 72.dp.toPx() } else minOf(width * info.displayHeight.toFloat() / info.displayWidth, with(density) { 320.dp.toPx() })
+    }
+    val tableHeights = tableLayouts.mapValues { with(density) { it.value.height.toSp().value } } + imageHeights.mapValues { with(density) { it.value.toSp().value } }
     fun window(start: Int, end: Int) = SourceRange((start - 1024).coerceAtLeast(0), (end + 1024).coerceAtMost(source.length))
     val windows = listOf(window(visibleSourceStart.coerceAtMost(source.length), visibleSourceEnd.coerceAtMost(source.length)), window(sourceSelection.min, sourceSelection.min), window(sourceSelection.max, sourceSelection.max))
     val output = remember(typeset, parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, windows) {
@@ -120,7 +138,7 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     val description = stringResource(R.string.edit_body)
     val taskDescription = stringResource(R.string.md_toggle_task)
     val editToken = model.editToken()
-    Box(modifier.clipToBounds().onSizeChanged { viewportHeight = it.height }) {
+    Box(modifier.clipToBounds().onSizeChanged { viewportHeight = it.height; viewportWidth = it.width }) {
         BasicTextField(state = field, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp).focusRequester(requester)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent {
@@ -132,6 +150,21 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = bodyStyle, color = colors.onSurfaceVariant); inner() } })
         val result = layout
         if (typeset && result != null && result.layoutInput.text.text.length > 0) {
+            for (paragraph in imageParagraphs) {
+                val offset = projection.offset(paragraph.range.start)
+                if (offset < result.layoutInput.text.length && result.layoutInput.text[offset] == '\uFFFC') {
+                    val top = result.getLineTop(result.getLineForOffset(offset)) - model.editorScroll.value
+                    val height = imageHeights.getValue(paragraph.range.start)
+                    if (top + height >= 0 && top < viewportHeight) {
+                        val indent = imageIndents.getValue(paragraph.range.start)
+                        val width = (viewportWidth - with(density) { 48.dp.roundToPx() } - indent).coerceAtLeast(1)
+                        Box(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() } + indent, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
+                            .width(with(density) { width.toDp() }).height(with(density) { height.toDp() }).background(colors.background)) {
+                            MarkdownImage(model, paragraph.children.single(), Modifier.fillMaxSize())
+                        }
+                    }
+                }
+            }
             for (table in tables) {
                 val offset = projection.offset(table.range.start)
                 if (offset < result.layoutInput.text.length && result.layoutInput.text[offset] == '\uFFFC') {

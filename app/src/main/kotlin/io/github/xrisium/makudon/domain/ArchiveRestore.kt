@@ -13,6 +13,7 @@ data class ArchiveNode(
     val modified: Long,
     val bytes: Int = 0,
     val sourcePath: String,
+    val image: ImageInfo? = null,
 )
 data class ArchiveRename(val from: String, val to: String)
 data class ArchiveInventory(val nodes: List<ArchiveNode>, val skipped: List<String>, val renames: List<ArchiveRename>) {
@@ -30,6 +31,7 @@ data class RestorePlan(
     val unchanged: Int,
     val removed: Int,
     val folder: String?,
+    val imagePaths: Map<String, String> = emptyMap(),
 ) {
     val resolved: Boolean get() = conflicts.all { it.source.id in decisions }
     val changed: Boolean get() = added > 0 || updated > 0 || removed > 0
@@ -45,6 +47,7 @@ object RestorePlanner {
         folderName: String,
         now: Long,
         naming: NameSuffix = NameSuffix.Numeric,
+        sameText: ((String, ArchiveNode, Map<String, String>) -> Boolean)? = null,
         sameBody: (String, String) -> Boolean,
     ): RestorePlan {
         if (archive.documents == 0) throw WorkspaceException(Failure.EmptyArchive)
@@ -52,6 +55,7 @@ object RestorePlanner {
         val sources = mutableMapOf<String, String>()
         val mapping = mutableMapOf<String?, String>(null to Workspace.ROOT)
         val conflicts = mutableListOf<RestoreConflict>()
+        val imagePaths = mutableMapOf<String, String>()
         var added = 0
         var updated = 0
         var unchanged = 0
@@ -72,26 +76,34 @@ object RestorePlanner {
             mapping[null] = folder.id
             added++
         }
-        archive.nodes.forEach { node ->
+        // All folder targets and image conflict choices are known before comparing Markdown.
+        val ordered = archive.nodes.filter { it.kind == DocumentKind.Folder } + archive.nodes.filter { it.kind == DocumentKind.Image } + archive.nodes.filter { it.kind != DocumentKind.Folder && it.kind != DocumentKind.Image }
+        ordered.forEach { node ->
             val parent = mapping[node.parent] ?: throw WorkspaceException(Failure.InvalidArchive)
             val match = if (mode == RestoreMode.Incremental) entries.firstOrNull {
-                it.parent == parent && it.kind == node.kind && it.name.equals(node.name, ignoreCase = true)
+                it.parent == parent && it.kind == node.kind && it.image?.format == node.image?.format && it.name.equals(node.name, ignoreCase = true)
             } else null
             if (match?.folder == true) { mapping[node.id] = match.id; unchanged++; return@forEach }
-            if (match != null && sameBody(match.id, node.id)) { unchanged++; return@forEach }
+            if (match != null && (if (node.kind == DocumentKind.Markdown && sameText != null) sameText(match.id, node, imagePaths) else sameBody(match.id, node.id))) {
+                match.image?.let { imagePaths[node.sourcePath] = it.key }
+                unchanged++; return@forEach
+            }
             val choice = if (match != null) {
                 conflicts += RestoreConflict(node, match, node.sourcePath)
                 // Unresolved conflicts must remain previewable even when a copy would exceed capacity.
-                decisions[node.id] ?: return@forEach
+                decisions[node.id] ?: run { match.image?.let { imagePaths[node.sourcePath] = it.key }; return@forEach }
             } else null
-            if (choice == ConflictChoice.Local) { unchanged++; return@forEach }
+            if (choice == ConflictChoice.Local) { match?.image?.let { imagePaths[node.sourcePath] = it.key }; unchanged++; return@forEach }
             if (choice == ConflictChoice.Backup && match != null) {
-                entries[entries.indexOf(match)] = match.copy(modified = node.modified, bytes = node.bytes)
+                val image = node.image?.copy(key = match.image?.key ?: node.image.key)
+                entries[entries.indexOf(match)] = match.copy(modified = node.modified, bytes = node.bytes, image = image)
+                image?.let { imagePaths[node.sourcePath] = it.key }
                 sources[match.id] = node.id
                 updated++
             } else {
                 val name = unique(node.name, parent, node.kind)
-                val entry = Entry(UUID.randomUUID().toString(), name, parent, node.kind, now, modified = node.modified, bytes = node.bytes)
+                val entry = Entry(UUID.randomUUID().toString(), name, parent, node.kind, now, modified = node.modified, bytes = node.bytes, image = node.image?.copy(key = UUID.randomUUID().toString()))
+                entry.image?.let { imagePaths[node.sourcePath] = it.key }
                 entries += entry
                 mapping[node.id] = entry.id
                 if (!entry.folder) sources[entry.id] = node.id
@@ -100,7 +112,7 @@ object RestorePlanner {
             if (entries.size > 10_000) throw WorkspaceException(Failure.CatalogFull)
         }
         return RestorePlan(mode, local.copy(entries = entries), sources, conflicts, decisions.toMap(), added, updated,
-            unchanged, if (mode == RestoreMode.Replace) local.entries.size - 1 else 0, separateName)
+            unchanged, if (mode == RestoreMode.Replace) local.entries.size - 1 else 0, separateName, imagePaths)
     }
 }
 

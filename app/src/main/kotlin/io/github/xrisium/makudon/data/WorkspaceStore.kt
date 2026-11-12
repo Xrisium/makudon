@@ -18,18 +18,20 @@ class WorkspaceStore(
     private val atomic: AtomicDisk = AtomicDisk(),
     private val rootName: String = "Library",
     private val cleanup: (File) -> Boolean = { it.deleteRecursively() },
+    private val clipboardDirectory: File = File(directory, "clipboard"),
 ) {
     private val catalog = File(directory, "catalog.properties")
     private var workspace: Workspace? = null
     private var baselineId: String? = null
     private var confirmedBody: ByteArray? = null
     private var uncertainBody: ByteArray? = null
+    private var legacyIndex = false
     private val idPattern = Regex("[a-f0-9-]{36}|root|inbox")
     private fun nodeDirectory(id: String): File {
         if (!idPattern.matches(id) || id in setOf(Workspace.ROOT, Workspace.LEGACY_INBOX)) throw WorkspaceException(Failure.Corrupt)
         return File(directory, "documents/$id")
     }
-    private fun body(entry: Entry) = File(nodeDirectory(entry.id), "body.${entry.kind.extension}")
+    private fun body(entry: Entry) = File(nodeDirectory(entry.id), "body.${entry.extension}")
 
     fun load(): Workspace {
         workspace = null
@@ -41,11 +43,12 @@ class WorkspaceStore(
         } else {
             val encoded = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(atomic.read(catalog, 4_194_304))).toString()
             val p = Properties().apply { load(StringReader(encoded)) }
-            if (p.getProperty("schema") != "1") throw WorkspaceException(Failure.Corrupt)
+            if (p.getProperty("schema") !in setOf("1", "2")) throw WorkspaceException(Failure.Corrupt)
+            legacyIndex = p.getProperty("schema") == "1"
             val count = p.getProperty("count")?.toIntOrNull()?.takeIf { it in 1..10_000 } ?: throw WorkspaceException(Failure.Corrupt)
             val entries = (0 until count).map { n ->
                 fun value(key: String) = p.getProperty("$n.$key") ?: throw WorkspaceException(Failure.Corrupt)
-                Entry(value("id"), value("name"), value("parent").ifEmpty { null }, DocumentKind.valueOf(value("kind")), value("created").toLong(), value("opened").toLong(), importRequestId = p.getProperty("$n.importRequest"))
+                Entry(value("id"), value("name"), value("parent").ifEmpty { null }, DocumentKind.valueOf(value("kind")), value("created").toLong(), value("opened").toLong(), importRequestId = p.getProperty("$n.importRequest"), image = p.getProperty("$n.image")?.let(ImageInfo::decode))
             }
             fun font(prefix: String) = FontPreference(
                 p.getProperty("$prefix.choice")?.let { value -> FontChoice.entries.firstOrNull { it.name == value } } ?: FontChoice.Sans,
@@ -56,6 +59,7 @@ class WorkspaceStore(
                 editorTextSize = EditorTextSize.entries.firstOrNull { it.name == p.getProperty("editorTextSize") } ?: EditorTextSize.Medium,
                 showRecentExcerpt = p.getProperty("showRecentExcerpt")?.toBooleanStrictOrNull() ?: true,
                 recentSort = RecentSort.entries.firstOrNull { it.name == p.getProperty("recentSort") } ?: RecentSort.Opened,
+                directoryImages = DirectoryImages.entries.firstOrNull { it.name == p.getProperty("directoryImages") } ?: DirectoryImages.Thumbnail,
             )
             validate(sized)
             workspace = sized
@@ -66,10 +70,14 @@ class WorkspaceStore(
     private fun validate(state: Workspace) {
         if (state.entries.size > 10_000) throw WorkspaceException(Failure.CatalogFull)
         if (state.entries.map { it.id }.distinct().size != state.entries.size) throw WorkspaceException(Failure.Corrupt)
+        val images = state.entries.mapNotNull { it.image }
+        if (images.map { it.key }.distinct().size != images.size) throw WorkspaceException(Failure.Corrupt)
         if (state.entries.count { it.parent == null } != 1 || state.entry(Workspace.ROOT)?.let { !it.folder || it.parent != null } != false) throw WorkspaceException(Failure.Corrupt)
         state.entries.forEach { node ->
             if (!idPattern.matches(node.id)) throw WorkspaceException(Failure.Corrupt)
             TextRules.checkName(node.name)
+            if (node.isImage != (node.image != null)) throw WorkspaceException(Failure.Corrupt)
+            node.image?.validate()
             if (!node.folder && node.id in setOf(Workspace.ROOT, Workspace.LEGACY_INBOX)) throw WorkspaceException(Failure.Corrupt)
             if (node.id != Workspace.ROOT && state.entry(node.parent.orEmpty())?.folder != true) throw WorkspaceException(Failure.Corrupt)
             var ancestor = node.parent
@@ -85,30 +93,40 @@ class WorkspaceStore(
     private fun publish(next: Workspace) {
         validate(next)
         val p = Properties()
-        p["schema"] = "1"; p["count"] = next.entries.size.toString(); p["theme"] = next.theme.name
+        p["schema"] = "2"; p["count"] = next.entries.size.toString(); p["theme"] = next.theme.name
         p["sort"] = next.sort.name; p["descending"] = next.descending.toString(); p["foldersFirst"] = next.foldersFirst.toString()
         p["uiFont.choice"] = next.uiFont.choice.name; p["uiFont.thickness"] = next.uiFont.thickness.name
         p["editorFont.choice"] = next.editorFont.choice.name; p["editorFont.thickness"] = next.editorFont.thickness.name
         p["editorTextSize"] = next.editorTextSize.name
         p["showRecentExcerpt"] = next.showRecentExcerpt.toString()
         p["recentSort"] = next.recentSort.name
+        p["directoryImages"] = next.directoryImages.name
         next.lastImportRequestId?.let { p["lastImportRequest"] = it }
         next.trashOperation?.let { p["trashOperation"] = it }
         next.entries.forEachIndexed { n, entry ->
             p["$n.id"] = entry.id; p["$n.name"] = entry.name; p["$n.parent"] = entry.parent.orEmpty()
             p["$n.kind"] = entry.kind.name; p["$n.created"] = entry.created.toString(); p["$n.opened"] = entry.opened.toString()
             entry.importRequestId?.let { p["$n.importRequest"] = it }
+            entry.image?.let { p["$n.image"] = it.encoded() }
         }
-        val writer = StringWriter(); p.store(writer, "Makudon workspace v1")
+        val writer = StringWriter(); p.store(writer, "Makudon workspace v2")
         val encoded = writer.toString().toByteArray(Charsets.UTF_8)
         if (encoded.size > 4_194_304) throw WorkspaceException(Failure.CatalogFull)
-        try { atomic.write(catalog, encoded) }
+        try {
+            if (legacyIndex) {
+                val backup = File(directory, "catalog.schema1.bak")
+                if (!backup.exists()) atomic.write(backup, atomic.read(catalog, 4_194_304))
+            }
+            atomic.write(catalog, encoded)
+            legacyIndex = false
+        }
         catch (e: Exception) { workspace = null; throw e }
         workspace = next
     }
 
     private fun state() = workspace ?: throw WorkspaceException(Failure.Corrupt)
     fun contains(id: String): Boolean = state().entry(id) != null
+    fun entry(id: String): Entry? = state().entry(id)
     /** Only used in a fresh, unpublished generation. No live body is overwritten. */
     fun prepare(next: Workspace, material: (Entry) -> ByteArray, check: () -> Unit = {}) {
         if (catalog.exists()) throw WorkspaceException(Failure.Conflict)
@@ -116,7 +134,7 @@ class WorkspaceStore(
         next.entries.filter { !it.folder }.forEach { entry ->
             check()
             val bytes = material(entry)
-            TextRules.decode(bytes)
+            validateMaterial(entry, bytes)
             atomic.write(body(entry), bytes)
             if (entry.modified > 0 && !body(entry).setLastModified(entry.modified)) throw WorkspaceException(Failure.Storage)
         }
@@ -142,6 +160,11 @@ class WorkspaceStore(
     fun refresh(): Workspace {
         val next = state().copy(entries = state().entries.map { e ->
             if (e.folder) e else try {
+                if (e.isImage) {
+                    val file = body(e)
+                    if (!file.isFile || file.length() > ImageRules.MAX_BYTES || file.length() == 0L) throw WorkspaceException(Failure.InvalidImage)
+                    return@map e.copy(bytes = file.length().toInt(), modified = file.lastModified(), excerpt = "", unreadable = false)
+                }
                 val text = read(e.id)
                 val excerpt = text.replace(Regex("(?m)^#{1,6} "), "").replace(Regex("\\s+"), " ").trim().take(220).let { if (it.lastOrNull()?.isHighSurrogate() == true) it.dropLast(1) else it }
                 e.copy(bytes = TextRules.bytes(text).size, modified = body(e).lastModified(), excerpt = excerpt, unreadable = false)
@@ -157,9 +180,32 @@ class WorkspaceStore(
         workspace = dated
         return dated
     }
-    fun read(id: String): String { val entry = find(id); if (entry.folder) throw WorkspaceException(Failure.Missing); return TextRules.decode(atomic.read(body(entry), TextRules.MAX_BYTES)) }
+    fun read(id: String): String { val entry = find(id); if (!entry.textDocument) throw WorkspaceException(Failure.Missing); return TextRules.decode(atomic.read(body(entry), TextRules.MAX_BYTES)) }
+    fun readMaterial(id: String): ByteArray {
+        val entry = find(id)
+        if (entry.folder) throw WorkspaceException(Failure.Missing)
+        return atomic.read(body(entry), if (entry.isImage) ImageRules.MAX_BYTES else TextRules.MAX_BYTES).also { validateMaterial(entry, it) }
+    }
+    fun materialFile(id: String): File = body(find(id))
+    private fun validateMaterial(entry: Entry, bytes: ByteArray) {
+        if (entry.isImage) {
+            val expected = entry.image ?: throw WorkspaceException(Failure.Corrupt)
+            if (ImageRules.inspect(bytes, expected.key) != expected) throw WorkspaceException(Failure.Corrupt)
+        } else TextRules.decode(bytes)
+    }
+    fun createImage(name: String, parent: String, bytes: ByteArray, image: ImageInfo, naming: NameSuffix = NameSuffix.Numeric): String {
+        parent(parent); TextRules.checkName(name)
+        val entry = Entry(UUID.randomUUID().toString(), availableName(name, parent, DocumentKind.Image, naming = naming), parent, DocumentKind.Image, System.currentTimeMillis(), image = image)
+        validateMaterial(entry, bytes)
+        val next = state().copy(entries = state().entries + entry)
+        validate(next)
+        atomic.write(body(entry), bytes)
+        publish(next)
+        return entry.id
+    }
     fun save(id: String, text: String) {
         val entry = find(id)
+        if (!entry.textDocument) throw WorkspaceException(Failure.Missing)
         val target = TextRules.bytes(text)
         val file = body(entry)
         val baseline = atomic.read(file, TextRules.MAX_BYTES)
@@ -187,6 +233,7 @@ class WorkspaceStore(
         }
     }
     fun create(name: String, parent: String, kind: DocumentKind, text: String = "", importRequestId: String? = null, naming: NameSuffix = NameSuffix.Numeric): String {
+        if (kind == DocumentKind.Image) throw WorkspaceException(Failure.InvalidImage)
         if (importRequestId != null) state().entries.firstOrNull { it.importRequestId == importRequestId }?.let { return it.id }
         if (importRequestId != null && state().lastImportRequestId == importRequestId) throw WorkspaceException(Failure.Missing)
         parent(parent); TextRules.checkName(name)
@@ -214,19 +261,31 @@ class WorkspaceStore(
         state().pasteFailure(roots, true, destination)?.let { throw WorkspaceException(it) }
         publish(state().copy(entries = state().entries.map { if (it.id in roots) it.copy(parent = destination) else it }))
     }
-    data class Copy(val entry: Entry, val text: String?, val children: List<Copy>)
+    data class Copy(val entry: Entry, val text: String?, val children: List<Copy>, val imageFile: File? = null)
     fun capture(id: String): Copy = captureAll(listOf(id)).single()
     fun captureAll(ids: Collection<String>, maxBytes: Int = 8_388_608): List<Copy> {
         val roots = operationRoots(ids)
         val children = state().entries.groupBy { it.parent }
         var bytes = 0L
+        var imageBytes = 0L
+        val snapshot = File(clipboardDirectory, UUID.randomUUID().toString())
         fun captureNode(item: Entry): Copy {
-            val text = if (item.folder) null else read(item.id)
+            val text = if (item.textDocument) read(item.id) else null
             bytes += text?.let { TextRules.bytes(it).size } ?: 0
             if (bytes > maxBytes) throw WorkspaceException(Failure.ClipboardTooLarge)
-            return Copy(item, text, children[item.id].orEmpty().map(::captureNode))
+            val imageFile = if (item.isImage) {
+                val data = readMaterial(item.id)
+                imageBytes += data.size
+                if (imageBytes > 128L * 1024 * 1024) throw WorkspaceException(Failure.ClipboardTooLarge)
+                File(snapshot, item.id).also { atomic.write(it, data) }
+            } else null
+            return Copy(item, text, children[item.id].orEmpty().map(::captureNode), imageFile)
         }
-        return roots.map(::captureNode)
+        return try { roots.map(::captureNode) } catch (e: Exception) { if (snapshot.exists()) snapshot.deleteRecursively(); throw e }
+    }
+    fun releaseCopies(copies: List<Copy>) {
+        fun release(copy: Copy) { copy.imageFile?.let { file -> file.delete(); file.parentFile?.delete() }; copy.children.forEach(::release) }
+        copies.forEach(::release)
     }
     fun paste(snapshot: Copy, destination: String) = pasteAll(listOf(snapshot), destination)
     fun pasteAll(snapshots: List<Copy>, destination: String, naming: NameSuffix = NameSuffix.Numeric) {
@@ -234,11 +293,15 @@ class WorkspaceStore(
         if (snapshots.isEmpty()) throw WorkspaceException(Failure.Missing)
         state().pasteFailure(snapshots.map { it.entry.id }, false, destination)?.let { throw WorkspaceException(it) }
         val additions = mutableListOf<Entry>()
-        val bodies = mutableListOf<Pair<Entry, ByteArray>>()
+        val bodies = mutableListOf<Pair<Entry, Copy>>()
+        val imageMapping = mutableMapOf<String, String>()
+        fun mapImages(copy: Copy) { copy.entry.image?.let { imageMapping[it.key] = UUID.randomUUID().toString() }; copy.children.forEach(::mapImages) }
+        snapshots.forEach(::mapImages)
         fun clone(copy: Copy, target: String, name: String) {
             val id = UUID.randomUUID().toString()
-            val entry = copy.entry.copy(id = id, name = name, parent = target, created = System.currentTimeMillis(), opened = System.currentTimeMillis(), importRequestId = null)
-            if (!entry.folder) bodies += entry to TextRules.bytes(copy.text ?: throw WorkspaceException(Failure.Corrupt))
+            val entry = copy.entry.copy(id = id, name = name, parent = target, created = System.currentTimeMillis(), opened = if (copy.entry.textDocument) System.currentTimeMillis() else 0, importRequestId = null,
+                image = copy.entry.image?.let { it.copy(key = imageMapping.getValue(it.key)) })
+            if (!entry.folder) bodies += entry to copy
             additions += entry
             copy.children.forEach { clone(it, id, it.entry.name) }
         }
@@ -247,7 +310,12 @@ class WorkspaceStore(
         }
         val next = state().copy(entries = state().entries + additions)
         validate(next)
-        bodies.forEach { (entry, bytes) -> atomic.write(body(entry), bytes) }
+        bodies.forEach { (entry, copy) ->
+            val bytes = if (entry.isImage) atomic.read(copy.imageFile ?: throw WorkspaceException(Failure.Corrupt), ImageRules.MAX_BYTES)
+                else TextRules.bytes(if (entry.kind == DocumentKind.Markdown) ImageReferences.remap(copy.text ?: throw WorkspaceException(Failure.Corrupt), imageMapping) else copy.text ?: throw WorkspaceException(Failure.Corrupt))
+            validateMaterial(entry, bytes)
+            atomic.write(body(entry), bytes)
+        }
         publish(next)
     }
     fun delete(id: String) = deleteAll(listOf(id))
@@ -264,7 +332,7 @@ class WorkspaceStore(
             // Never overwrite even an unindexed material left by an interrupted operation.
             if (nodeDirectory(entry.id).exists()) throw WorkspaceException(Failure.Conflict)
             val bytes = material(entry)
-            TextRules.decode(bytes)
+            validateMaterial(entry, bytes)
             atomic.write(body(entry), bytes)
             if (!body(entry).setLastModified(entry.modified)) throw WorkspaceException(Failure.Storage)
         }
@@ -284,8 +352,8 @@ class WorkspaceStore(
         }
         if (incomplete) throw WorkspaceException(Failure.Cleanup)
     }
-    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt, recentSort: RecentSort = state().recentSort) {
-        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt, recentSort = recentSort))
+    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt, recentSort: RecentSort = state().recentSort, directoryImages: DirectoryImages = state().directoryImages) {
+        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt, recentSort = recentSort, directoryImages = directoryImages))
     }
 }
 

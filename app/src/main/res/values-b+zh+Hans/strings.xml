@@ -51,10 +51,10 @@
   <string name="more_info">更多信息</string>
   <string name="rename">重命名</string>
   <string name="delete">删除</string>
-  <string name="delete_file_title">删除文稿？</string>
+  <string name="delete_file_title">删除文件？</string>
   <string name="delete_folder_title">删除文件夹？</string>
   <string name="delete_file_warning">确认删除“%1$s”？\n删除后可以从回收站恢复。</string>
-  <string name="delete_folder_warning">确认删除“%1$s”及其中的 %2$d 个文件夹、%3$d 篇文稿？\n删除后可以从回收站恢复。</string>
+  <string name="delete_folder_warning">确认删除“%1$s”及其中的 %2$d 个文件夹、%3$d 个文件？\n删除后可以从回收站恢复。</string>
   <string name="root_protected">文稿库是根位置，不能重命名或删除。</string>
   <string name="copy">复制</string>
   <string name="cut">剪切</string>
@@ -91,13 +91,13 @@
   <string name="paste_here">粘贴到这里</string>
   <string name="paste_copy_note">重名文稿会另存为副本。</string>
   <string name="paste_already_here">这些条目已在该目录中，无需移动。</string>
-  <string name="clipboard_too_large">复制内容合计超过 8 MiB，请分批复制；原剪贴板和文稿均保留。</string>
+  <string name="clipboard_too_large">复制内容过大，请分批复制；原剪贴板和文件均保留。</string>
   <string name="catalog_full">目录条目或索引已达到本机支持的大小，请先整理后再重试。</string>
   <!-- %1$d: raw count; pass it as both quantity and format argument. -->
   <plurals name="delete_many_title">
     <item quantity="other">删除 %1$d 项？</item>
   </plurals>
-  <string name="delete_many_warning">确认删除以上条目及其中的全部内容（共 %1$d 个文件夹、%2$d 篇文稿）？\n删除后可以从回收站恢复。</string>
+  <string name="delete_many_warning">确认删除以上条目及其中的全部内容（共 %1$d 个文件夹、%2$d 个文件）？\n删除后可以从回收站恢复。</string>
   <string name="includes_children">包含全部子项</string>
   <string name="reload_directory">重新读取目录</string>
   <string name="selection_inherited">随父文件夹一起选中</string>
@@ -183,8 +183,8 @@
   <string name="backup_preview">预览恢复结果</string>
   <string name="backup_execute">确认恢复方式</string>
   <string name="backup_change_mode">重新选择模式</string>
-  <string name="backup_archive_count">可恢复 %1$d 篇文稿、%2$d 个文件夹</string>
-  <string name="backup_plan_counts">新增 %1$d 项 · 替换 %2$d 篇 · 保留 / 跳过 %3$d 项 · 移除本地 %4$d 项</string>
+  <string name="backup_archive_count">可恢复 %1$d 个文件、%2$d 个文件夹</string>
+  <string name="backup_plan_counts">新增 %1$d 项 · 替换 %2$d 项 · 保留 / 跳过 %3$d 项 · 移除本地 %4$d 项</string>
   <string name="backup_target_folder">目标文件夹：%1$s</string>
   <string name="backup_rename_notice">以下路径需要使用副本名，请核对后继续：</string>
   <string name="backup_rename_item">%1$s → %2$s</string>
@@ -208,10 +208,10 @@
   <plurals name="backup_replace_count">
     <item quantity="other">本次将移除并替换 %1$d 篇本地文稿。</item>
   </plurals>
-  <string name="backup_confirm_summary">新增 %1$d 项、替换 %2$d 篇、跳过 %3$d 个不支持的文件。是否继续？</string>
+  <string name="backup_confirm_summary">新增 %1$d 项、替换 %2$d 项、跳过 %3$d 个不支持的文件。是否继续？</string>
   <string name="backup_snapshot_hint">恢复前的完整本地文稿库会保留为最近一次恢复快照。</string>
   <string name="backup_snapshot">最近一次恢复前快照</string>
-  <string name="backup_snapshot_details">%1$s\n%2$d 篇文稿 · 占用 %3$d KiB</string>
+  <string name="backup_snapshot_details">%1$s\n%2$d 个文件 · 占用 %3$d KiB</string>
   <string name="backup_undo">撤回上次恢复</string>
   <string name="backup_undo_warning">将切换回快照中的完整文稿库。当前文稿库及恢复后的编辑会保留为新的快照，之后可再次切换回来。</string>
   <string name="backup_clear_snapshot">清理恢复快照</string>
@@ -226,11 +226,11 @@
   <string name="backup_library_changed">文稿库已切换。可在设置 → 备份与恢复中查看恢复快照。</string>
   <string name="backup_undone">已撤回恢复，可再次切换回来。</string>
   <string name="backup_snapshot_cleared">恢复快照已清理。</string>
-  <string name="backup_unchanged">没有需要更新的文稿。</string>
+  <string name="backup_unchanged">没有需要更新的文件。</string>
   <string name="backup_done_cleanup">恢复已完成，但部分临时文件未清理。请在备份与恢复中重试清理。</string>
   <string name="backup_invalid_archive">ZIP 损坏、加密或目录结构异常，无法恢复。</string>
   <string name="backup_limit">ZIP 文件或展开内容不能超过 512 MiB，条目不能超过 20,000，目录深度不能超过 128，ZIP 目录元数据不能超过 16 MiB；此次操作已停止。</string>
-  <string name="backup_empty">ZIP 中没有可恢复的 .md / .txt 文稿，未改变本地文稿库。</string>
+  <string name="backup_empty">ZIP 中没有可恢复的文稿或支持的图片文件，未改变本地文稿库。</string>
   <string name="backup_stale">本地文稿库已改变，此次预览已失效。请取消后重新选择 ZIP。</string>
   <string name="backup_no_snapshot">没有可撤回的恢复快照。</string>
   <string name="backup_space">可用空间不足，无法同时保留当前库、恢复前快照及完整候选库。</string>
@@ -261,7 +261,7 @@
   <string name="trash_folder_empty">此文件夹已没有内容</string>
   <string name="trash_original_location">原位置：%1$s</string>
   <string name="trash_deleted_time">删除于 %1$s</string>
-  <string name="trash_folder_count">包含 %1$d 个文件夹、%2$d 篇文稿</string>
+  <string name="trash_folder_count">包含 %1$d 个文件夹、%2$d 个文件</string>
   <string name="trash_select">选择</string>
   <string name="trash_restore">恢复</string>
   <string name="trash_restore_folder">恢复此文件夹</string>
@@ -275,7 +275,7 @@
   <plurals name="trash_purge_title">
     <item quantity="other">彻底删除 %1$d 项？</item>
   </plurals>
-  <string name="trash_purge_warning">共 %1$d 个文件夹、%2$d 篇文稿，包含全部子项。彻底删除后无法从回收站恢复。</string>
+  <string name="trash_purge_warning">共 %1$d 个文件夹、%2$d 个文件，包含全部子项。彻底删除后无法从回收站恢复。</string>
   <string name="trash_copies_hint">以前导出的 ZIP 或整库恢复快照可能仍保留副本。</string>
   <string name="trash_preview_hint">只读预览，恢复后可以编辑。</string>
   <string name="trash_deleted">已删除，可从设置中的回收站恢复。</string>
@@ -372,4 +372,28 @@
     <string name="md_group_paragraph">段落</string>
     <string name="md_group_insert">插入</string>
     <string name="md_table_cell">表格第 %1$d 行，第 %2$d 列</string>
+  <string name="image_file">图片</string>
+  <string name="image_insert">插入图片</string>
+  <string name="image_import">导入图片</string>
+  <string name="image_from_device">从设备导入</string>
+  <string name="image_from_library">从文稿库选择</string>
+  <string name="image_search">搜索图片</string>
+  <string name="image_library_empty">没有图片</string>
+  <string name="image_unavailable">图片无法显示</string>
+  <string name="image_export">导出图片</string>
+  <string name="image_imported_only">图片已导入文稿库，原插入位置已改变。</string>
+  <string name="image_md_only">仅导出 Markdown；如需包含图片，请导出 ZIP。</string>
+  <string name="image_package">导出文稿与图片 ZIP</string>
+  <string name="image_display">图片显示方式</string>
+  <string name="image_thumbnail">缩略图</string>
+  <string name="image_icon">图标</string>
+  <string name="image_cache">缩略图缓存</string>
+  <string name="image_cache_hint">清理后，再次查看时会重新生成缩略图。文稿和原图会保留。</string>
+  <string name="image_cache_clear">清理缓存</string>
+  <string name="image_cache_error">部分缩略图未能清理，请重试。</string>
+  <string name="image_invalid">图片不受支持或已损坏，请选择 JPEG、PNG 或静态 WebP。</string>
+  <string name="image_too_large">图片超过 20 MiB 或 1 亿像素。</string>
+  <string name="image_missing">引用的图片缺失或损坏，请恢复图片后再导出 ZIP。</string>
+  <string name="image_delete_affected">以下文稿将显示缺图，恢复图片后可重新显示：</string>
+  <string name="image_details">格式：%1$s\n像素尺寸：%2$d × %3$d px\n原文件大小：%4$s\n位置：%5$s\n创建时间：%6$s\n最近修改：%7$s</string>
 </resources>

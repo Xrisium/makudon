@@ -103,7 +103,7 @@ class BackupCoordinator(
                 val zip = File(folder, "source.zip")
                 val input = application.contentResolver.openInputStream(uri) ?: throw WorkspaceException(Failure.Storage)
                 input.use { LibraryArchive.copySource(it, zip) { currentJob.ensureActive() } }
-                LibraryArchive.read(zip, File(folder, "contents"), { currentJob.ensureActive() }, naming = restoreNaming)
+                LibraryArchive.read(zip, File(folder, "contents"), { currentJob.ensureActive() }, naming = restoreNaming, validateImage = AndroidImages::verify)
             }
             archive = prepared
             baseline = io { library.fingerprint { currentJob.ensureActive() } }
@@ -118,9 +118,10 @@ class BackupCoordinator(
         val currentJob = currentCoroutineContext().job
         val planned = io {
             if (library.fingerprint { currentJob.ensureActive() } != baseline) throw WorkspaceException(Failure.StaleRestore)
-            RestorePlanner.plan(library.store.refresh(), source.inventory, ui.mode, decisions, restoreFolder, restoreTime, restoreNaming) { local, incoming ->
+            RestorePlanner.plan(library.store.refresh(), source.inventory, ui.mode, decisions, restoreFolder, restoreTime, restoreNaming,
+                sameText = { local, node, paths -> library.store.read(local) == source.restoredText(node.id, paths) }) { local, incoming ->
                 currentJob.ensureActive()
-                library.store.read(local) == source.text(incoming)
+                library.store.readMaterial(local).contentEquals(source.material(incoming))
             }
         }
         ui = ui.copy(plan = planned)
@@ -185,7 +186,7 @@ class BackupCoordinator(
         val folder = stage ?: throw WorkspaceException(Failure.Missing)
         val currentJob = currentCoroutineContext().job
         val file = io {
-            File(folder, "library.zip").also { LibraryArchive.write(it, plan, { id -> library.store.read(id) }) { currentJob.ensureActive() } }
+            File(folder, "library.zip").also { LibraryArchive.writeMaterials(it, plan, { id -> library.store.readMaterial(id) }) { currentJob.ensureActive() } }
         }
         exportFile = file
         ui = ui.copy(exportReady = true, exportRenames = null)

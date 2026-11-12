@@ -15,6 +15,11 @@ import io.github.xrisium.makudon.data.LibraryController
 import io.github.xrisium.makudon.data.TrashStore
 import io.github.xrisium.makudon.data.TrashInventory
 import io.github.xrisium.makudon.data.TrashRestoreResult
+import io.github.xrisium.makudon.data.ImageLoader
+import io.github.xrisium.makudon.data.AndroidImages
+import io.github.xrisium.makudon.data.LibraryArchive
+import io.github.xrisium.makudon.data.ExportItem
+import io.github.xrisium.makudon.data.ArchiveExport
 import io.github.xrisium.makudon.domain.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -132,9 +137,13 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     var trashRestored by mutableStateOf<TrashRestoreResult?>(null)
         private set
     private var libraryEpoch = 0L
+    private var clipboardCleaned = false
     val files = FileExchange(application, viewModelScope)
     val backup = BackupCoordinator(viewModelScope, application, ioLock, library, { barrier() }) { current ->
         libraryEpoch++
+        val oldCopies = clipboard?.copies.orEmpty()
+        viewModelScope.launch { disk { store.releaseCopies(oldCopies) } }
+        imageViewer = null; dismissImageDialogs()
         observer?.cancel(); observer = null; save = null; textState = null
         departingSession = null; sessionId++
         selection = null; clipboard = null; pasteRequest = null; deleteRequest = null
@@ -153,6 +162,168 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     private var loading: Job? = null
     private val externalRequests = mutableSetOf<String>()
     val pendingExportName: String get() = exportName
+
+    val images = ImageLoader(application)
+    data class ImageTarget(val entry: Entry, val trashId: String? = null)
+    var imageViewer by mutableStateOf<ImageTarget?>(null)
+        private set
+    var imageSourceDialog by mutableStateOf(false)
+        private set
+    var imageLibraryDialog by mutableStateOf(false)
+        private set
+    var cacheDialog by mutableStateOf(false)
+        private set
+    var cacheBytes by mutableLongStateOf(0)
+        private set
+    var cacheBusy by mutableStateOf(false)
+        private set
+    var cacheError by mutableStateOf(false)
+        private set
+    var deleteAffected by mutableStateOf<List<String>>(emptyList())
+        private set
+    private var imageToken: EditToken? = null
+    private data class ImageImport(val parent: String, val token: EditToken?, val epoch: Long)
+    private var imageImport: ImageImport? = null
+
+    fun imageEntry(key: String): Entry? = ui.workspace?.entries?.firstOrNull { it.image?.key == key }
+    suspend fun imageFile(target: ImageTarget): File = disk {
+        if (target.trashId != null) trash.imageFile(target.trashId)
+        else {
+            val entry = store.entry(target.entry.id) ?: throw WorkspaceException(Failure.MissingImage)
+            if (entry.image != target.entry.image) throw WorkspaceException(Failure.MissingImage)
+            store.materialFile(entry.id)
+        }
+    }
+    fun viewImage(entry: Entry, trashId: String? = null) { if (entry.isImage && !ui.busy) imageViewer = ImageTarget(entry, trashId) }
+    fun closeImage() { imageViewer = null }
+    fun exportImage() {
+        val target = imageViewer ?: return
+        launchWork {
+            val bytes = disk {
+                if (target.trashId == null) store.readMaterial(target.entry.id)
+                else io.github.xrisium.makudon.data.AtomicDisk().read(trash.imageFile(target.trashId), ImageRules.MAX_BYTES)
+            }
+            files.image(target.entry.filename, checkNotNull(target.entry.image).format.mime, bytes)
+        }
+    }
+    fun beginImageInsert() {
+        if (ui.busy || ui.transitioning || ui.storageBlocked || ui.page != Page.Editor || ui.editorMode == EditorMode.Reading) return
+        finishTableBoundary(force = true)
+        textState?.let { recordEdit(it.text.toString()) }
+        imageToken = editToken(); imageSourceDialog = true
+    }
+    fun dismissImageDialogs() { imageSourceDialog = false; imageLibraryDialog = false }
+    fun chooseLibraryImage() { imageSourceDialog = false; imageLibraryDialog = true }
+    fun prepareImageImport(inEditor: Boolean): Boolean {
+        if (ui.busy || ui.storageBlocked || backup.locked) return false
+        val parent = if (inEditor) ui.workspace?.entry(ui.activeId.orEmpty())?.parent ?: return false else ui.newParent
+        imageImport = ImageImport(parent, if (inEditor) imageToken else null, libraryEpoch)
+        imageSourceDialog = false
+        return true
+    }
+    fun importImage(uri: Uri?) {
+        val request = imageImport; imageImport = null
+        if (uri == null || request == null) return
+        viewModelScope.launch {
+            snapshotFlow { !ui.busy && !ui.transitioning && !ui.tabTransitioning && !backup.locked }.first { it }
+            launchWork {
+            if (request.epoch != libraryEpoch) throw WorkspaceException(Failure.StaleRestore)
+            if (!barrier()) return@launchWork
+            val defaultName = localized().getString(R.string.image_file)
+            val naming = localized().copyNaming()
+            val entry = disk {
+                if (uri.scheme != "content") throw WorkspaceException(Failure.InvalidImage)
+                val resolver = getApplication<Application>().contentResolver
+                var name = defaultName
+                try {
+                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (column >= 0 && cursor.moveToFirst()) name = cursor.getString(column).orEmpty().ifBlank { defaultName }
+                    }
+                } catch (_: UnsupportedOperationException) { /* Stream-only providers need no display-name query. */ }
+                catch (_: IllegalArgumentException) { /* Missing metadata is allowed; the stream is validated below. */ }
+                val bytes = resolver.openInputStream(uri)?.use { stream ->
+                    val output = ByteArrayOutputStream(); val buffer = ByteArray(32 * 1024)
+                    while (true) {
+                        val n = stream.read(buffer, 0, minOf(buffer.size, ImageRules.MAX_BYTES + 1 - output.size()))
+                        if (n < 0) break
+                        output.write(buffer, 0, n)
+                        if (output.size() > ImageRules.MAX_BYTES) throw WorkspaceException(Failure.ImageTooLarge)
+                    }
+                    output.toByteArray()
+                } ?: throw WorkspaceException(Failure.Storage)
+                val info = ImageRules.inspect(bytes)
+                AndroidImages.verify(bytes)
+                name = safeNamePrefix(name.substringBeforeLast('.', name).map { if (it.isISOControl() || it == '/' || it == '\\') '_' else it }.joinToString("").trim(), 120).ifBlank { defaultName }
+                val id = store.createImage(name, request.parent, bytes, info, naming)
+                store.refresh().entry(id) ?: throw WorkspaceException(Failure.Missing)
+            }
+            acceptWorkspace(disk { store.refresh() })
+            if (request.token != null) {
+                if (!insertImage(entry, request.token, true)) ui = ui.copy(message = R.string.image_imported_only)
+            } else ui = ui.copy(message = R.string.import_done)
+            }
+        }
+    }
+    fun insertLibraryImage(entry: Entry) {
+        val token = imageToken ?: return
+        if (insertImage(entry, token)) imageLibraryDialog = false
+    }
+    private fun insertImage(entry: Entry, token: EditToken, allowBusy: Boolean = false): Boolean {
+        val source = textState?.text?.toString() ?: return false
+        recordEdit(source)
+        if (token.session != sessionId || token.revision != editorRevision || token.selection != currentSelection() || ui.page != Page.Editor || ui.editorMode == EditorMode.Reading) {
+            editorMessage = R.string.md_stale; return false
+        }
+        return try {
+            val current = ui.workspace?.entry(entry.id) ?: throw WorkspaceException(Failure.MissingImage)
+            val info = current.image ?: throw WorkspaceException(Failure.InvalidImage)
+            applyEditorEdit(ImageReferences.insert(source, token.selection, current.name, info.key), token, allowBusy)
+        } catch (e: WorkspaceException) { inputRejected(e.reason); false }
+    }
+    fun showCache() { cacheDialog = true; refreshCache() }
+    fun closeCache() { if (!cacheBusy) cacheDialog = false }
+    fun refreshCache() { viewModelScope.launch { cacheBytes = images.bytes() } }
+    fun clearCache() {
+        if (cacheBusy) return
+        cacheBusy = true; cacheError = false
+        viewModelScope.launch {
+            try { cacheError = !images.clear(); cacheBytes = images.bytes() }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { cacheError = true }
+            finally { cacheBusy = false }
+        }
+    }
+    fun prepareDelete(ids: Collection<String>, ready: () -> Unit) { launchWork {
+        if (!barrier()) return@launchWork
+        deleteAffected = disk {
+            val state = store.refresh()
+            val removed = state.selectionRoots(ids).flatMap { state.descendants(it.id) }.toSet()
+            val keys = state.entries.filter { it.id in removed }.mapNotNull { it.image?.key }.toSet()
+            if (keys.isEmpty()) emptyList() else state.entries.filter { it.kind == DocumentKind.Markdown && it.id !in removed }.filter { ImageReferences.keys(store.read(it.id)).any(keys::contains) }.map { state.path(it.id) }
+        }
+        ready()
+    } }
+    fun exportImagePackage() { launchWork {
+        if (!barrier()) return@launchWork
+        val source = textState?.text?.toString() ?: return@launchWork
+        val active = ui.workspace?.entry(ui.activeId.orEmpty()) ?: return@launchWork
+        val file = disk {
+            val plan = LibraryArchive.documentPlan(store.refresh(), active.id, source)
+            val folder = File(getApplication<Application>().cacheDir, "document-images/${java.util.UUID.randomUUID()}")
+            if (!folder.mkdirs()) throw WorkspaceException(Failure.Storage)
+            try {
+                File(folder, "document.zip").also { target -> LibraryArchive.writeMaterials(target, plan, { id ->
+                    if (id == active.id) TextRules.bytes(source) else try { store.readMaterial(id) }
+                    catch (_: java.io.IOException) { throw WorkspaceException(Failure.MissingImage) }
+                    catch (_: WorkspaceException) { throw WorkspaceException(Failure.MissingImage) }
+                }) }
+            } catch (e: Exception) { folder.deleteRecursively(); throw e }
+        }
+        files.archive(active.name + ".zip", file) { viewModelScope.launch(Dispatchers.IO) { file.delete(); file.parentFile?.delete() } }
+    } }
+
+    override fun onCleared() { images.close(); super.onCleared() }
 
     init {
         library.beforeChange = { if (!trash.ready) throw WorkspaceException(Failure.Corrupt) }
@@ -181,6 +352,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         loading = viewModelScope.launch {
             try {
                 val (current, inventory) = disk(reloading = true) {
+                    if (!clipboardCleaned) { library.clearClipboard(); clipboardCleaned = true }
                     val loaded = library.load()
                     withContext(Dispatchers.Main) { launchTheme = loaded.theme }
                     val inventory = trash.load()
@@ -236,6 +408,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (page == Page.Settings) refreshTrashSummary()
     }
     private fun refreshTrashSummary() {
+        refreshCache()
         viewModelScope.launch {
             try { trashInventory = disk { trash.inventory() } }
             catch (e: CancellationException) { throw e }
@@ -285,7 +458,10 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(workspace = disk { store.refresh() }, selected = id)
         onSuccess()
     } }
-    fun open(id: String) { launchWork { openInternal(id, if (ui.page == Page.Directory) Page.Directory else Page.Recent) } }
+    fun open(id: String) {
+        ui.workspace?.entry(id)?.takeIf { it.isImage }?.let { viewImage(it); return }
+        launchWork { openInternal(id, if (ui.page == Page.Directory) Page.Directory else Page.Recent) }
+    }
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     private suspend fun openInternal(id: String, origin: Page) {
         if (!barrier()) return
@@ -394,8 +570,8 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         editorRevision++; requestParse(result.text)
     }
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-    fun applyEditorEdit(result: EditResult, token: EditToken? = null): Boolean {
-        if (ui.busy || ui.transitioning || ui.storageBlocked || ui.page != Page.Editor || ui.editorMode == EditorMode.Reading) return false
+    fun applyEditorEdit(result: EditResult, token: EditToken? = null, allowBusy: Boolean = false): Boolean {
+        if ((ui.busy && !allowBusy) || ui.transitioning || ui.storageBlocked || ui.page != Page.Editor || ui.editorMode == EditorMode.Reading) return false
         val field = textState ?: return false
         recordEdit(field.text.toString())
         if (token != null && (token.session != sessionId || token.revision != editorRevision)) { editorMessage = R.string.md_stale; return false }
@@ -502,7 +678,9 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (ids.any { state.entry(it) == null }) throw WorkspaceException(Failure.Missing)
         val roots = state.selectionRoots(ids)
         val snapshots = if (cut) emptyList() else disk { store.captureAll(roots.map { it.id }) }
+        val oldCopies = clipboard?.copies.orEmpty()
         clipboard = Clipboard(roots.map { ClipboardItem(it, state.path(it.parent ?: Workspace.ROOT)) }, cut, snapshots, ++clipboardToken)
+        disk { store.releaseCopies(oldCopies) }
         ui = ui.copy(message = if (cut) R.string.cut_ready else R.string.copy_ready)
     } }
     fun requestPaste(context: String? = null) {
@@ -527,7 +705,8 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             revealFolder = destination, directoryRevision = ui.directoryRevision + 1)
     } }
     fun requestDelete() {
-        if (!ui.busy) deleteRequest = ui.workspace?.selectionRoots(selection.orEmpty())?.map { it.id }?.takeIf { it.isNotEmpty() }
+        val ids = ui.workspace?.selectionRoots(selection.orEmpty())?.map { it.id }?.takeIf { it.isNotEmpty() } ?: return
+        prepareDelete(ids) { deleteRequest = ids }
     }
     fun dismissDelete() { if (!ui.busy) deleteRequest = null }
     fun confirmDelete() { deleteRequest?.let(::deleteAll) }
@@ -567,7 +746,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     } }
     fun browseTrash(id: String) { launchWork {
         val node = trashInventory.nodes.firstOrNull { it.id == id } ?: throw WorkspaceException(Failure.Missing)
-        if (node.entry.folder) trashFolder = id else { trashText = disk { trash.read(id) }; trashPreview = id }
+        if (node.entry.folder) trashFolder = id else { trashText = if (node.entry.isImage) null else disk { trash.read(id) }; trashPreview = id }
         trashSelection = null; trashRestored = null
     } }
     fun selectTrash(id: String? = null) {
@@ -601,7 +780,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(selected = restored.parent ?: Workspace.ROOT, revealFolder = restored.parent ?: Workspace.ROOT, directoryRevision = ui.directoryRevision + 1)
         navigate(Page.Directory, backwards = true)
     }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null) {
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null, directoryImages: DirectoryImages? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme
         val nextSort = sort ?: w.sort
@@ -613,12 +792,13 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         val nextEditorTextSize = editorTextSize ?: w.editorTextSize
         val nextShowRecentExcerpt = showRecentExcerpt ?: w.showRecentExcerpt
         val nextRecentSort = recentSort ?: w.recentSort
-        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort) return
+        val nextDirectoryImages = directoryImages ?: w.directoryImages
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort && nextDirectoryImages == w.directoryImages) return
         launchWork(savingPreferences = true) {
             // Animate this switch on input, independently of catalog writes and body refreshes.
             ui = ui.copy(workspace = w.copy(showRecentExcerpt = nextShowRecentExcerpt))
             try {
-                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort) }
+                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort, nextDirectoryImages) }
                 ui = ui.copy(workspace = disk { store.refresh() })
             } catch (e: Exception) {
                 ui = ui.copy(workspace = ui.workspace?.copy(showRecentExcerpt = w.showRecentExcerpt))
@@ -635,7 +815,22 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         return true
     }
     fun exportCopy() {
-        if (prepareExport()) files.text(exportName, checkNotNull(exportText))
+        if (!prepareExport()) return
+        val text = checkNotNull(exportText)
+        launchWork {
+            val portable = disk { portableMarkdown(text) }
+            files.text(exportName, portable)
+            if (ImageReferences.keys(text).isNotEmpty()) ui = ui.copy(message = R.string.image_md_only)
+        }
+    }
+    private fun portableMarkdown(text: String): String {
+        val w = ui.workspace ?: return text
+        val active = w.entry(ui.activeId.orEmpty()) ?: return text
+        if (active.kind != DocumentKind.Markdown) return text
+        val plan = LibraryArchive.exportPlan(w)
+        val from = plan.items.first { it.entry.id == active.id }.path
+        val paths = plan.items.mapNotNull { item -> item.entry.image?.let { it.key to item.path } }.toMap()
+        return ImageReferences.rewrite(text) { node -> ImageReferences.key(node.destination)?.let(paths::get)?.let { ImageReferences.relative(from, it) } }
     }
     fun licenses() { launchWork {
         licenseTexts = disk { licenseEntries.map { entry -> getApplication<Application>().resources.openRawResource(entry.resource).bufferedReader().use { it.readText() } } }
@@ -654,7 +849,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             disk {
                 if (uri.scheme != "content") throw WorkspaceException(Failure.Missing)
                 val resolver = getApplication<Application>().contentResolver
-                val bytes = TextRules.bytes(text)
+                val bytes = TextRules.bytes(portableMarkdown(text))
                 val stream = resolver.openOutputStream(uri, "w") ?: throw WorkspaceException(Failure.Storage)
                 stream.use { it.write(bytes); it.flush() }
             }

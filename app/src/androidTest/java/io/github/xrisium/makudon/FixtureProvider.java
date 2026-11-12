@@ -21,7 +21,7 @@ public class FixtureProvider extends ContentProvider {
             try {
                 java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
                 try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(buffer)) {
-                    String[][] items = {{"电脑目录/", ""}, {"电脑目录/笔记.md", "# ZIP 验收\n\n中文 😀\n"}, {"电脑目录/空.txt", ""}, {"空目录/", ""}, {"附件.png", "unsupported"}};
+                    String[][] items = {{"电脑目录/", ""}, {"电脑目录/笔记.md", "# ZIP 验收\n\n中文 😀\n"}, {"电脑目录/空.txt", ""}, {"空目录/", ""}, {"附件.bin", "unsupported"}};
                     for (String[] item : items) { zip.putNextEntry(new java.util.zip.ZipEntry(item[0])); zip.write(item[1].getBytes(StandardCharsets.UTF_8)); zip.closeEntry(); }
                 }
                 return buffer.toByteArray();
@@ -50,7 +50,9 @@ public class FixtureProvider extends ContentProvider {
         if ("archive-export".equals(path)) return ParcelFileDescriptor.open(new File(directory, "library-fixture-export.zip"), "r".equals(mode) ? ParcelFileDescriptor.MODE_READ_ONLY : ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE | ParcelFileDescriptor.MODE_READ_WRITE);
         if ("export".equals(uri.getLastPathSegment())) return ParcelFileDescriptor.open(new File(directory, "workspace-fixture-export.txt"), "r".equals(mode) ? ParcelFileDescriptor.MODE_READ_ONLY : ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE | ParcelFileDescriptor.MODE_READ_WRITE);
         if (!"r".equals(mode)) throw new FileNotFoundException("Read-only source");
-        File file = new File(directory, "workspace-fixture-" + uri.getLastPathSegment() + ".txt");
+        // Keep source bytes stable across repeated reads, but retire the pre-image ZIP fixture.
+        String fixture = "archive".equals(path) ? "workspace-fixture-archive-v2.txt" : "workspace-fixture-" + path + ".txt";
+        File file = new File(directory, fixture);
         if (!file.exists()) try (FileOutputStream stream = new FileOutputStream(file)) { stream.write(data(uri)); }
         catch (IOException e) { throw new FileNotFoundException("Fixture initialization failed"); }
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);

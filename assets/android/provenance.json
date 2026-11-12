@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-03",
+  "date": "2026-11-12",
   "lucide_revision": "7faf87628a1ad6175975bc595344337ce14a7db4",
   "conversion": "SVG shapes to VectorDrawable paths, preserve geometry; separate compact SVG arc flags for Android parser; currentColor tinted by Compose; stroke width 2.0",
   "icons": [
@@ -464,6 +464,13 @@
       "source_sha256": "23a80c0bba874b7b6c9a8cee0651ea72b189cbe4ae826e6539a3344cfb85b1d8",
       "resource": "app/src/main/res/drawable/ic_pilcrow.xml",
       "resource_sha256": "fc645a40784e66e8b8d3359ac17d0725b56856b2e23fca096bdf9a1d0a1e7742"
+    },
+    {
+      "name": "image",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/7faf87628a1ad6175975bc595344337ce14a7db4/icons/image.svg",
+      "source_sha256": "619c9db58c879dce6250376ba67d9c9102ca6dbb3b1efb9294c9f180e22273a5",
+      "resource": "app/src/main/res/drawable/ic_image.xml",
+      "resource_sha256": "43748cb2eecf3a8b8e6bb0e0a280a80de4ee9b34990b12f1c483e27ab53cde92"
     }
   ],
   "font": {

@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference
 import io.github.xrisium.makudon.data.WorkspaceStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 
@@ -33,6 +34,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyMarkdownTable = false
     private var onlyMarkdownOutline = false
     private var onlyLaunch = false
+    private var onlyImages = false
     private var onlyLong = false
     private var onlyMotion = false
     private var onlyVisual = false
@@ -64,6 +66,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyMarkdownTable = arguments?.getString("case") == "markdown-table"
         onlyMarkdownOutline = arguments?.getString("case") == "markdown-outline"
         onlyLaunch = arguments?.getString("case") == "launch"
+        onlyImages = arguments?.getString("case") == "images"
         onlyLong = arguments?.getString("case") == "long"
         onlyMotion = arguments?.getString("case") == "motion"
         onlyVisual = arguments?.getString("case") == "motion-visual"
@@ -87,7 +90,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     override fun onStart() {
         try {
-            if (onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+            if (onlyImages || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitFor("language bootstrap and first workspace frame") {
                 val label = main { currentActivity?.getString(R.string.recent) }
@@ -100,7 +103,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -170,7 +173,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
         visit(root)
-        if (onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
+        if (onlyImages || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
             val activeLayer = uiAutomation.windows.firstOrNull { it.id == root.windowId }?.layer ?: 0
             uiAutomation.windows.filter { it.layer > activeLayer && it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.forEach { window -> window.root?.let(::visit) }
         }
@@ -220,7 +223,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                     current?.let { it.refresh(); it.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK) } == true
                 }
             }
-            waitFor("context menu") { nodes().any { it.text?.toString() == "重命名" } }
+            waitFor("context menu") { nodes().any { it.text?.toString() == main { model.languages.context().getString(R.string.rename) } } }
             find(label)
             return
         }
@@ -230,8 +233,245 @@ class WorkspaceInstrumentation : Instrumentation() {
         event(MotionEvent.ACTION_DOWN).let { uiAutomation.injectInputEvent(it, true); it.recycle() }
         SystemClock.sleep(700)
         event(MotionEvent.ACTION_UP).let { uiAutomation.injectInputEvent(it, true); it.recycle() }
-        waitFor("context menu") { nodes().any { it.text?.toString() == "重命名" } }
+        waitFor("context menu") { nodes().any { it.text?.toString() == main { model.languages.context().getString(R.string.rename) } } }
         find(label)
+    }
+    @Suppress("DEPRECATION")
+    private fun imageTest() {
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        fun <T> disk(block: () -> T): T = runBlocking { withContext(Dispatchers.IO) { lock.withLock { block() } } }
+        val original = main { checkNotNull(model.ui.workspace) }
+        val oldScale = shell("settings get system font_scale")
+        val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val sources = File(targetContext.filesDir, "shared-exports/image-test-${SystemClock.uptimeMillis()}").apply { mkdirs() }
+        val imageTestSuffix = SystemClock.uptimeMillis()
+        val root = disk { currentStore().create("图片测试-$imageTestSuffix", Workspace.ROOT, DocumentKind.Folder) }
+        val ids = mutableListOf<String>()
+        fun imageSource(name: String, format: android.graphics.Bitmap.CompressFormat, width: Int = 640, height: Int = 360): Pair<android.net.Uri, File> {
+            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.rgb(212, 225, 205))
+            val paint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(67, 93, 79) }
+            canvas.drawRect(width * .15f, height * .2f, width * .85f, height * .8f, paint)
+            val file = File(sources, name)
+            file.outputStream().use { check(bitmap.compress(format, 90, it)) }; bitmap.recycle()
+            return androidx.core.content.FileProvider.getUriForFile(targetContext, "${targetContext.packageName}.exports", file) to file
+        }
+        fun previewBounds(filename: String): Rect {
+            var found: Rect? = null
+            waitFor("loaded bounded preview $filename") {
+                found = nodes().filter { it.contentDescription?.toString() == filename }.map { Rect().also(it::getBoundsInScreen) }.firstOrNull { maxOf(it.width(), it.height()) > 80 && it.width() > 0 && it.height() > 0 }
+                found != null
+            }
+            return checkNotNull(found)
+        }
+        fun filterImages(query: String) {
+            if (nodes().none { it.isEditable }) click(main { model.languages.context().getString(R.string.search) })
+            val field = nodes().first { it.isEditable }
+            check(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query) }))
+            shell("input keyevent 111"); ready()
+        }
+        try {
+            main { model.reload() }; ready()
+            main { model.go(Page.Directory) }; ready()
+            main { model.newDocument(Page.Directory, root) }; ready()
+            val formats = listOf(Triple("图片测试PNG-$imageTestSuffix.png", android.graphics.Bitmap.CompressFormat.PNG, ImageFormat.Png), Triple("图片测试JPEG-$imageTestSuffix.jpg", android.graphics.Bitmap.CompressFormat.JPEG, ImageFormat.Jpeg), Triple("图片测试WebP-$imageTestSuffix.webp", android.graphics.Bitmap.CompressFormat.WEBP, ImageFormat.Webp))
+            for ((name, format, expected) in formats) {
+                val source = imageSource(name, format)
+                if (format == android.graphics.Bitmap.CompressFormat.JPEG) {
+                    val bytes = source.second.readBytes()
+                    val exif = byteArrayOf(69, 120, 105, 102, 0, 0, 73, 73, 42, 0, 8, 0, 0, 0, 1, 0, 18, 1, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0)
+                    source.second.writeBytes(bytes.take(2).toByteArray() + byteArrayOf(255.toByte(), 225.toByte(), 0, (exif.size + 2).toByte()) + exif + bytes.drop(2).toByteArray())
+                }
+                val before = main { checkNotNull(model.ui.workspace).entries.map { it.id }.toSet() }
+                main { check(model.prepareImageImport(false)); model.importImage(source.first) }; ready()
+                waitFor("image imported $name") { main { model.ui.workspace?.entries?.any { it.id !in before && it.isImage } == true } }
+                val entry = main { checkNotNull(model.ui.workspace).entries.single { it.id !in before && it.isImage } }; ids += entry.id
+                verify(entry.image?.format == expected && entry.parent == root, "$expected imports to selected folder")
+                verify(disk { currentStore().readMaterial(entry.id).contentEquals(source.second.readBytes()) }, "$expected preserves original bytes")
+                verify(source.second.exists(), "$expected does not modify source URI")
+            }
+            val png = main { checkNotNull(model.ui.workspace?.entry(ids[0])) }
+            val jpeg = main { checkNotNull(model.ui.workspace?.entry(ids[1])) }
+            val jpegBitmap = runBlocking { model.images.load(checkNotNull(jpeg.image), 512) { model.imageFile(WorkspaceViewModel.ImageTarget(jpeg)) } }
+            verify(jpeg.image?.orientation == 6 && jpegBitmap.height > jpegBitmap.width, "JPEG EXIF rotates sampled preview while preserving stored dimensions")
+            runBlocking { model.images.clear() }
+            val first = runBlocking { model.images.load(checkNotNull(png.image), 128) { model.imageFile(WorkspaceViewModel.ImageTarget(png)) } }
+            val cached = runBlocking { model.images.load(checkNotNull(png.image), 128) { error("memory cache miss") } }
+            verify(first === cached, "Repeated thumbnail request reuses decoded memory bitmap")
+            model.images.onTrimMemory(80)
+            val diskCached = runBlocking { model.images.load(checkNotNull(png.image), 128) { error("disk cache miss") } }
+            verify(diskCached.width == first.width, "Memory pressure releases bitmap and disk cache supplies preview")
+            val cacheDirectory = File(targetContext.cacheDir, "image-thumbnails")
+            cacheDirectory.listFiles().orEmpty().forEach { it.writeText("broken cache") }
+            model.images.onTrimMemory(80)
+            val rebuilt = runBlocking { model.images.load(checkNotNull(png.image), 128) { model.imageFile(WorkspaceViewModel.ImageTarget(png)) } }
+            verify(rebuilt.width == first.width, "Damaged disk thumbnail regenerates from original")
+            runBlocking {
+                model.images.clear()
+                val entered = kotlinx.coroutines.CompletableDeferred<Unit>(); val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+                val job = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).async {
+                    model.images.load(checkNotNull(png.image), 128) { entered.complete(Unit); release.await(); model.imageFile(WorkspaceViewModel.ImageTarget(png)) }
+                }
+                entered.await(); model.images.clear(); release.complete(Unit); job.await()
+                verify(model.images.bytes() == 0L, "Clearing during real decode prevents old task from repopulating disk cache")
+            }
+            main { model.back() }; ready()
+            filterImages(png.name)
+            longPress(png.filename)
+            val menu = previewBounds(png.filename)
+            val density = targetContext.resources.displayMetrics.density
+            verify(menu.width() <= 240 * density + 2 && menu.height() <= 144 * density + 2, "Context preview respects width and height limits")
+            verify(kotlin.math.abs(menu.width().toFloat() / menu.height() - 640f / 360f) < .05f, "Context preview preserves image aspect ratio")
+            screenshot("images-menu")
+            click("更多信息")
+            val details = previewBounds(png.filename)
+            verify(details.width() <= 280 * density + 2 && details.height() <= 200 * density + 2, "Information preview respects limits")
+            verify(nodes().any { it.text?.toString()?.contains("640 × 360") == true }, "Image information includes pixel dimensions")
+            verify(nodes().any { it.text?.toString()?.contains("原文件大小") == true }, "Image information uses original file size")
+            screenshot("images-information"); click("关闭")
+            for ((width, height) in listOf(2400 to 40, 40 to 2400)) {
+                val source = imageSource("图片测试${width}x$height-$imageTestSuffix.png", android.graphics.Bitmap.CompressFormat.PNG, width, height)
+                val entry = disk {
+                    val bytes = source.second.readBytes()
+                    io.github.xrisium.makudon.data.AndroidImages.verify(bytes)
+                    val id = currentStore().createImage(source.second.nameWithoutExtension, root, bytes, ImageRules.inspect(bytes))
+                    checkNotNull(currentStore().refresh().entry(id))
+                }; ids += entry.id
+                main { model.reload() }; ready(); filterImages(entry.name); longPress(entry.filename)
+                val bounds = previewBounds(entry.filename)
+                verify(bounds.width() <= 240 * density + 2 && bounds.height() <= 144 * density + 2, "${width}x$height preview remains bounded")
+                screenshot("images-${width}x$height-menu"); shell("input keyevent 4"); ready()
+            }
+            filterImages(png.name)
+            click(png.filename)
+            waitFor("viewer") { main { model.imageViewer != null } }
+            verify(nodes().any { it.contentDescription?.toString() == "导出图片" }, "Directory image opens viewer with export")
+            val body = previewBounds(png.filename)
+            val beforeZoom = checkNotNull(uiAutomation.takeScreenshot())
+            val sampleX = body.centerX(); val sampleY = body.centerY() + (body.width() * 360f / 640 * .35f).toInt()
+            val originalPixel = beforeZoom.getPixel(sampleX, sampleY); beforeZoom.recycle()
+            val startTime = SystemClock.uptimeMillis()
+            val properties = Array(2) { index -> MotionEvent.PointerProperties().apply { id = index; toolType = MotionEvent.TOOL_TYPE_FINGER } }
+            fun multi(action: Int, count: Int, distance: Float) {
+                val coordinates = Array(count) { index -> MotionEvent.PointerCoords().apply { x = body.centerX() + if (index == 0) -distance else distance; y = body.centerY().toFloat(); pressure = 1f; size = 1f } }
+                MotionEvent.obtain(startTime, SystemClock.uptimeMillis(), action, count, properties, coordinates, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0).let { check(uiAutomation.injectInputEvent(it, true)); it.recycle() }
+            }
+            multi(MotionEvent.ACTION_DOWN, 1, body.width() / 8f)
+            multi(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2, body.width() / 8f)
+            repeat(12) { step -> SystemClock.sleep(20); multi(MotionEvent.ACTION_MOVE, 2, body.width() * (.125f + .02f * step)) }
+            multi(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2, body.width() * .345f)
+            multi(MotionEvent.ACTION_UP, 1, body.width() * .345f); SystemClock.sleep(300)
+            val afterZoom = checkNotNull(uiAutomation.takeScreenshot())
+            verify(afterZoom.getPixel(sampleX, sampleY) != originalPixel, "Real two-finger gesture zooms image pixels"); afterZoom.recycle(); screenshot("images-viewer-zoom")
+            repeat(2) { val down = SystemClock.uptimeMillis(); for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, body.centerX().toFloat(), body.centerY().toFloat(), 0).let { it.source = InputDevice.SOURCE_TOUCHSCREEN; uiAutomation.injectInputEvent(it, true); it.recycle() }; SystemClock.sleep(80) }
+            SystemClock.sleep(300)
+            val resetZoom = checkNotNull(uiAutomation.takeScreenshot()); verify(resetZoom.getPixel(sampleX, sampleY) == originalPixel, "Double tap resets zoom and pan"); resetZoom.recycle()
+            main { model.exportImage() }; ready()
+            waitFor("image export prepared") { main { model.files.ui.export != null && !model.files.ui.busy } }
+            verify(main { model.files.ui.export?.mime == "image/png" }, "Viewer exports original image MIME")
+            verify(main { model.files.ui.export }?.file?.readBytes()?.contentEquals(disk { currentStore().readMaterial(png.id) }) == true, "Viewer export preserves original bytes")
+            main { model.files.close(); model.closeImage() }; ready()
+            main { model.go(Page.Settings) }; ready()
+            main { model.preferences(directoryImages = DirectoryImages.Icon) }; ready(); main { model.reload() }; ready()
+            verify(main { model.ui.workspace?.directoryImages == DirectoryImages.Icon }, "Icon preference survives reload")
+            runBlocking { model.images.clear() }
+            main { model.go(Page.Directory) }; ready()
+            verify(runBlocking { model.images.bytes() } == 0L, "Icon-only directory does not decode or generate thumbnails")
+            longPress(png.filename)
+            previewBounds(png.filename); verify(true, "Icon mode still displays context preview")
+            shell("input keyevent 4"); ready()
+
+            val doc = disk { currentStore().create("图片测试文稿", root, DocumentKind.Markdown, "# 图片\n\n前文\n\n") }; ids += doc
+            main { model.reload() }; ready(); main { model.open(doc) }; ready()
+            main { model.textState?.edit { selection = androidx.compose.ui.text.TextRange(length) }; model.beginImageInsert() }
+            click("从文稿库选择"); click(png.filename); ready(); saved()
+            verify(main { ImageReferences.keys(model.textState?.text.toString()) == setOf(png.image?.key) }, "Library picker inserts stable image reference")
+            val inserted = main { model.textState?.text.toString() }
+            main { model.undo() }; ready(); verify(main { ImageReferences.keys(model.textState?.text.toString()).isEmpty() }, "Image insertion undoes in one step")
+            main { model.undo(true) }; ready(); verify(main { model.textState?.text.toString() == inserted }, "Image insertion redo restores source")
+            main { model.editorMode(EditorMode.Reading) }; ready()
+            waitFor("reading image") { nodes().any { it.contentDescription?.toString() == png.filename } }
+            val originalImage = disk { currentStore().materialFile(png.id) }
+            val heldImage = File(originalImage.parentFile, "image-test-held")
+            disk { check(originalImage.renameTo(heldImage)) }
+            try {
+                main { model.reload() }; ready()
+                waitFor("missing image placeholder") { nodes().any { it.text?.toString() == "图片无法显示" } }
+                verify(nodes().none { it.contentDescription?.toString() == png.filename }, "Cached preview never hides a known missing original image")
+            } finally { disk { check(heldImage.renameTo(originalImage)) } }
+            main { model.reload() }; ready()
+            waitFor("restored image preview") { nodes().any { it.contentDescription?.toString() == png.filename } }
+            verify(main { model.textState?.text.toString() == inserted }, "Restoring original image refreshes preview without changing document")
+            screenshot("images-reading"); click(png.filename); verify(main { model.imageViewer != null }, "Reading image opens viewer"); main { model.closeImage() }
+            main { model.editorMode(EditorMode.Typeset) }; ready(); screenshot("images-typeset")
+            verify(main { model.textState?.text.toString() == inserted }, "Typeset and reading preserve source")
+            main { model.editorMode(EditorMode.Source); model.textState?.edit { selection = androidx.compose.ui.text.TextRange(length) }; model.beginImageInsert() }
+            main { model.dismissImageDialogs(); model.chooseLibraryImage(); model.textState?.edit { selection = androidx.compose.ui.text.TextRange(0) }; model.insertLibraryImage(png); model.dismissImageDialogs() }; ready()
+            verify(main { model.textState?.text.toString() == inserted }, "Changed selection rejects stale insertion")
+            main { model.textState?.edit { selection = androidx.compose.ui.text.TextRange(length) }; model.beginImageInsert(); check(model.prepareImageImport(true)); model.dismissImageDialogs() }
+            val direct = imageSource("图片测试编辑器-$imageTestSuffix.png", android.graphics.Bitmap.CompressFormat.PNG)
+            main { model.importImage(direct.first) }; ready(); saved()
+            verify(main { ImageReferences.keys(model.textState?.text.toString()).size == 2 }, "Device picker imports and inserts in active editor")
+            val directEntry = main { checkNotNull(model.ui.workspace).entries.single { it.name == direct.second.nameWithoutExtension } }; ids += directEntry.id
+            main { model.undo() }; ready(); saved(); verify(main { model.textState?.text.toString() == inserted }, "Device import insertion undoes without deleting imported file")
+            main { model.beginImageInsert(); check(model.prepareImageImport(true)); model.dismissImageDialogs(); model.textState?.edit { append("迟到输入") } }
+            val late = imageSource("图片测试迟到-$imageTestSuffix.png", android.graphics.Bitmap.CompressFormat.PNG)
+            val changedSource = main { model.textState?.text.toString() }
+            main { model.importImage(late.first) }; ready(); saved()
+            val lateEntry = main { checkNotNull(model.ui.workspace).entries.single { it.name == late.second.nameWithoutExtension } }; ids += lateEntry.id
+            verify(main { model.textState?.text.toString() == changedSource && model.ui.message == R.string.image_imported_only }, "Late device result keeps image in library and preserves changed buffer")
+            main { model.applyEditorEdit(EditResult(inserted, TextSelection(inserted.length))) }; ready(); saved()
+            main { model.exportImagePackage() }; ready()
+            waitFor("document ZIP prepared") { main { model.files.ui.export?.mime == "application/zip" && !model.files.ui.busy } }
+            val exported = main { checkNotNull(model.files.ui.export).file }
+            java.util.zip.ZipFile(exported).use { zip ->
+                val paths = zip.entries().asSequence().map { it.name }.toList()
+                verify(paths.count { it.startsWith("images/") && !it.endsWith("/") } == 1, "Document ZIP contains referenced image exactly once")
+                val text = zip.getInputStream(zip.getEntry("图片测试文稿.md")).bufferedReader().readText()
+                verify(!text.contains("makudon-image:") && text.contains("images/"), "Document ZIP uses portable relative image paths")
+            }
+            main { model.files.close(); model.go(Page.Directory) }; ready()
+            main { model.prepareDelete(listOf(png.id)) {} }; ready()
+            verify(main { model.deleteAffected.any { it.contains("图片测试文稿") } }, "Delete analysis lists affected documents")
+            main { model.delete(png.id) }; ready()
+            verify(main { model.imageEntry(checkNotNull(png.image).key) == null }, "Deleted image disappears from active resolver")
+            val trashNode = main { model.trashInventory.nodes.single { it.entry.id == png.id } }
+            main { model.requestTrashRestore(listOf(trashNode.id)) }; ready()
+            verify(main { model.imageEntry(checkNotNull(png.image).key) != null }, "Restoring image makes original reference resolve")
+
+            main { model.go(Page.Settings); model.showCache() }; ready()
+            waitFor("cache size") { main { model.cacheBytes > 0 } }
+            click("清理缓存"); waitFor("cache cleared") { main { !model.cacheBusy && model.cacheBytes == 0L } }
+            verify(!main { model.cacheError }, "Thumbnail cache clears without error")
+            verify(disk { currentStore().readMaterial(png.id).contentEquals(File(sources, png.filename).readBytes()) }, "Cache clear preserves original image")
+            main { model.closeCache() }; ready()
+            for ((language, dark) in listOf("zh-Hans" to false, "en" to true)) {
+                main { model.changeLanguage(language) }; ready()
+                main { model.preferences(theme = if (dark) ColorTheme.Ink else ColorTheme.Paper, directoryImages = DirectoryImages.Thumbnail) }; ready()
+                shell("wm size 840x1800"); shell("settings put system font_scale 2.0"); SystemClock.sleep(500)
+                main { model.go(Page.Directory) }; ready(); filterImages(png.name); longPress(png.filename)
+                val bounds = previewBounds(png.filename)
+                val display = targetContext.resources.displayMetrics
+                verify(bounds.left >= 0 && bounds.right <= display.widthPixels && bounds.top >= 0 && bounds.bottom <= display.heightPixels, "$language large-font preview remains within screen")
+                SystemClock.sleep(800); screenshot("images-$language-large-menu")
+                click(main { model.languages.context().getString(R.string.more_info) })
+                val information = previewBounds(png.filename)
+                verify(information.left >= 0 && information.right <= display.widthPixels && information.bottom <= display.heightPixels, "$language large-font information preview remains within screen")
+                SystemClock.sleep(800); screenshot("images-$language-large-information"); click(main { model.languages.context().getString(R.string.close) }); ready()
+            }
+        } finally {
+            main { model.files.close(); model.closeImage(); model.dismissImageDialogs(); model.closeCache(); model.go(Page.Recent) }; ready()
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize"); shell("settings put system font_scale $oldScale")
+            main { model.changeLanguage("zh-Hans") }; ready()
+            main { model.preferences(theme = original.theme, directoryImages = original.directoryImages) }; ready()
+            disk {
+                val owned = (ids + root).filter { currentStore().contains(it) }
+                if (owned.isNotEmpty()) currentStore().deleteAll(owned)
+            }
+            sources.listFiles().orEmpty().forEach { it.delete() }; sources.delete()
+            main { model.reload() }; ready()
+        }
     }
     private fun fileResult(): String? = main {
         val state = model.files.ui
@@ -896,7 +1136,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.backup.read(sourceUri) }; readyBackup()
             val radioLabels = nodes().filter { it.text?.toString() in listOf("单独保存", "增量更新", "完全覆盖") }.map { it.text.toString() }
             verify(radioLabels.take(2) == listOf("单独保存", "增量更新"), "Restore modes start with Separate then Incremental")
-            verify(main { model.backup.ui.inventory?.documents == 2 && model.backup.ui.inventory?.skipped == listOf("附件.png") }, "Computer ZIP without manifest validates and lists unsupported files")
+            verify(main { model.backup.ui.inventory?.documents == 2 && model.backup.ui.inventory?.skipped == listOf("附件.bin") }, "Computer ZIP without manifest validates and lists unsupported files")
             find(model.languages.context().getString(R.string.backup_separate_description))
             currentActivity?.let { activity -> main { activity.recreate() } }; ready()
             verify(main { model.backup.ui.inventory != null && model.backup.ui.mode == RestoreMode.Separate }, "Activity recreation preserves the disk-backed restore preview")
@@ -2074,7 +2314,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.ui.workspace?.entries?.count { it.parent == root && it.name in setOf(names[4], names[6]) } == 2 }, "Single folder paste consumes a multi-item copied snapshot")
             main { model.startSelection(one) }; tap("删除"); find("删除 1 项？"); tap("取消")
             verify(main { model.ui.workspace?.entry(one) != null }, "Cancel batch delete preserves the original")
-            tap("删除"); tap("删除"); ready()
+            tap("删除"); find("删除 1 项？"); tap("删除"); ready()
             verify(main { model.ui.workspace?.entry(one) == null && model.selection?.isEmpty() == true && model.clipboard?.items?.size == 2 }, "Batch delete cleans selection while preserving independent copy snapshots")
             tap("粘贴"); find("剪贴板 · 复制 2 项"); tap("取消")
             main { model.exitSelection(); model.preferences(theme = ColorTheme.Ink) }; ready()

@@ -15,6 +15,7 @@ data class SourceRange(val start: Int, val end: Int) {
 data class MdElement(
     val kind: String, val range: SourceRange, val text: String = "", val level: Int = 0,
     val destination: String = "", val children: List<MdElement> = emptyList(),
+    val title: String = "",
 ) {
     fun descendants(): Sequence<MdElement> = sequence { yield(this@MdElement); children.forEach { yieldAll(it.descendants()) } }
 }
@@ -50,7 +51,8 @@ object MarkdownParser {
             }
             return MdElement(node.javaClass.simpleName, if (node is Document) SourceRange(0, source.length) else SourceRange(start, end), text,
                 when (node) { is Heading -> node.level; is OrderedList -> node.markerStartNumber ?: 1; else -> 0 },
-                (node as? Link)?.destination.orEmpty(), children)
+                when (node) { is Link -> node.destination; is Image -> node.destination; else -> "" }, children,
+                when (node) { is Link -> node.title.orEmpty(); is Image -> node.title.orEmpty(); else -> "" })
         }
         return MarkdownDocument(source, convert(parser.parse(source)))
     }

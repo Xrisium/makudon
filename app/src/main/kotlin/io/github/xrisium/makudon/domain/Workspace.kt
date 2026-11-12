@@ -3,7 +3,8 @@ package io.github.xrisium.makudon.domain
 import java.text.Collator
 import java.util.Locale
 
-enum class DocumentKind(val extension: String) { Folder(""), Plain("txt"), Markdown("md") }
+enum class DocumentKind(val extension: String) { Folder(""), Plain("txt"), Markdown("md"), Image("") }
+enum class DirectoryImages { Thumbnail, Icon }
 enum class SortKey { Name, Modified, Created, Type, Size }
 enum class ColorTheme { System, Paper, Cream, Mist, Sage, Ink }
 enum class FontChoice { Sans, Serif, WenKai, System }
@@ -24,9 +25,13 @@ data class Entry(
     val excerpt: String = "",
     val unreadable: Boolean = false,
     val importRequestId: String? = null,
+    val image: ImageInfo? = null,
 ) {
     val folder: Boolean get() = kind == DocumentKind.Folder
-    val filename: String get() = if (folder) name else "$name.${kind.extension}"
+    val isImage: Boolean get() = kind == DocumentKind.Image
+    val textDocument: Boolean get() = kind == DocumentKind.Plain || kind == DocumentKind.Markdown
+    val extension: String get() = image?.format?.extension ?: kind.extension
+    val filename: String get() = if (folder) name else "$name.$extension"
 }
 
 data class Workspace(
@@ -42,6 +47,7 @@ data class Workspace(
     val editorTextSize: EditorTextSize = EditorTextSize.Medium,
     val showRecentExcerpt: Boolean = true,
     val recentSort: RecentSort = RecentSort.Opened,
+    val directoryImages: DirectoryImages = DirectoryImages.Thumbnail,
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {
@@ -95,7 +101,7 @@ data class Workspace(
     }
 }
 
-enum class Failure { InvalidName, Conflict, Cycle, Missing, InvalidText, TooLarge, Storage, Corrupt, Cleanup, NoChange, ClipboardTooLarge, CatalogFull, InvalidArchive, ArchiveLimit, EmptyArchive, StaleRestore, NoSnapshot, Space }
+enum class Failure { InvalidName, Conflict, Cycle, Missing, InvalidText, TooLarge, Storage, Corrupt, Cleanup, NoChange, ClipboardTooLarge, CatalogFull, InvalidArchive, ArchiveLimit, EmptyArchive, StaleRestore, NoSnapshot, Space, InvalidImage, ImageTooLarge, MissingImage }
 class WorkspaceException(val reason: Failure, val detail: String? = null) : Exception(reason.name)
 
 object TextRules {

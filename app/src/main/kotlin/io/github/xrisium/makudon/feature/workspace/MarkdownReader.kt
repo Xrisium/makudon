@@ -56,7 +56,7 @@ internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocumen
         LazyColumn(state = model.readingList, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp)) {
             items(blocks, key = { it.range.start }) { node ->
                 Column {
-                    ReadingNode(node, document, style, query, caseSensitive)
+                    ReadingNode(model, node, document, style, query, caseSensitive)
                     Box(Modifier.fillMaxWidth().height(18.dp).pointerInput(model) { detectTapGestures { model.immersive = !model.immersive } })
                 }
             }
@@ -69,7 +69,7 @@ internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocumen
 }
 
 @Composable
-private fun ReadingNode(node: MdElement, document: MarkdownDocument, style: TextStyle, query: String, caseSensitive: Boolean) {
+private fun ReadingNode(model: WorkspaceViewModel, node: MdElement, document: MarkdownDocument, style: TextStyle, query: String, caseSensitive: Boolean) {
     val colors = MaterialTheme.colorScheme
     when (node.kind) {
         "BulletList", "OrderedList" -> Column {
@@ -79,19 +79,23 @@ private fun ReadingNode(node: MdElement, document: MarkdownDocument, style: Text
                     role = Role.Checkbox; toggleableState = if (task.text.startsWith("☑")) ToggleableState.On else ToggleableState.Off
                 })) {
                     Text(task?.text?.trim() ?: if (node.kind == "OrderedList") "${node.level + index}." else "•", Modifier.widthIn(min = if (task == null) 24.dp else 32.dp).clearAndSetSemantics { }, style = style)
-                    Column(Modifier.weight(1f)) { child.children.filter { it.kind != "TaskListItemMarker" }.forEach { ReadingNode(it, document, style, query, caseSensitive) } }
+                    Column(Modifier.weight(1f)) { child.children.filter { it.kind != "TaskListItemMarker" }.forEach { ReadingNode(model, it, document, style, query, caseSensitive) } }
                 }
             }
         }
         "BlockQuote" -> Row(Modifier.fillMaxWidth()) {
             Box(Modifier.width(3.dp).heightIn(min = 32.dp).background(colors.outlineVariant))
-            Column(Modifier.padding(start = 12.dp).weight(1f)) { node.children.forEach { ReadingNode(it, document, style, query, caseSensitive) } }
+            Column(Modifier.padding(start = 12.dp).weight(1f)) { node.children.forEach { ReadingNode(model, it, document, style, query, caseSensitive) } }
         }
         "TableBlock" -> MarkdownTable(node, document, style, query = query, caseSensitive = caseSensitive)
         "ThematicBreak" -> HorizontalDivider(Modifier.padding(vertical = 12.dp))
         "FencedCodeBlock", "IndentedCodeBlock" -> Text(mdText(node, document, colors.primary, query, caseSensitive, colors.tertiaryContainer),
             Modifier.fillMaxWidth().background(colors.surfaceVariant).horizontalScroll(rememberScrollState()).padding(12.dp), style = style.copy(fontFamily = FontFamily.Monospace))
         else -> {
+            if (node.kind == "Paragraph" && node.children.size == 1 && node.children.single().kind == "Image" && ImageReferences.key(node.children.single().destination) != null) {
+                MarkdownImage(model, node.children.single())
+                return
+            }
             val text = if (node.kind in setOf("HtmlBlock", "HtmlInline") || (node.children.isEmpty() && node.text.isEmpty())) androidx.compose.ui.text.AnnotatedString(document.raw(node))
                 else mdText(node, document, colors.primary, query, caseSensitive, colors.tertiaryContainer)
             val headingStyle = if (node.kind == "Heading") style.copy(fontSize = (style.fontSize.value * when (node.level) { 1 -> 1.45f; 2 -> 1.25f; 3 -> 1.15f; else -> 1.05f }).sp, fontWeight = FontWeight.Bold) else style

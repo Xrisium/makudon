@@ -25,6 +25,14 @@ data class PreparedArchive(val directory: File, val inventory: ArchiveInventory)
         return File(directory, "$id.txt")
     }
     fun text(id: String): String = TextRules.decode(AtomicDisk().read(body(id), TextRules.MAX_BYTES))
+    fun material(id: String): ByteArray {
+        val node = inventory.nodes.firstOrNull { it.id == id } ?: throw WorkspaceException(Failure.InvalidArchive)
+        return AtomicDisk().read(body(id), if (node.image != null) ImageRules.MAX_BYTES else TextRules.MAX_BYTES)
+    }
+    fun restoredText(id: String, imagePaths: Map<String, String>): String {
+        val node = inventory.nodes.first { it.id == id }
+        return ImageReferences.rewrite(text(id)) { image -> ImageReferences.resolve(node.sourcePath, image.destination)?.let(imagePaths::get)?.let(ImageReferences::uri) }
+    }
 }
 data class ExportItem(val entry: Entry, val path: String)
 data class ArchiveExport(val items: List<ExportItem>, val renames: List<ArchiveRename>)
@@ -51,7 +59,7 @@ object LibraryArchive {
         }
     }
 
-    fun read(file: File, destination: File, check: () -> Unit = {}, allowEmpty: Boolean = false, imported: Boolean = true, naming: NameSuffix = NameSuffix.Numeric): PreparedArchive {
+    fun read(file: File, destination: File, check: () -> Unit = {}, allowEmpty: Boolean = false, imported: Boolean = true, naming: NameSuffix = NameSuffix.Numeric, validateImage: (ByteArray) -> Unit = {}): PreparedArchive {
         if (file.length() > MAX_BYTES) throw WorkspaceException(Failure.ArchiveLimit)
         checkDirectory(file)
         if (!destination.mkdirs() && !destination.isDirectory) throw WorkspaceException(Failure.Storage)
@@ -91,6 +99,7 @@ object LibraryArchive {
                         entry.isDirectory -> DocumentKind.Folder
                         path.endsWith(".md", true) -> DocumentKind.Markdown
                         path.endsWith(".txt", true) -> DocumentKind.Plain
+                        ImageFormat.fromName(path) != null -> DocumentKind.Image
                         else -> null
                     }
                     val crc = CRC32()
@@ -104,7 +113,7 @@ object LibraryArchive {
                             if (n < 0) break
                             size += n; expanded += n
                             if (expanded > MAX_BYTES) throw WorkspaceException(Failure.ArchiveLimit)
-                            if (content != null && size > TextRules.MAX_BYTES) throw WorkspaceException(Failure.TooLarge)
+                            if (content != null && size > if (kind == DocumentKind.Image) ImageRules.MAX_BYTES else TextRules.MAX_BYTES) throw WorkspaceException(if (kind == DocumentKind.Image) Failure.ImageTooLarge else Failure.TooLarge)
                             crc.update(buffer, 0, n)
                             content?.write(buffer, 0, n)
                         }
@@ -120,12 +129,14 @@ object LibraryArchive {
                     } else if (kind == DocumentKind.Folder) {
                         folder(path, modified)
                     } else {
-                        val name = path.substringAfterLast('/').dropLast(kind.extension.length + 1)
+                        val name = path.substringAfterLast('/').substringBeforeLast('.')
                         TextRules.checkName(name)
                         val parent = if (parentPath.isEmpty()) null else folder(parentPath, modified)
-                        val text = TextRules.decode(checkNotNull(content).toByteArray(), imported = imported)
-                        val bytes = TextRules.bytes(text)
-                        val node = ArchiveNode(UUID.randomUUID().toString(), name, parent, kind, modified, bytes.size, path)
+                        val original = checkNotNull(content).toByteArray()
+                        val image = if (kind == DocumentKind.Image) ImageRules.inspect(original).also { validateImage(original) } else null
+                        if (image != null && ImageFormat.fromName(path) != image.format) throw WorkspaceException(Failure.InvalidImage)
+                        val bytes = if (image != null) original else TextRules.bytes(TextRules.decode(original, imported = imported))
+                        val node = ArchiveNode(UUID.randomUUID().toString(), name, parent, kind, modified, bytes.size, path, image)
                         nodes[path] = node
                         AtomicDisk().write(File(destination, "${node.id}.txt"), bytes)
                     }
@@ -152,7 +163,7 @@ object LibraryArchive {
         }
         val paths = mutableMapOf<String?, String>(null to "")
         normalized.forEach { node ->
-            val segment = node.name + if (node.kind == DocumentKind.Folder) "" else ".${node.kind.extension}"
+            val segment = node.name + if (node.kind == DocumentKind.Folder) "" else ".${node.image?.format?.extension ?: node.kind.extension}"
             val path = (paths[node.parent]?.let { if (it.isEmpty()) "" else "$it/" } ?: throw WorkspaceException(Failure.InvalidArchive)) + segment
             paths[node.id] = path
             if (path != node.sourcePath) renamed += ArchiveRename(node.sourcePath, path)
@@ -202,7 +213,7 @@ object LibraryArchive {
                 var segment = entry.filename
                 var n = 1
                 while (!used.add(segment.lowercase(Locale.ROOT))) {
-                    segment = naming.append(entry.name, n) + if (entry.folder) "" else ".${entry.kind.extension}"
+                    segment = naming.append(entry.name, n) + if (entry.folder) "" else ".${entry.extension}"
                     n++
                 }
                 val path = prefix + segment
@@ -215,6 +226,14 @@ object LibraryArchive {
         }
         if (items.size != workspace.entries.size - 1 || items.size > MAX_ENTRIES) throw WorkspaceException(Failure.InvalidArchive)
         return ArchiveExport(items, renames)
+    }
+    fun documentPlan(workspace: Workspace, id: String, text: String): ArchiveExport {
+        val document = workspace.entry(id)?.takeIf { it.kind == DocumentKind.Markdown } ?: throw WorkspaceException(Failure.Missing)
+        val images = ImageReferences.keys(text).map { key -> workspace.entries.firstOrNull { it.image?.key == key && !it.unreadable } ?: throw WorkspaceException(Failure.MissingImage) }
+        val folder = Entry(UUID.randomUUID().toString(), "images", Workspace.ROOT, DocumentKind.Folder, System.currentTimeMillis())
+        return ArchiveExport(listOf(ExportItem(document, document.filename)) +
+            (if (images.isEmpty()) emptyList() else listOf(ExportItem(folder, "images"))) +
+            images.map { ExportItem(it, "images/${checkNotNull(it.image).key}.${it.extension}") }, emptyList())
     }
 
     private fun logicalPath(workspace: Workspace, entry: Entry): String {
@@ -229,8 +248,12 @@ object LibraryArchive {
     }
 
     fun write(file: File, plan: ArchiveExport, read: (String) -> String, check: () -> Unit = {}) {
+        writeMaterials(file, plan, { TextRules.bytes(read(it)) }, check)
+    }
+    fun writeMaterials(file: File, plan: ArchiveExport, read: (String) -> ByteArray, check: () -> Unit = {}) {
         var expanded = 0L
         val expected = mutableMapOf<String, String>()
+        val images = plan.items.mapNotNull { item -> item.entry.image?.let { it.key to item.path } }.toMap()
         FileOutputStream(file).use { disk ->
             val bounded = object : FilterOutputStream(disk) {
                 var size = 0L
@@ -244,7 +267,13 @@ object LibraryArchive {
                     val entry = ZipEntry(item.path + if (item.entry.folder) "/" else "").apply { time = item.entry.modified }
                     zip.putNextEntry(entry)
                     if (!item.entry.folder) {
-                        val bytes = TextRules.bytes(read(item.entry.id))
+                        val material = read(item.entry.id)
+                        val bytes = if (item.entry.kind == DocumentKind.Markdown) TextRules.bytes(ImageReferences.rewrite(TextRules.decode(material)) { image ->
+                            ImageReferences.key(image.destination)?.let(images::get)?.let { ImageReferences.relative(item.path, it) }
+                        }) else material
+                        if (item.entry.isImage) {
+                            if (ImageRules.inspect(bytes, checkNotNull(item.entry.image).key) != item.entry.image) throw WorkspaceException(Failure.InvalidImage)
+                        } else TextRules.decode(bytes)
                         expanded += bytes.size
                         if (expanded > MAX_BYTES) throw WorkspaceException(Failure.ArchiveLimit)
                         zip.write(bytes)
@@ -258,7 +287,7 @@ object LibraryArchive {
         val verification = File(file.parentFile, "verify-${UUID.randomUUID()}")
         try {
             val parsed = read(file, verification, check, allowEmpty = true, imported = false)
-            val actual = parsed.inventory.nodes.filter { it.kind != DocumentKind.Folder }.associate { it.sourcePath to digest(TextRules.bytes(parsed.text(it.id))) }
+            val actual = parsed.inventory.nodes.filter { it.kind != DocumentKind.Folder }.associate { it.sourcePath to digest(parsed.material(it.id)) }
             if (actual != expected || parsed.inventory.nodes.size != plan.items.size) throw WorkspaceException(Failure.InvalidArchive)
         } finally {
             if (verification.exists() && !verification.deleteRecursively()) throw WorkspaceException(Failure.Cleanup)

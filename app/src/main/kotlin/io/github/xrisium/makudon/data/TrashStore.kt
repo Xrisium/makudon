@@ -36,6 +36,7 @@ class TrashStore(
     private val index = File(this.directory, "index.properties")
     private val uuid = Regex("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
     private var state: State? = null
+    private var legacyIndex = false
     val ready: Boolean get() = state != null && state?.pending == null
     private fun material(id: String): File {
         if (!uuid.matches(id)) throw WorkspaceException(Failure.Corrupt)
@@ -45,12 +46,13 @@ class TrashStore(
     private fun encode(next: State): ByteArray {
         validate(next)
         val p = Properties()
-        p["schema"] = "1"; p["count"] = next.nodes.size.toString()
+        p["schema"] = "2"; p["count"] = next.nodes.size.toString()
         next.nodes.forEachIndexed { n, node ->
             val e = node.entry
             p["$n.id"] = node.id; p["$n.parent"] = node.parent.orEmpty(); p["$n.location"] = node.location; p["$n.deleted"] = node.deleted.toString()
             p["$n.original"] = e.id; p["$n.originalParent"] = e.parent.orEmpty(); p["$n.name"] = e.name; p["$n.kind"] = e.kind.name
             p["$n.created"] = e.created.toString(); p["$n.opened"] = e.opened.toString(); p["$n.modified"] = e.modified.toString(); p["$n.bytes"] = e.bytes.toString()
+            e.image?.let { p["$n.image"] = it.encoded() }
         }
         p["garbage"] = next.garbage.joinToString(",")
         p["sources"] = next.sources.joinToString(",") { "${it.library}/${it.id}" }
@@ -65,7 +67,11 @@ class TrashStore(
     }
     private fun publish(next: State) {
         val bytes = encode(next)
-        try { atomic.write(index, bytes); state = next } catch (e: Exception) { state = null; throw e }
+        try {
+            val backup = File(directory, "index.schema1.bak")
+            if (legacyIndex && !backup.exists()) atomic.write(backup, atomic.read(index, 8_388_608))
+            atomic.write(index, bytes); legacyIndex = false; state = next
+        } catch (e: Exception) { state = null; throw e }
     }
     private fun publishPending(next: State) {
         // Both journal outcomes must fit before the workspace receipt can be committed.
@@ -78,6 +84,8 @@ class TrashStore(
         if (byId.size != s.nodes.size) throw WorkspaceException(Failure.Corrupt)
         s.nodes.forEach { node ->
             material(node.id); TextRules.checkName(node.entry.name)
+            if (node.entry.isImage != (node.entry.image != null)) throw WorkspaceException(Failure.Corrupt)
+            node.entry.image?.validate()
             if (!uuid.matches(node.entry.id) && node.entry.id != Workspace.LEGACY_INBOX) throw WorkspaceException(Failure.Corrupt)
             if (node.parent != null && byId[node.parent]?.entry?.folder != true) throw WorkspaceException(Failure.Corrupt)
             val seen = mutableSetOf(node.id); var parent = node.parent
@@ -99,10 +107,11 @@ class TrashStore(
             val p = Properties().apply { load(StringReader(encoded)) }
             fun value(key: String) = p.getProperty(key) ?: throw WorkspaceException(Failure.Corrupt)
             fun list(key: String) = p.getProperty(key).orEmpty().split(',').filter { it.isNotEmpty() }
-            if (value("schema") != "1") throw WorkspaceException(Failure.Corrupt)
+            if (value("schema") !in setOf("1", "2")) throw WorkspaceException(Failure.Corrupt)
+            legacyIndex = value("schema") == "1"
             val count = value("count").toInt().takeIf { it in 0..20_000 } ?: throw WorkspaceException(Failure.Corrupt)
             val nodes = (0 until count).map { n ->
-                val e = Entry(value("$n.original"), value("$n.name"), value("$n.originalParent").ifEmpty { null }, DocumentKind.valueOf(value("$n.kind")), value("$n.created").toLong(), value("$n.opened").toLong(), value("$n.modified").toLong(), value("$n.bytes").toInt())
+                val e = Entry(value("$n.original"), value("$n.name"), value("$n.originalParent").ifEmpty { null }, DocumentKind.valueOf(value("$n.kind")), value("$n.created").toLong(), value("$n.opened").toLong(), value("$n.modified").toLong(), value("$n.bytes").toInt(), image = p.getProperty("$n.image")?.let(ImageInfo::decode))
                 TrashNode(value("$n.id"), e, value("$n.parent").ifEmpty { null }, value("$n.location"), value("$n.deleted").toLong())
             }
             val pending = p.getProperty("pending.token")?.let { Pending(it, value("pending.library"), value("pending.deleting").toBooleanStrict(), list("pending.nodes"), list("pending.documents")) }
@@ -141,8 +150,12 @@ class TrashStore(
     }
     private fun attempt(action: () -> Boolean): Boolean = try { action() } catch (_: java.io.IOException) { false } catch (_: SecurityException) { false }
     fun read(id: String): String {
-        val node = current().nodes.firstOrNull { it.id == id && !it.entry.folder } ?: throw WorkspaceException(Failure.Missing)
+        val node = current().nodes.firstOrNull { it.id == id && it.entry.textDocument } ?: throw WorkspaceException(Failure.Missing)
         return TextRules.decode(atomic.read(File(material(node.id), "body"), TextRules.MAX_BYTES))
+    }
+    fun imageFile(id: String): File {
+        val node = current().nodes.firstOrNull { it.id == id && it.entry.isImage } ?: throw WorkspaceException(Failure.Missing)
+        return File(material(node.id), "body")
     }
     fun delete(ids: Collection<String>): TrashInventory {
         val s = current(); if (s.pending != null) throw WorkspaceException(Failure.Corrupt)
@@ -156,7 +169,7 @@ class TrashStore(
         // Register unpublished material for cleanup before writing any bytes.
         publish(s.copy(garbage = s.garbage + mapping.values))
         nodes.filter { !it.entry.folder }.forEach { node ->
-            atomic.write(File(material(node.id), "body"), TextRules.bytes(library.store.read(node.entry.id)))
+            atomic.write(File(material(node.id), "body"), library.store.readMaterial(node.entry.id))
         }
         val token = UUID.randomUUID().toString()
         val documents = nodes.filter { !it.entry.folder }.map { it.entry.id }
@@ -182,6 +195,19 @@ class TrashStore(
             used += id; node.id to id
         }
         val additions = mutableListOf<Entry>()
+        val imageKeys = workspace.entries.mapNotNull { it.image?.key }.toMutableSet()
+        val imageNodes = nodes.filter { it.entry.isImage }
+        val imageMapping = mutableMapOf<String, String>()
+        imageNodes.forEach { node ->
+            val image = checkNotNull(node.entry.image)
+            val key = if (image.key in imageKeys) UUID.randomUUID().toString() else image.key
+            imageKeys += key; imageMapping[node.id] = key
+        }
+        fun referencesFor(source: TrashNode): Map<String, String> = imageNodes.groupBy { checkNotNull(it.entry.image).key }.mapNotNull { (key, candidates) ->
+            // Repeated deletes across library generations can retain the same logical key.
+            val candidate = candidates.singleOrNull() ?: candidates.singleOrNull { it.deleted == source.deleted }
+            candidate?.let { key to imageMapping.getValue(it.id) }
+        }.toMap()
         fun append(node: TrashNode) {
             val isRoot = node in roots
             val parent = if (isRoot) node.entry.parent?.takeIf { workspace.entry(it)?.folder == true } ?: Workspace.ROOT else mapping[node.parent] ?: throw WorkspaceException(Failure.Corrupt)
@@ -192,7 +218,8 @@ class TrashStore(
                 if (base.lastOrNull()?.isHighSurrogate() == true) base = base.dropLast(1)
                 name = base + suffix
             }
-            additions += node.entry.copy(id = mapping.getValue(node.id), name = name, parent = parent, importRequestId = null)
+            additions += node.entry.copy(id = mapping.getValue(node.id), name = name, parent = parent, importRequestId = null,
+                image = node.entry.image?.let { it.copy(key = imageMapping.getValue(node.id)) })
             nodes.filter { it.parent == node.id }.forEach(::append)
         }
         roots.forEach(::append)
@@ -202,7 +229,8 @@ class TrashStore(
         try {
             library.store.restoreFromTrash(additions, token) { e ->
                 val source = material(sources.getValue(e.id).id)
-                atomic.read(File(source, "body"), TextRules.MAX_BYTES)
+                val bytes = atomic.read(File(source, "body"), if (e.isImage) ImageRules.MAX_BYTES else TextRules.MAX_BYTES)
+                if (e.kind == DocumentKind.Markdown) TextRules.bytes(ImageReferences.remap(TextRules.decode(bytes), referencesFor(sources.getValue(e.id)))) else bytes
             }
         } catch (e: Exception) { state = null; throw e }
         reconcile(); retryCleanup()

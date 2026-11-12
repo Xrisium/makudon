@@ -47,6 +47,7 @@ private val paragraphTools = listOf(
     FormatTool(R.string.md_outdent, R.drawable.ic_list_indent_decrease, MarkdownAction.Outdent),
 )
 private val insertTools = listOf(
+    FormatTool(R.string.image_insert, R.drawable.ic_image),
     FormatTool(R.string.md_inline_code, R.drawable.ic_code, MarkdownAction.InlineCode),
     FormatTool(R.string.md_code_block, R.drawable.ic_square_code, MarkdownAction.CodeBlock),
     FormatTool(R.string.md_rule, R.drawable.ic_minus, MarkdownAction.Rule),
@@ -109,6 +110,7 @@ private fun MarkdownToolRow(model: WorkspaceViewModel, enabled: Boolean, group: 
                             if (!model.ui.busy && !model.ui.transitioning && !model.ui.storageBlocked) {
                                 if (tool.action != null) { onMenu(0); model.format(tool.action) }
                                 else if (tool.label == R.string.md_link) { onMenu(0); onLink() }
+                                else if (tool.label == R.string.image_insert) { onMenu(0); model.beginImageInsert() }
                                 else { onAnchor(bounds); onMenu(if (menu == tool.label) 0 else tool.label) }
                             }
                         }, enabled = enabled, modifier = Modifier.size(48.dp).semantics { contentDescription = name; this.selected = selected },

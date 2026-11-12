@@ -38,7 +38,7 @@ data class RecentCalendar(val today: LocalDate, val zone: ZoneId) {
 }
 
 fun Workspace.recentGroups(calendar: RecentCalendar): Map<RecentPeriod, List<Entry>> = entries
-    .filter { !it.folder && it.opened > 0 }
+    .filter { it.textDocument && it.opened > 0 }
     .sortedByDescending { recentTime(it) }
     .groupBy { calendar.period(recentTime(it)) }
 

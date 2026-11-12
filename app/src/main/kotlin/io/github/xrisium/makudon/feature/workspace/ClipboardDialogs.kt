@@ -78,6 +78,7 @@ internal fun ClipboardDialogs(model: WorkspaceViewModel) {
                         if (entry.folder) Text(stringResource(R.string.includes_children), style = MaterialTheme.typography.labelSmall)
                     } }
                     Text(stringResource(R.string.delete_many_warning, workspace.entries.count { it.folder && it.id in removed }, workspace.entries.count { !it.folder && it.id in removed }))
+                    ImageDeleteImpact(model)
                     OperationFailure(model)
                 }
             },
