@@ -79,6 +79,34 @@ class ImagesTest {
         assertEquals(DirectoryImages.Icon, WorkspaceStore(dir).load().directoryImages)
         assertEquals("原文", upgraded.read(doc))
     }
+    @Test fun thumbnailPreferencesDefaultOnPersistIndependentlyAndSurviveFailedWrites() {
+        val dir = temp.newFolder()
+        var failCatalog = false
+        val store = WorkspaceStore(dir, object : AtomicDisk() {
+            override fun write(file: File, bytes: ByteArray) {
+                if (failCatalog && file.name == "catalog.properties") throw IOException("injected")
+                super.write(file, bytes)
+            }
+        })
+        val initial = store.load()
+        assertEquals(ThumbnailCaching(), initial.thumbnailCaching)
+        val catalog = File(dir, "catalog.properties")
+        val legacy = Properties().apply { catalog.reader(Charsets.UTF_8).use { load(it) } }
+        listOf("cacheDirectoryThumbnails", "cacheMenuThumbnails", "cacheInformationThumbnails").forEach { legacy.remove(it) }
+        catalog.writer(Charsets.UTF_8).use { legacy.store(it, "without optional preferences") }
+        assertEquals(ThumbnailCaching(), WorkspaceStore(dir).load().thumbnailCaching)
+        for (choice in listOf(ThumbnailCaching(false, true, true), ThumbnailCaching(false, false, true), ThumbnailCaching(false, false, false))) {
+            store.settings(initial.theme, initial.sort, initial.descending, initial.foldersFirst, thumbnailCaching = choice)
+            assertEquals(choice, WorkspaceStore(dir).load().thumbnailCaching)
+        }
+        failCatalog = true
+        try {
+            store.settings(initial.theme, initial.sort, initial.descending, initial.foldersFirst, thumbnailCaching = ThumbnailCaching())
+            fail("write should fail")
+        } catch (_: IOException) { }
+        expect(Failure.Corrupt) { store.refresh() }
+        assertEquals(ThumbnailCaching(false, false, false), WorkspaceStore(dir).load().thumbnailCaching)
+    }
     @Test fun copyingDocumentSharesImageButCopyingBatchRemapsOnlyInternalReferences() {
         val lib = library(); val folder = lib.store.create("源", Workspace.ROOT, DocumentKind.Folder)
         val image = add(lib.store, folder); val key = checkNotNull(image.image).key

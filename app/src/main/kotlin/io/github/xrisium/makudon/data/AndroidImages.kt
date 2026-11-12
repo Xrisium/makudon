@@ -10,6 +10,8 @@ import android.graphics.Matrix
 import android.os.Build
 import android.util.LruCache
 import io.github.xrisium.makudon.domain.*
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -64,15 +66,19 @@ class ImageLoader(private val application: Application) : ComponentCallbacks2 {
     }
     private val disk = ThumbnailDiskCache(File(application.cacheDir, "image-thumbnails"))
     private val decodeLock = Mutex()
+    @Volatile private var caching = ThumbnailCaching()
+    fun configure(preferences: ThumbnailCaching) { if (caching != preferences) caching = preferences }
     init { application.registerComponentCallbacks(this) }
-    suspend fun load(info: ImageInfo, targetPixels: Int, original: suspend () -> File): Bitmap = withContext(Dispatchers.IO) {
+    suspend fun load(info: ImageInfo, targetPixels: Int, usage: ThumbnailUsage = ThumbnailUsage.Content, original: suspend () -> File): Bitmap = withContext(Dispatchers.IO) {
         val size = when { targetPixels <= 128 -> 128; targetPixels <= 512 -> 512; else -> 1024 }
         val key = "${info.sha256}-$size-v1.png"
-        memory.get(key)?.let { return@withContext it }
+        if (caching.enabled(usage)) memory.get(key)?.let { return@withContext it }
         val generation = disk.generation
         decodeLock.withLock {
-            memory.get(key)?.let { return@withLock it }
-            val cached = disk.read(key)?.let { data ->
+            val policy = caching
+            fun cacheAllowed() = caching === policy && policy.enabled(usage)
+            if (cacheAllowed()) memory.get(key)?.let { return@withLock it }
+            val cached = (if (cacheAllowed()) disk.read(key) else null)?.let { data ->
                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(data, 0, data.size, options)
                 if (options.outWidth !in 1..1024 || options.outHeight !in 1..1024) null
@@ -82,11 +88,12 @@ class ImageLoader(private val application: Application) : ComponentCallbacks2 {
                 if (file.length() > ImageRules.MAX_BYTES || ImageRules.digest(AtomicDisk().read(file, ImageRules.MAX_BYTES)) != info.sha256) throw WorkspaceException(Failure.InvalidImage)
                 AndroidImages.decode(file, size, info.orientation)
             }
-            if (cached == null) {
+            currentCoroutineContext().ensureActive()
+            if (cached == null && cacheAllowed()) {
                 val bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
-                disk.put(key, bytes, generation)
+                disk.put(key, bytes, generation, ::cacheAllowed)
             }
-            disk.current(generation) { memory.put(key, bitmap) }
+            disk.current(generation) { if (cacheAllowed()) memory.put(key, bitmap) }
             bitmap
         }
     }

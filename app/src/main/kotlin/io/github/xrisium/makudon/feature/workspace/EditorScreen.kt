@@ -142,9 +142,9 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             Box {
                 Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = controlsEnabled, onClick = { if (editable) more = !more })
                 DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 260.dp, max = 300.dp)) {
+                    EditorTextSizePicker(textSize, enabled = controlsEnabled) { if (editable) model.preferences(editorTextSize = it) }
                     DropdownMenuItem(text = { Text(stringResource(if (reading) R.string.md_find_reading else R.string.md_find)) }, leadingIcon = { Glyph(R.drawable.ic_search) }, onClick = { findOpen = true; more = false })
                     if (reading) DropdownMenuItem(text = { Text(stringResource(R.string.md_immersive)) }, onClick = { model.immersive = true; more = false })
-                    EditorTextSizePicker(textSize, enabled = controlsEnabled) { if (editable) model.preferences(editorTextSize = it) }
                     HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
                     DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("info") } })
                     DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("rename") } })

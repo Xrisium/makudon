@@ -40,15 +40,16 @@ import kotlinx.coroutines.CancellationException
 private val imageMimes = arrayOf("image/jpeg", "image/png", "image/webp")
 
 @Composable
-internal fun ImageThumbnail(model: WorkspaceViewModel, target: WorkspaceViewModel.ImageTarget, modifier: Modifier = Modifier, pixels: Int = 128, showError: Boolean = false) {
+internal fun ImageThumbnail(model: WorkspaceViewModel, target: WorkspaceViewModel.ImageTarget, modifier: Modifier = Modifier, pixels: Int = 128, showError: Boolean = false, usage: ThumbnailUsage = ThumbnailUsage.Content) {
     val info = target.entry.image ?: return
-    var bitmap by remember(info.sha256, pixels, target.entry.unreadable) { mutableStateOf<Bitmap?>(null) }
+    val cacheEnabled = model.ui.workspace?.thumbnailCaching?.enabled(usage) ?: true
+    var bitmap by remember(info.sha256, pixels, target.entry.unreadable, usage, cacheEnabled) { mutableStateOf<Bitmap?>(null) }
     var failed by remember(info.sha256, pixels) { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(info.sha256, pixels, retry, target.entry.unreadable) {
+    LaunchedEffect(info.sha256, pixels, retry, target.entry.unreadable, usage, cacheEnabled) {
         failed = false
         if (target.entry.unreadable) { failed = true; return@LaunchedEffect }
-        try { bitmap = model.images.load(info, pixels) { model.imageFile(target) } }
+        try { bitmap = model.images.load(info, pixels, usage) { model.imageFile(target) } }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { failed = true }
     }
@@ -63,7 +64,7 @@ internal fun ImageThumbnail(model: WorkspaceViewModel, target: WorkspaceViewMode
 }
 
 @Composable
-internal fun ImagePanelPreview(model: WorkspaceViewModel, entry: Entry, information: Boolean = false) {
+internal fun ImagePanelPreview(model: WorkspaceViewModel, entry: Entry, information: Boolean = false, target: WorkspaceViewModel.ImageTarget = WorkspaceViewModel.ImageTarget(entry)) {
     val info = entry.image ?: return
     val density = LocalDensity.current
     val insets = WindowInsets.safeDrawing.asPaddingValues()
@@ -75,8 +76,8 @@ internal fun ImagePanelPreview(model: WorkspaceViewModel, entry: Entry, informat
     // DropdownMenu queries intrinsic sizes. A regular Layout supports those queries;
     // BoxWithConstraints would introduce unsupported subcomposition inside the menu.
     Layout(modifier = Modifier.fillMaxWidth(), content = {
-        ImageThumbnail(model, WorkspaceViewModel.ImageTarget(entry), Modifier.clip(RoundedCornerShape(12.dp)).testTag(if (information) "image-info-preview" else "image-menu-preview"),
-            pixels = maxOf(widthLimit, heightLimit), showError = true)
+        ImageThumbnail(model, target, Modifier.clip(RoundedCornerShape(12.dp)).testTag(if (information) "image-info-preview" else "image-menu-preview"),
+            pixels = maxOf(widthLimit, heightLimit), showError = true, usage = if (information) ThumbnailUsage.Information else ThumbnailUsage.Menu)
     }) { children, constraints ->
         val available = minOf(widthLimit, if (constraints.hasBoundedWidth) constraints.maxWidth else widthLimit).coerceAtLeast(1)
         val width = minOf(available, (heightLimit * ratio).toInt().coerceAtLeast(1))
@@ -120,7 +121,7 @@ internal fun DeviceImageImportButton(model: WorkspaceViewModel) {
 }
 
 @Composable
-internal fun ImageDialogs(model: WorkspaceViewModel) {
+internal fun ImageDialogs(model: WorkspaceViewModel, onAction: (Entry, String) -> Unit) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument(), model::importImage)
     if (model.imageSourceDialog) AlertDialog(onDismissRequest = model::dismissImageDialogs,
         title = { Text(stringResource(R.string.image_insert)) }, text = {
@@ -148,25 +149,21 @@ internal fun ImageDialogs(model: WorkspaceViewModel) {
             }
         }, confirmButton = { TextButton(onClick = model::dismissImageDialogs) { Text(stringResource(R.string.cancel)) } })
     }
-    if (model.cacheDialog) AlertDialog(onDismissRequest = model::closeCache, title = { Text(stringResource(R.string.image_cache)) }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(Formatter.formatFileSize(LocalContext.current, model.cacheBytes))
-            Text(stringResource(R.string.image_cache_hint))
-            if (model.cacheBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (model.cacheError) Text(stringResource(R.string.image_cache_error), color = MaterialTheme.colorScheme.error)
-        }
-    }, confirmButton = { TextButton(onClick = model::clearCache, enabled = !model.cacheBusy && model.cacheBytes > 0) { Text(stringResource(R.string.image_cache_clear)) } },
-        dismissButton = { TextButton(onClick = model::closeCache, enabled = !model.cacheBusy) { Text(stringResource(R.string.close)) } })
-    model.imageViewer?.let { ImageViewer(model, it) }
+    model.imageViewer?.let { ImageViewer(model, it, onAction) }
 }
 
 @Composable
-private fun ImageViewer(model: WorkspaceViewModel, target: WorkspaceViewModel.ImageTarget) {
-    var bitmap by remember(target) { mutableStateOf<Bitmap?>(null) }
-    var failed by remember(target) { mutableStateOf(false) }
-    var retry by remember(target) { mutableIntStateOf(0) }
-    LaunchedEffect(target, retry) {
+private fun ImageViewer(model: WorkspaceViewModel, target: WorkspaceViewModel.ImageTarget, onAction: (Entry, String) -> Unit) {
+    val identity = target.entry.id to target.trashId
+    val image = target.entry.image
+    var more by remember(identity) { mutableStateOf(false) }
+    var trashInfo by remember(identity) { mutableStateOf(false) }
+    var bitmap by remember(identity, image, target.entry.unreadable) { mutableStateOf<Bitmap?>(null) }
+    var failed by remember(identity, image) { mutableStateOf(false) }
+    var retry by remember(identity, image) { mutableIntStateOf(0) }
+    LaunchedEffect(identity, image, retry, target.entry.unreadable) {
         failed = false
+        if (target.entry.unreadable) { failed = true; return@LaunchedEffect }
         try { bitmap = model.images.full(checkNotNull(target.entry.image)) { model.imageFile(target) } }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { failed = true }
@@ -174,12 +171,30 @@ private fun ImageViewer(model: WorkspaceViewModel, target: WorkspaceViewModel.Im
     Dialog(onDismissRequest = model::closeImage, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                PageBar(target.entry.filename, model::closeImage) { Tool(R.drawable.ic_download, stringResource(R.string.image_export), enabled = !model.ui.busy, onClick = model::exportImage) }
+                PageBar(target.entry.filename, model::closeImage) {
+                    Box {
+                        Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = !model.ui.busy, onClick = { more = !more })
+                        DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = MaterialTheme.colorScheme.surface, modifier = Modifier.widthIn(min = 260.dp, max = 300.dp).testTag("image-viewer-menu")) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = !model.ui.busy,
+                                onClick = { more = false; if (target.trashId != null) trashInfo = true else onAction(target.entry, "info") })
+                            if (target.trashId == null) DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = !model.ui.busy,
+                                onClick = { more = false; onAction(target.entry, "rename") })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.image_export)) }, leadingIcon = { Glyph(R.drawable.ic_download) }, enabled = !model.ui.busy,
+                                onClick = { more = false; model.exportImage() })
+                            if (target.trashId == null) {
+                                HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
+                                DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }, leadingIcon = { Glyph(R.drawable.ic_trash_2, tint = MaterialTheme.colorScheme.error) }, enabled = !model.ui.busy,
+                                    onClick = { more = false; onAction(target.entry, "delete") })
+                            }
+                        }
+                    }
+                }
+                WorkspaceNotice(model)
                 Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("image-viewer"), contentAlignment = Alignment.Center) {
                     val loaded = bitmap
                     if (loaded != null) {
-                        var scale by remember(target) { mutableFloatStateOf(1f) }
-                        var offset by remember(target) { mutableStateOf(Offset.Zero) }
+                        var scale by remember(identity, image) { mutableFloatStateOf(1f) }
+                        var offset by remember(identity, image) { mutableStateOf(Offset.Zero) }
                         var viewport by remember { mutableStateOf(IntSize.Zero) }
                         fun bounded(value: Offset, zoom: Float): Offset {
                             val fit = minOf(viewport.width.toFloat() / loaded.width, viewport.height.toFloat() / loaded.height)
@@ -191,7 +206,7 @@ private fun ImageViewer(model: WorkspaceViewModel, target: WorkspaceViewModel.Im
                             scale = (scale * zoom).coerceIn(1f, 8f); offset = bounded(offset + pan, scale)
                         }
                         Image(loaded.asImageBitmap(), target.entry.filename, Modifier.fillMaxSize().onSizeChanged { viewport = it; offset = bounded(offset, scale) }
-                            .transformable(transform).pointerInput(target) { detectTapGestures(onDoubleTap = { scale = 1f; offset = Offset.Zero }) }
+                            .transformable(transform).pointerInput(identity) { detectTapGestures(onDoubleTap = { scale = 1f; offset = Offset.Zero }) }
                             .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y }, contentScale = ContentScale.Fit)
                     } else if (failed) Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.image_unavailable)); TextButton(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
@@ -200,17 +215,23 @@ private fun ImageViewer(model: WorkspaceViewModel, target: WorkspaceViewModel.Im
             }
         }
     }
+    if (trashInfo) model.ui.workspace?.let { workspace ->
+        AlertDialog(onDismissRequest = { trashInfo = false }, title = { Text(stringResource(R.string.detailed_info)) }, text = {
+            ImageEntryDetails(model, target.entry, workspace, target,
+                model.trashInventory.nodes.firstOrNull { it.id == target.trashId }?.location)
+        }, confirmButton = { TextButton(onClick = { trashInfo = false }) { Text(stringResource(R.string.close)) } })
+    }
 }
 
 @Composable
-internal fun ImageEntryDetails(model: WorkspaceViewModel, entry: Entry, workspace: Workspace) {
+internal fun ImageEntryDetails(model: WorkspaceViewModel, entry: Entry, workspace: Workspace, target: WorkspaceViewModel.ImageTarget = WorkspaceViewModel.ImageTarget(entry), location: String? = null) {
     val info = entry.image ?: return
     val calendar = rememberRecentCalendar()
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(entry.filename)
-        ImagePanelPreview(model, entry, information = true)
+        ImagePanelPreview(model, entry, information = true, target = target)
         Text(stringResource(R.string.image_details, info.format.extension.uppercase(java.util.Locale.ROOT), info.width, info.height,
-            Formatter.formatFileSize(LocalContext.current, entry.bytes.toLong()), displayPath(workspace, entry.parent ?: Workspace.ROOT), detailTimestamp(entry.created, calendar.zone), detailTimestamp(entry.modified, calendar.zone)))
+            Formatter.formatFileSize(LocalContext.current, entry.bytes.toLong()), location ?: displayPath(workspace, entry.parent ?: Workspace.ROOT), detailTimestamp(entry.created, calendar.zone), detailTimestamp(entry.modified, calendar.zone)))
     }
 }
 

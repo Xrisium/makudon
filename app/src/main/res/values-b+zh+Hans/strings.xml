@@ -20,8 +20,7 @@
   <string name="new_folder">新建文件夹</string>
   <string name="untitled">未命名文稿</string>
   <string name="plain_text">纯文本</string>
-  <string name="import_document">导入</string>
-  <string name="import_hint">选择 UTF-8 纯文本或 Markdown 文件，创建独立副本，不修改原文件。</string>
+  <string name="import_document">导入文稿</string>
   <string name="import_done">已导入副本</string>
   <string name="export_copy">导出 .txt 副本</string>
   <string name="export_done">副本已导出</string>
@@ -388,12 +387,18 @@
   <string name="image_thumbnail">缩略图</string>
   <string name="image_icon">图标</string>
   <string name="image_cache">缩略图缓存</string>
-  <string name="image_cache_hint">清理后，再次查看时会重新生成缩略图。文稿和原图会保留。</string>
+  <string name="image_cache_hint">清理后，再次查看时会重新生成缩略图。这不会删除原图。</string>
+  <string name="image_cache_directory">目录树</string>
+  <string name="image_cache_menu">长按菜单</string>
+  <string name="image_cache_information">更多信息</string>
+  <string name="image_cache_usage">缓存占用</string>
+  <string name="image_cache_options">缓存场景</string>
+  <string name="image_cache_options_hint">关闭后，对应场景将直接从原图生成预览。已有缓存可通过下方按钮清理。</string>
   <string name="image_cache_clear">清理缓存</string>
   <string name="image_cache_error">部分缩略图未能清理，请重试。</string>
   <string name="image_invalid">图片不受支持或已损坏，请选择 JPEG、PNG 或静态 WebP。</string>
   <string name="image_too_large">图片超过 20 MiB 或 1 亿像素。</string>
   <string name="image_missing">引用的图片缺失或损坏，请恢复图片后再导出 ZIP。</string>
   <string name="image_delete_affected">以下文稿将显示缺图，恢复图片后可重新显示：</string>
-  <string name="image_details">格式：%1$s\n像素尺寸：%2$d × %3$d px\n原文件大小：%4$s\n位置：%5$s\n创建时间：%6$s\n最近修改：%7$s</string>
+  <string name="image_details">格式：%1$s\n像素尺寸：%2$d × %3$d 像素\n原文件大小：%4$s\n位置：%5$s\n创建时间：%6$s\n最近修改：%7$s</string>
 </resources>

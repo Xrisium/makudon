@@ -28,7 +28,7 @@ import kotlinx.coroutines.flow.first
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Backup, UiFont, EditorFont, Trash }
+enum class Page { Recent, Directory, Settings, New, Editor, Licenses, Backup, UiFont, EditorFont, Trash, ThumbnailCache }
 val MainPages = listOf(Page.Directory, Page.Recent, Page.Settings)
 
 data class WorkspaceUi(
@@ -148,6 +148,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         departingSession = null; sessionId++
         selection = null; clipboard = null; pasteRequest = null; deleteRequest = null
         canUndo = false; canRedo = false; history = EditHistory(); markdownDocument = null; parseJob?.cancel()
+        images.configure(current.thumbnailCaching)
         ui = ui.copy(workspace = current, activeId = null, selected = Workspace.ROOT, newParent = Workspace.ROOT,
             revealFolder = null, directoryRevision = ui.directoryRevision + 1, message = R.string.backup_library_changed, error = null)
         navigate(Page.Directory, backwards = true)
@@ -170,8 +171,6 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     var imageSourceDialog by mutableStateOf(false)
         private set
     var imageLibraryDialog by mutableStateOf(false)
-        private set
-    var cacheDialog by mutableStateOf(false)
         private set
     var cacheBytes by mutableLongStateOf(0)
         private set
@@ -281,8 +280,13 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             applyEditorEdit(ImageReferences.insert(source, token.selection, current.name, info.key), token, allowBusy)
         } catch (e: WorkspaceException) { inputRejected(e.reason); false }
     }
-    fun showCache() { cacheDialog = true; refreshCache() }
-    fun closeCache() { if (!cacheBusy) cacheDialog = false }
+    fun showCache() { launchWork {
+        if (!barrier()) return@launchWork
+        cacheError = false
+        refreshCache()
+        navigate(Page.ThumbnailCache)
+    } }
+    fun closeCache() { if (!cacheBusy && ui.page == Page.ThumbnailCache) back() }
     fun refreshCache() { viewModelScope.launch { cacheBytes = images.bytes() } }
     fun clearCache() {
         if (cacheBusy) return
@@ -509,6 +513,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
             }
             Page.Editor -> go(ui.origin)
             Page.New -> navigate(ui.origin, backwards = true)
+            Page.ThumbnailCache -> if (!cacheBusy) navigate(Page.Settings, backwards = true)
             Page.Licenses, Page.UiFont, Page.EditorFont -> navigate(Page.Settings, backwards = true)
             else -> Unit
         }
@@ -641,10 +646,14 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun rename(id: String, name: String, onSuccess: () -> Unit = {}) { launchWork {
         if (!barrier()) return@launchWork
         disk { store.rename(id, name) }
-        ui = ui.copy(workspace = disk { store.refresh() })
+        acceptWorkspace(disk { store.refresh() })
         onSuccess()
     } }
     private fun acceptWorkspace(next: Workspace) {
+        images.configure(next.thumbnailCaching)
+        imageViewer?.takeIf { it.trashId == null }?.let { target ->
+            imageViewer = next.entry(target.entry.id)?.takeIf { it.isImage }?.let { target.copy(entry = it) }
+        }
         selection = selection?.let { ids -> next.selectionRoots(ids).map { it.id }.toSet() }
         clipboard?.takeIf { it.cut }?.let { clip ->
             val items = clip.items.filter { next.entry(it.entry.id) != null }
@@ -780,7 +789,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(selected = restored.parent ?: Workspace.ROOT, revealFolder = restored.parent ?: Workspace.ROOT, directoryRevision = ui.directoryRevision + 1)
         navigate(Page.Directory, backwards = true)
     }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null, directoryImages: DirectoryImages? = null) {
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null, directoryImages: DirectoryImages? = null, thumbnailCaching: ThumbnailCaching? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme
         val nextSort = sort ?: w.sort
@@ -793,13 +802,14 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         val nextShowRecentExcerpt = showRecentExcerpt ?: w.showRecentExcerpt
         val nextRecentSort = recentSort ?: w.recentSort
         val nextDirectoryImages = directoryImages ?: w.directoryImages
-        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort && nextDirectoryImages == w.directoryImages) return
+        val nextThumbnailCaching = thumbnailCaching ?: w.thumbnailCaching
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort && nextDirectoryImages == w.directoryImages && nextThumbnailCaching == w.thumbnailCaching) return
         launchWork(savingPreferences = true) {
             // Animate this switch on input, independently of catalog writes and body refreshes.
             ui = ui.copy(workspace = w.copy(showRecentExcerpt = nextShowRecentExcerpt))
             try {
-                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort, nextDirectoryImages) }
-                ui = ui.copy(workspace = disk { store.refresh() })
+                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort, nextDirectoryImages, nextThumbnailCaching) }
+                acceptWorkspace(disk { store.refresh() })
             } catch (e: Exception) {
                 ui = ui.copy(workspace = ui.workspace?.copy(showRecentExcerpt = w.showRecentExcerpt))
                 throw e

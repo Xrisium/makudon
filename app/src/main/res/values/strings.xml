@@ -23,8 +23,7 @@
   <string name="untitled">Untitled document</string>
   <string name="plain_text">Plain text</string>
   <string name="markdown" translatable="false">Markdown</string>
-  <string name="import_document">Import</string>
-  <string name="import_hint">Choose a UTF-8 text or Markdown file to import an independent copy. The original file stays unchanged.</string>
+  <string name="import_document">Import document</string>
   <string name="import_done">Copy imported</string>
   <string name="export_copy">Export a .txt copy</string>
   <string name="export_done">Copy exported</string>
@@ -432,7 +431,13 @@
   <string name="image_thumbnail">Thumbnail</string>
   <string name="image_icon">Icon</string>
   <string name="image_cache">Thumbnail cache</string>
-  <string name="image_cache_hint">Thumbnails are recreated when needed. Clearing them keeps your documents and original images.</string>
+  <string name="image_cache_hint">Thumbnails are recreated when needed. This does not delete original images.</string>
+  <string name="image_cache_directory">Directory tree</string>
+  <string name="image_cache_menu">Context menu</string>
+  <string name="image_cache_information">File information</string>
+  <string name="image_cache_usage">Cache size</string>
+  <string name="image_cache_options">Cache thumbnails for</string>
+  <string name="image_cache_options_hint">When disabled, previews for that context are generated from the original image. Use the button below to clear existing cached thumbnails.</string>
   <string name="image_cache_clear">Clear cache</string>
   <string name="image_cache_error">Some thumbnails could not be cleared. Try again.</string>
   <string name="image_invalid">Unsupported or damaged image. Choose a JPEG, PNG or static WebP.</string>

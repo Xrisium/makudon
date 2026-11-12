@@ -23,8 +23,8 @@ class ThumbnailDiskCache(
         } catch (_: java.io.IOException) { remove(target); null }
         catch (_: io.github.xrisium.makudon.domain.WorkspaceException) { remove(target); null }
     }
-    fun put(key: String, bytes: ByteArray, generation: Long): Boolean = synchronized(lock) {
-        if (generation != epoch || bytes.size > limit) return@synchronized false
+    fun put(key: String, bytes: ByteArray, generation: Long, allowed: () -> Boolean = { true }): Boolean = synchronized(lock) {
+        if (generation != epoch || !allowed() || bytes.size > limit) return@synchronized false
         try {
             AtomicDisk().write(file(key), bytes)
             var total = bytesLocked()

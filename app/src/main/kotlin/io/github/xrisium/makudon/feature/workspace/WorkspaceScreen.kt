@@ -107,6 +107,7 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
                         Page.New -> NewPage(model, ::importDocument)
                         Page.Backup -> BackupPage(model)
                         Page.Trash -> TrashPage(model)
+                        Page.ThumbnailCache -> ThumbnailCachePage(model)
                         Page.Editor -> EditorScreen(model, onExport = ::export, onAction = { action ->
                             targetId = ui.activeId
                             if (action == "info") model.inspect { dialog = "editor-info" } else if (action == "delete") ui.activeId?.let { model.prepareDelete(listOf(it)) { dialog = action } } else dialog = action
@@ -122,7 +123,14 @@ fun WorkspaceScreen(model: WorkspaceViewModel, modifier: Modifier = Modifier) {
         }
     }
     ClipboardDialogs(model)
-    ImageDialogs(model)
+    ImageDialogs(model) { item, action ->
+        targetId = item.id
+        when (action) {
+            "info" -> model.inspect(item.id) { dialog = "editor-info" }
+            "rename" -> dialog = "rename"
+            "delete" -> model.prepareDelete(listOf(item.id)) { dialog = "delete" }
+        }
+    }
     FileExchangeDialog(model)
     val entry = targetId?.let { workspace?.entry(it) }
     when (dialog) {
@@ -251,7 +259,7 @@ private fun NameDialog(entry: Entry, workspace: Workspace, create: Boolean, busy
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(if (create) R.string.new_folder else R.string.rename)) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.location, displayPath(workspace, if (create) entry.id else entry.parent ?: Workspace.ROOT)), style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(name, { name = it; localError = null }, label = { Text(stringResource(R.string.name)) }, singleLine = true, enabled = !busy, shape = RoundedCornerShape(14.dp), suffix = { if (!create && !entry.folder) Text("." + entry.kind.extension) }, modifier = Modifier.fillMaxWidth().testTag("entry-name"))
+            OutlinedTextField(name, { name = it; localError = null }, label = { Text(stringResource(R.string.name)) }, singleLine = true, enabled = !busy, shape = RoundedCornerShape(14.dp), suffix = { if (!create && !entry.folder) Text("." + entry.extension) }, modifier = Modifier.fillMaxWidth().testTag("entry-name"))
             (localError ?: failure)?.let { Text(stringResource(errorLabel(it)), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
     }, confirmButton = { TextButton(enabled = !busy, onClick = {

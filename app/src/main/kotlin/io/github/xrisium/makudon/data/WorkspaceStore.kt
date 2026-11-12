@@ -60,6 +60,11 @@ class WorkspaceStore(
                 showRecentExcerpt = p.getProperty("showRecentExcerpt")?.toBooleanStrictOrNull() ?: true,
                 recentSort = RecentSort.entries.firstOrNull { it.name == p.getProperty("recentSort") } ?: RecentSort.Opened,
                 directoryImages = DirectoryImages.entries.firstOrNull { it.name == p.getProperty("directoryImages") } ?: DirectoryImages.Thumbnail,
+                thumbnailCaching = ThumbnailCaching(
+                    p.getProperty("cacheDirectoryThumbnails")?.toBooleanStrictOrNull() ?: true,
+                    p.getProperty("cacheMenuThumbnails")?.toBooleanStrictOrNull() ?: true,
+                    p.getProperty("cacheInformationThumbnails")?.toBooleanStrictOrNull() ?: true,
+                ),
             )
             validate(sized)
             workspace = sized
@@ -101,6 +106,9 @@ class WorkspaceStore(
         p["showRecentExcerpt"] = next.showRecentExcerpt.toString()
         p["recentSort"] = next.recentSort.name
         p["directoryImages"] = next.directoryImages.name
+        p["cacheDirectoryThumbnails"] = next.thumbnailCaching.directory.toString()
+        p["cacheMenuThumbnails"] = next.thumbnailCaching.menu.toString()
+        p["cacheInformationThumbnails"] = next.thumbnailCaching.information.toString()
         next.lastImportRequestId?.let { p["lastImportRequest"] = it }
         next.trashOperation?.let { p["trashOperation"] = it }
         next.entries.forEachIndexed { n, entry ->
@@ -352,8 +360,8 @@ class WorkspaceStore(
         }
         if (incomplete) throw WorkspaceException(Failure.Cleanup)
     }
-    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt, recentSort: RecentSort = state().recentSort, directoryImages: DirectoryImages = state().directoryImages) {
-        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt, recentSort = recentSort, directoryImages = directoryImages))
+    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt, recentSort: RecentSort = state().recentSort, directoryImages: DirectoryImages = state().directoryImages, thumbnailCaching: ThumbnailCaching = state().thumbnailCaching) {
+        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt, recentSort = recentSort, directoryImages = directoryImages, thumbnailCaching = thumbnailCaching))
     }
 }
 

@@ -119,10 +119,13 @@ class WorkspaceInstrumentation : Instrumentation() {
     private fun <T> main(block: () -> T): T { val result = AtomicReference<T>(); runOnMainSync { result.set(block()) }; return result.get() }
     private fun waitFor(label: String, timeoutMs: Long = 12_000, condition: () -> Boolean) {
         val start = SystemClock.uptimeMillis()
-        while (!condition()) { if (SystemClock.uptimeMillis() - start > timeoutMs) error("Timed out: $label"); SystemClock.sleep(40) }
+        while (!condition()) { if (SystemClock.uptimeMillis() - start > timeoutMs) {
+                val state = if (::model.isInitialized) main { "page=${model.ui.page}, busy=${model.ui.busy}, navigation=${model.ui.transitioning}, tabs=${model.ui.tabTransitioning}" } else "not initialized"
+                error("Timed out: $label ($state)")
+            }; SystemClock.sleep(40) }
         waitForIdleSync()
     }
-    private fun ready() { waitFor("workspace ready") { main { !model.ui.busy && !model.ui.transitioning && !model.ui.tabTransitioning } }; SystemClock.sleep(350); waitForIdleSync() }
+    private fun ready(timeoutMs: Long = 12_000) { waitFor("workspace ready", timeoutMs) { main { !model.ui.busy && !model.ui.transitioning && !model.ui.tabTransitioning } }; SystemClock.sleep(350); waitForIdleSync() }
     private fun launchTest() {
         val original = main { checkNotNull(model.ui.workspace).theme }
         val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
@@ -275,6 +278,8 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.reload() }; ready()
             main { model.go(Page.Directory) }; ready()
             main { model.newDocument(Page.Directory, root) }; ready()
+            verify(nodes().any { it.text?.toString() == "导入文稿" } && nodes().none { it.text?.toString()?.contains("创建独立副本，不修改原文件") == true }, "New page names document import and omits the old hint")
+            screenshot("images-new-page")
             val formats = listOf(Triple("图片测试PNG-$imageTestSuffix.png", android.graphics.Bitmap.CompressFormat.PNG, ImageFormat.Png), Triple("图片测试JPEG-$imageTestSuffix.jpg", android.graphics.Bitmap.CompressFormat.JPEG, ImageFormat.Jpeg), Triple("图片测试WebP-$imageTestSuffix.webp", android.graphics.Bitmap.CompressFormat.WEBP, ImageFormat.Webp))
             for ((name, format, expected) in formats) {
                 val source = imageSource(name, format)
@@ -346,7 +351,17 @@ class WorkspaceInstrumentation : Instrumentation() {
             filterImages(png.name)
             click(png.filename)
             waitFor("viewer") { main { model.imageViewer != null } }
-            verify(nodes().any { it.contentDescription?.toString() == "导出图片" }, "Directory image opens viewer with export")
+            click(main { model.languages.context().getString(R.string.item_actions) })
+            verify(nodes().any { it.text?.toString() == "导出图片" } && nodes().any { it.text?.toString() == "删除" }, "Directory image opens viewer with action menu")
+            screenshot("images-viewer-menu"); click("详细信息"); ready()
+            verify(nodes().any { it.text?.toString()?.contains("640 × 360 像素") == true }, "Viewer information uses Chinese pixel unit")
+            click("关闭"); ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("重命名"); ready()
+            val nameField = nodes().first { it.isEditable }
+            check(nameField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, png.name + "重命名") }))
+            click("重命名"); ready()
+            verify(main { model.imageViewer?.entry?.name == png.name + "重命名" }, "Viewer title and target update after rename")
+            main { model.rename(png.id, png.name) }; ready()
             val body = previewBounds(png.filename)
             val beforeZoom = checkNotNull(uiAutomation.takeScreenshot())
             val sampleX = body.centerX(); val sampleY = body.centerY() + (body.width() * 360f / 640 * .35f).toInt()
@@ -367,7 +382,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             repeat(2) { val down = SystemClock.uptimeMillis(); for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, body.centerX().toFloat(), body.centerY().toFloat(), 0).let { it.source = InputDevice.SOURCE_TOUCHSCREEN; uiAutomation.injectInputEvent(it, true); it.recycle() }; SystemClock.sleep(80) }
             SystemClock.sleep(300)
             val resetZoom = checkNotNull(uiAutomation.takeScreenshot()); verify(resetZoom.getPixel(sampleX, sampleY) == originalPixel, "Double tap resets zoom and pan"); resetZoom.recycle()
-            main { model.exportImage() }; ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("导出图片"); ready()
             waitFor("image export prepared") { main { model.files.ui.export != null && !model.files.ui.busy } }
             verify(main { model.files.ui.export?.mime == "image/png" }, "Viewer exports original image MIME")
             verify(main { model.files.ui.export }?.file?.readBytes()?.contentEquals(disk { currentStore().readMaterial(png.id) }) == true, "Viewer export preserves original bytes")
@@ -384,6 +399,18 @@ class WorkspaceInstrumentation : Instrumentation() {
 
             val doc = disk { currentStore().create("图片测试文稿", root, DocumentKind.Markdown, "# 图片\n\n前文\n\n") }; ids += doc
             main { model.reload() }; ready(); main { model.open(doc) }; ready()
+            fun verifyEditorMenuOrder(label: String) {
+                click(main { model.languages.context().getString(R.string.item_actions) })
+                val sizeTitle = main { model.languages.context().getString(R.string.editor_text_size) }
+                val segmentBottom = nodes().filter { it.contentDescription?.toString()?.startsWith("$sizeTitle:") == true }.maxOf { Rect().also(it::getBoundsInScreen).bottom }
+                val findBounds = Rect().also { find("查找与替换").getBoundsInScreen(it) }
+                val infoBounds = Rect().also { find("详细信息").getBoundsInScreen(it) }
+                verify(segmentBottom <= findBounds.top && findBounds.bottom < infoBounds.top, "$label editor menu places find below size control and above information section")
+                screenshot("images-editor-menu-$label"); shell("input keyevent 4"); ready()
+            }
+            verifyEditorMenuOrder("typeset")
+            main { model.editorMode(EditorMode.Source) }; ready(); verifyEditorMenuOrder("source")
+            main { model.editorMode(EditorMode.Typeset) }; ready()
             main { model.textState?.edit { selection = androidx.compose.ui.text.TextRange(length) }; model.beginImageInsert() }
             click("从文稿库选择"); click(png.filename); ready(); saved()
             verify(main { ImageReferences.keys(model.textState?.text.toString()) == setOf(png.image?.key) }, "Library picker inserts stable image reference")
@@ -434,22 +461,97 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.files.close(); model.go(Page.Directory) }; ready()
             main { model.prepareDelete(listOf(png.id)) {} }; ready()
             verify(main { model.deleteAffected.any { it.contains("图片测试文稿") } }, "Delete analysis lists affected documents")
-            main { model.delete(png.id) }; ready()
+            main { model.viewImage(checkNotNull(model.ui.workspace?.entry(png.id))) }; ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("删除"); ready(60_000)
+            verify(nodes().any { it.text?.toString()?.contains("图片测试文稿") == true }, "Viewer delete confirmation lists referenced document")
+            click("取消"); ready()
+            verify(main { model.imageViewer != null && model.imageEntry(checkNotNull(png.image).key) != null }, "Canceling viewer deletion preserves viewer and original")
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("删除"); ready(60_000); click("删除"); ready()
+            verify(main { model.imageViewer == null }, "Confirmed viewer deletion closes removed image")
             verify(main { model.imageEntry(checkNotNull(png.image).key) == null }, "Deleted image disappears from active resolver")
             val trashNode = main { model.trashInventory.nodes.single { it.entry.id == png.id } }
             main { model.requestTrashRestore(listOf(trashNode.id)) }; ready()
             verify(main { model.imageEntry(checkNotNull(png.image).key) != null }, "Restoring image makes original reference resolve")
 
-            main { model.go(Page.Settings); model.showCache() }; ready()
+            main { model.go(Page.Settings) }; ready(); main { model.showCache() }; ready()
             waitFor("cache size") { main { model.cacheBytes > 0 } }
             click("清理缓存"); waitFor("cache cleared") { main { !model.cacheBusy && model.cacheBytes == 0L } }
             verify(!main { model.cacheError }, "Thumbnail cache clears without error")
             verify(disk { currentStore().readMaterial(png.id).contentEquals(File(sources, png.filename).readBytes()) }, "Cache clear preserves original image")
+            verify(main { model.ui.page == Page.ThumbnailCache } && nodes().none { it.text?.toString() == "关闭" }, "Cache opens as a secondary page rather than a dialog")
+            screenshot("images-cache-page")
+            val usages = listOf(ThumbnailUsage.Directory, ThumbnailUsage.Menu, ThumbnailUsage.Information)
+            fun preference(usage: ThumbnailUsage, enabled: Boolean): ThumbnailCaching {
+                val current = checkNotNull(model.ui.workspace).thumbnailCaching
+                return when (usage) {
+                    ThumbnailUsage.Directory -> current.copy(directory = enabled)
+                    ThumbnailUsage.Menu -> current.copy(menu = enabled)
+                    ThumbnailUsage.Information -> current.copy(information = enabled)
+                    ThumbnailUsage.Content -> current
+                }
+            }
+            for (usage in usages) {
+                main { model.preferences(thumbnailCaching = preference(usage, true)) }; ready()
+                runBlocking { model.images.clear() }
+                val enabledBitmap = runBlocking { model.images.load(checkNotNull(png.image), 128, usage) { model.imageFile(WorkspaceViewModel.ImageTarget(png)) } }
+                val hit = runBlocking { model.images.load(checkNotNull(png.image), 128, usage) { error("enabled cache miss") } }
+                verify(enabledBitmap === hit, "$usage enabled caches reuse memory")
+                main { model.preferences(thumbnailCaching = preference(usage, false)) }; ready()
+                var originalReads = 0
+                repeat(2) {
+                    val uncached = runBlocking { model.images.load(checkNotNull(png.image), 128, usage) { originalReads++; model.imageFile(WorkspaceViewModel.ImageTarget(png)) } }
+                    verify(uncached !== enabledBitmap, "$usage disabled bypasses populated memory and disk cache")
+                }
+                verify(originalReads == 2, "$usage disabled samples original on each load")
+                runBlocking { model.images.clear(); model.images.load(checkNotNull(png.image), 128, usage) { model.imageFile(WorkspaceViewModel.ImageTarget(png)) } }
+                verify(runBlocking { model.images.bytes() } == 0L, "$usage disabled does not populate empty cache")
+            }
+            main { model.reload() }; ready()
+            verify(main { model.ui.workspace?.thumbnailCaching == ThumbnailCaching(false, false, false) }, "All three cache preferences survive reload")
+            val failedCacheWrite = File(workspaceDirectory(), "catalog.properties.new")
+            check(failedCacheWrite.mkdir())
+            try {
+                click("目录树"); ready()
+                verify(main { model.ui.workspace?.thumbnailCaching == ThumbnailCaching(false, false, false) && model.ui.error != null }, "Failed cache preference write retains original switches and reports error")
+            } finally { check(failedCacheWrite.delete()) }
+            main { model.reload() }; ready()
+            click("目录树"); ready(); click("长按菜单"); ready(); click("更多信息"); ready()
+            verify(main { model.ui.workspace?.thumbnailCaching == ThumbnailCaching() }, "Secondary-page switches independently enable all contexts")
+            // A preference changed during decode must fence that task's pending cache writes.
+            runBlocking {
+                model.images.clear()
+                val entered = kotlinx.coroutines.CompletableDeferred<Unit>(); val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+                val pending = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).async {
+                    model.images.load(checkNotNull(png.image), 128, ThumbnailUsage.Menu) { entered.complete(Unit); release.await(); model.imageFile(WorkspaceViewModel.ImageTarget(png)) }
+                }
+                entered.await()
+                main { model.preferences(thumbnailCaching = ThumbnailCaching(menu = false)) }; ready()
+                release.complete(Unit); pending.await()
+                verify(model.images.bytes() == 0L, "Disabling context during decode fences old cache writes")
+            }
+            main { model.preferences(thumbnailCaching = ThumbnailCaching()) }; ready()
             main { model.closeCache() }; ready()
+            verify(main { model.ui.page == Page.Settings }, "Cache page returns to settings")
+            val plain = disk { currentStore().create("图片菜单纯文本", root, DocumentKind.Plain, "菜单顺序验证") }; ids += plain
+            main { model.reload() }; ready(); main { model.open(plain) }; ready(); verifyEditorMenuOrder("plain")
+            main { model.go(Page.Settings) }; ready()
             for ((language, dark) in listOf("zh-Hans" to false, "en" to true)) {
                 main { model.changeLanguage(language) }; ready()
                 main { model.preferences(theme = if (dark) ColorTheme.Ink else ColorTheme.Paper, directoryImages = DirectoryImages.Thumbnail) }; ready()
                 shell("wm size 840x1800"); shell("settings put system font_scale 2.0"); SystemClock.sleep(500)
+                main { model.showCache() }; ready()
+                // Secondary pages restore scroll position; return from the prior clear button to the switches.
+                repeat(5) { nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); SystemClock.sleep(150) }
+                val cacheLabels = main { listOf(R.string.image_cache_directory, R.string.image_cache_menu, R.string.image_cache_information).map { model.languages.context().getString(it) } }
+                cacheLabels.forEach { cacheLabel ->
+                    click(cacheLabel); ready(); click(cacheLabel); ready()
+                }
+                screenshot("images-$language-large-cache")
+                val clearLabel = main { model.languages.context().getString(R.string.image_cache_clear) }
+                repeat(6) { nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); SystemClock.sleep(150) }
+                verify(nodes().any { it.text?.toString() == clearLabel && it.isVisibleToUser }, "$language cache actions remain reachable at 320dp and 200% font")
+                screenshot("images-$language-large-cache-clear")
+                main { model.closeCache() }; ready()
                 main { model.go(Page.Directory) }; ready(); filterImages(png.name); longPress(png.filename)
                 val bounds = previewBounds(png.filename)
                 val display = targetContext.resources.displayMetrics
@@ -464,7 +566,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.files.close(); model.closeImage(); model.dismissImageDialogs(); model.closeCache(); model.go(Page.Recent) }; ready()
             shell(if (oldSize == null) "wm size reset" else "wm size $oldSize"); shell("settings put system font_scale $oldScale")
             main { model.changeLanguage("zh-Hans") }; ready()
-            main { model.preferences(theme = original.theme, directoryImages = original.directoryImages) }; ready()
+            main { model.preferences(theme = original.theme, directoryImages = original.directoryImages, thumbnailCaching = original.thumbnailCaching) }; ready()
             disk {
                 val owned = (ids + root).filter { currentStore().contains(it) }
                 if (owned.isNotEmpty()) currentStore().deleteAll(owned)
@@ -580,8 +682,12 @@ class WorkspaceInstrumentation : Instrumentation() {
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
             setText("编辑正文", "字号切换后继续输入😀"); saved()
             main { model.back() }; ready(); main { model.open(ids[1]) }; ready()
+            // Selected tabs expose no repeat-click action. Exercise a real source-to-typeset transition.
+            main { model.editorMode(EditorMode.Source) }; ready()
             menu(); click("正文大小: 大"); ready()
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+            screenshot("text-size-before-typeset")
+            verify(main { model.ui.page == Page.Editor && model.ui.activeId == ids[1] }, "Markdown editor remains open after dismissing size menu")
             click("排版"); ready(); screenshot("text-size-typeset-large")
             verify(main { model.ui.editorMode == EditorMode.Typeset && model.textState?.text?.toString() == "# 标题\n\n正文段落\n\n## 次级标题" }, "Typeset size preserves exact Markdown source")
             main { currentActivity?.recreate() }; ready()
@@ -793,7 +899,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.reload() }; ready()
             main { model.go(Page.Recent) }; ready(); main { model.open(ids[4]) }; ready()
             main { model.textState!!.edit { replace(0, length, "删除前最新输入 😀") } }
-            click("条目操作"); click("删除")
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("删除")
             verify(nodes().any { it.text?.toString()?.contains("删除后可以从回收站恢复。") == true }, "Editor deletion keeps 删除 and explains trash recovery")
             click("取消"); verify(main { model.ui.activeId == ids[4] }, "Cancel deletion preserves active editor")
             val retainedField = main { model.textState }
@@ -805,7 +911,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             } finally { disk { check(blockedJournal.delete()) } }
             click("重试"); ready()
             verify(main { model.ui.error == null && model.ui.activeId == ids[4] && model.textState === retainedField }, "Editor recovery retry reloads both catalogs without replacing input")
-            click("条目操作"); click("删除"); click("删除"); ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("删除"); click("删除"); ready()
             verify(main { model.ui.activeId == null && model.ui.page == Page.Recent }, "Deleting active draft returns to source and releases editor")
             SystemClock.sleep(2200)
             verify(main { model.ui.workspace?.entry(ids[4]) == null && model.trashInventory.nodes.any { it.entry.id == ids[4] } }, "Deleted editor never resurrects after autosave interval")
@@ -821,7 +927,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             click(summary); ready()
             verify(main { model.ui.page == Page.Trash }, "Settings trash entry opens its secondary page")
             verify(nodes().none { it.text?.toString() in listOf("内容会保留，直到你手动彻底删除。", "删除的文稿和文件夹会出现在这里。") }, "Trash list omits the removed explanatory hints")
-            click("条目操作")
+            click(main { model.languages.context().getString(R.string.item_actions) })
             val menuItem = find("选择")
             var menuRow = menuItem
             while (!menuRow.isClickable && menuRow.parent != null) menuRow = menuRow.parent
@@ -943,10 +1049,10 @@ class WorkspaceInstrumentation : Instrumentation() {
         verify(rejected(Activity.RESULT_OK, Intent().apply { clipData = clip }), "Multiple ClipData items are rejected")
         val before = main { model.ui.workspace!!.entries.filter { !it.folder }.map { it.id }.toSet() }
         try {
-            click("新建文稿"); click("导入"); prepared()
-            verify(listOf("选择用于选取文件的应用", "测试文件选择", "安卓原生文件选择器").all { label -> nodes().any { it.text?.toString() == label } }, "Import offers real app labels and explicit system fallback")
+            click("新建文稿"); click("导入文稿"); prepared()
+            verify((main { listOf(R.string.file_select_app, R.string.file_system_picker).map { model.languages.context().getString(it) } } + "测试文件选择").all { label -> nodes().any { it.text?.toString() == label } }, "Import offers real app labels and explicit system fallback")
             screenshot("files-import-apps")
-            click("安卓原生文件选择器")
+            click(main { model.languages.context().getString(R.string.file_system_picker) })
             waitFor("system file picker") { uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true }
             verify(main { !files.ui.visible }, "Explicit system fallback opens actual DocumentsUI")
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
@@ -989,13 +1095,14 @@ class WorkspaceInstrumentation : Instrumentation() {
             waitFor("system save picker") { uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true }
             // CREATE_DOCUMENT can focus the filename and open its IME. The first BACK
             // dismisses that keyboard; cancel only while DocumentsUI still owns the window.
+            val awaitingCreate = FileExchange::class.java.getDeclaredField("awaitingExport").apply { isAccessible = true }
             repeat(3) {
-                if (uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true) {
+                if (main { awaitingCreate.getBoolean(files) } && uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true) {
                     uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
                     SystemClock.sleep(700); waitForIdleSync()
                 }
             }
-            waitFor("save picker returned") { uiAutomation.rootInActiveWindow?.packageName == targetContext.packageName }
+            waitFor("save picker returned") { !main { awaitingCreate.getBoolean(files) } && uiAutomation.rootInActiveWindow?.packageName == targetContext.packageName }
             verify(main { files.ui.export == snapshot }, "Actual system save cancellation retains original snapshot")
             main { files.saveTo(uri("denied")) }; prepared()
             verify(main { files.ui.error != null && files.ui.export == snapshot }, "Failed destination keeps immutable copy for retry")
@@ -1070,8 +1177,8 @@ class WorkspaceInstrumentation : Instrumentation() {
                 reveal("选择保存位置"); screenshot("files-export-200")
                 verify(find("选择保存位置").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep export fallback and close reachable")
                 main { files.close(); files.import(ImportKind.Text) }; prepared()
-                reveal("安卓原生文件选择器"); screenshot("files-import-200")
-                verify(find("安卓原生文件选择器").isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep app choices and system fallback reachable")
+                reveal(main { model.languages.context().getString(R.string.file_system_picker) }); screenshot("files-import-200")
+                verify(find(main { model.languages.context().getString(R.string.file_system_picker) }).isVisibleToUser && find("关闭").isVisibleToUser, "320dp and 200% fonts keep app choices and system fallback reachable")
             } finally {
                 main { files.close() }
                 shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
@@ -1345,14 +1452,14 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(shown("更多信息") && detailText().contains(expectedTime(entry.created)), "Information dialog survives Activity recreation with its inspected data")
             click("关闭")
             main { model.open(ids[1]) }; ready()
-            click("条目操作")
+            click(main { model.languages.context().getString(R.string.item_actions) })
             verify(!shown("上一保存版本") && shown("详细信息"), "Editor overflow removes previous-version navigation")
             click("详细信息"); ready()
             verify(detailText().contains(docName + ".txt") && !shown("恢复此版本"), "Editor detail panel identifies its document without a history action")
             screenshot("details-document")
             click("关闭")
             setText("编辑正文", "最新输入😀\n第二行")
-            click("条目操作"); click("详细信息"); ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("详细信息"); ready()
             val doc = main { checkNotNull(model.ui.workspace?.entry(ids[1])) }
             verify(source(ids[1], DocumentKind.Plain) == "最新输入😀\n第二行" && detailText().contains("UTF-8 大小：${TextRules.bytes("最新输入😀\n第二行").size} 字节"), "Editor information saves and refreshes the latest body before displaying size")
             verify(detailText().contains("创建时间：${expectedTime(doc.created)}") && detailText().contains("最近修改时间：${expectedTime(doc.modified)}"), "Document timestamps retain creation and refresh modification to the second")
@@ -1361,7 +1468,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             check(pending.mkdir())
             try {
                 setText("编辑正文", "保存失败仍保留缓冲")
-                click("条目操作"); click("详细信息"); ready()
+                click(main { model.languages.context().getString(R.string.item_actions) }); click("详细信息"); ready()
                 verify(!shown("详细信息") && main { model.save?.status?.value?.phase == SavePhase.Failed && model.textState?.text?.toString() == "保存失败仍保留缓冲" }, "Failed save prevents opening stale editor information and preserves input")
             } finally { check(pending.delete()) }
             main { model.retrySave() }; ready(); saved()
@@ -1710,13 +1817,13 @@ class WorkspaceInstrumentation : Instrumentation() {
             click(names[0]); ready()
             verify(!shown("纯文本") && !shown("已保存到本机") && !shown("等待自动保存") && !shown("正在自动保存"), "Plain editor removes type and routine save labels")
             screenshot("editor-plain-clean")
-            click("条目操作")
+            click(main { model.languages.context().getString(R.string.item_actions) })
             verify(listOf("详细信息", "重命名", "删除", "导出 .txt 副本").all(::shown), "Editor overflow exposes all new and existing actions")
             screenshot("editor-menu")
             click("详细信息"); ready()
             verify(shown("详细信息") && nodes().any { it.text?.toString()?.contains(names[0] + ".txt") == true }, "Editor details opens the active document")
             click("关闭")
-            click("条目操作"); click("重命名")
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("重命名")
             verify(!shown("文件类型保持不变") && shown(".txt"), "Rename removes explanatory text and retains protected extension")
             setText("名称", names[1]); click("重命名")
             verify(shown("此位置已有同名条目，请换一个名称。"), "Editor rename rejects sibling conflicts")
@@ -1724,23 +1831,23 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.ui.activeId == ids[0] && model.ui.page == Page.Editor && model.ui.workspace?.entry(ids[0])?.name == names[0] + "-改名" }, "Rename retains active editor ID and file type")
             click(names[0] + "-改名"); click("取消")
             verify(main { model.ui.page == Page.Editor }, "Title rename shortcut remains available")
-            click("条目操作"); click("删除"); click("取消")
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("删除"); click("取消")
             verify(main { model.ui.activeId == ids[0] && model.ui.workspace?.entry(ids[0]) != null }, "Cancel editor deletion preserves document and editor")
             val pending = File(workspaceDirectory(), "documents/${ids[0]}/body.txt.new")
             check(pending.mkdir())
             try {
                 setText("编辑正文", "删除前保存屏障保留的最新输入")
-                click("条目操作"); click("删除"); click("删除"); ready()
+                click(main { model.languages.context().getString(R.string.item_actions) }); click("删除"); click("删除"); ready()
                 verify(main { model.ui.page == Page.Editor && model.ui.workspace?.entry(ids[0]) != null && model.save?.status?.value?.phase == SavePhase.Failed }, "Failed save prevents active-document deletion and keeps editable buffer")
                 verify(shown("修改尚未保存") && shown("重试") && shown("导出 .txt 副本"), "Save failure remains visible with retry and export actions")
             } finally { check(pending.delete()) }
             click("重试"); ready(); saved()
-            click("条目操作"); click("删除"); click("删除"); ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("删除"); click("删除"); ready()
             verify(main { model.ui.page == Page.Recent && model.ui.activeId == null && model.save == null && model.textState == null }, "Deleting active document returns to recent and releases editor")
             SystemClock.sleep(2200)
             verify(main { model.ui.workspace?.entry(ids[0]) == null } && !File(workspaceDirectory(), "documents/${ids[0]}").exists(), "No delayed autosave resurrects the deleted draft")
             main { model.go(Page.Directory) }; ready(); main { model.open(ids[1]) }; ready()
-            click("条目操作"); click("删除"); click("删除"); ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("删除"); click("删除"); ready()
             verify(main { model.ui.page == Page.Directory && model.ui.activeId == null }, "Deleting an editor opened from directory returns to directory")
         } finally {
             shell(if (originalSize == null) "wm size reset" else "wm size $originalSize")
@@ -2585,7 +2692,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             setText("编辑正文", composing); saved(); parsed()
             click("排版"); main { model.preferences(theme = ColorTheme.Paper) }; ready(); hideKeyboard(); tableBackground("表格第 1 行，第 1 列"); screenshot("table-typeset-light")
             click("文本"); verify(nodes().none { it.text?.toString()?.contains("· 1/3") == true }, "Toolbar removes group position label")
-            click("条目操作"); verify(nodes().any { it.text?.toString() == "导出 .md 副本" } && nodes().none { it.text?.toString() == "导出 .txt 副本" }, "Markdown menu exports only a Markdown copy")
+            click(main { model.languages.context().getString(R.string.item_actions) }); verify(nodes().any { it.text?.toString() == "导出 .md 副本" } && nodes().none { it.text?.toString() == "导出 .txt 副本" }, "Markdown menu exports only a Markdown copy")
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); SystemClock.sleep(250)
             main { model.preferences(theme = ColorTheme.Ink) }; ready(); tableBackground("表格第 1 行，第 1 列"); screenshot("table-typeset-dark")
             main { model.editorMode(EditorMode.Reading) }; ready(); screenshot("table-reading-dark")
@@ -2993,13 +3100,13 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.textState!!.text.toString() == composingVisible } && nodes().none { it.isEditable }, "Switching to reading during composition keeps visible text and removes editing input")
 
             click("源码"); setText("编辑正文", sample); saved(); parsed(); click("排版")
-            click("条目操作"); click("查找与替换")
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("查找与替换")
             setText("查找内容", "正文"); waitForIdleSync()
             verify(nodes().any { it.text?.toString() == "1 / 1" }, "Find reports literal match count in typeset")
             setText("替换为", "新正文"); click("全部替换"); saved(); parsed()
             verify(main { model.textState!!.text.toString() == sample.replace("正文", "新正文") }, "Replace all edits current source atomically")
             click("关闭"); click("撤销"); saved(); parsed()
-            click("阅读"); click("条目操作"); click("查找"); setText("查找内容", "粗体"); waitForIdleSync()
+            click("阅读"); click(main { model.languages.context().getString(R.string.item_actions) }); click("查找"); setText("查找内容", "粗体"); waitForIdleSync()
             verify(nodes().none { it.text?.toString() == "全部替换" || it.text?.toString() == "替换为" }, "Reading find has no replacement action")
             click("关闭")
             val readRevision = main { model.save!!.revision }

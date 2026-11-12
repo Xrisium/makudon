@@ -201,7 +201,7 @@ private fun EntryRow(model: WorkspaceViewModel, entry: Entry, depth: Int, expand
             if (entry.folder) Tool(R.drawable.ic_chevron_down, stringResource(if (expanded) R.string.collapse_folder else R.string.expand_folder, entry.name), enabled = !busy, rotation = angle - 90f, onClick = onToggle)
             else Spacer(Modifier.width(48.dp))
             if (entry.isImage && model.ui.workspace?.directoryImages == DirectoryImages.Thumbnail) {
-                ImageThumbnail(model, WorkspaceViewModel.ImageTarget(entry), Modifier.size(20.dp).alpha(if (cut) .65f else 1f))
+                ImageThumbnail(model, WorkspaceViewModel.ImageTarget(entry), Modifier.size(20.dp).alpha(if (cut) .65f else 1f), usage = ThumbnailUsage.Directory)
             } else Glyph(if (entry.isImage) R.drawable.ic_image else if (entry.folder) { if (expanded) R.drawable.ic_folder_open else R.drawable.ic_folder } else { if (entry.kind == DocumentKind.Markdown) R.drawable.ic_markdown else R.drawable.ic_file_text }, Modifier.alpha(if (cut) .65f else 1f), tint = colors.onSurfaceVariant)
             Column(Modifier.weight(1f).padding(start = 9.dp, top = 10.dp, bottom = 10.dp).alpha(if (cut) .65f else 1f)) {
                 Text(entry.filename, style = MaterialTheme.typography.bodyMedium)

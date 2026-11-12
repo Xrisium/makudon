@@ -5,6 +5,15 @@ import java.util.Locale
 
 enum class DocumentKind(val extension: String) { Folder(""), Plain("txt"), Markdown("md"), Image("") }
 enum class DirectoryImages { Thumbnail, Icon }
+enum class ThumbnailUsage { Directory, Menu, Information, Content }
+data class ThumbnailCaching(val directory: Boolean = true, val menu: Boolean = true, val information: Boolean = true) {
+    fun enabled(usage: ThumbnailUsage): Boolean = when (usage) {
+        ThumbnailUsage.Directory -> directory
+        ThumbnailUsage.Menu -> menu
+        ThumbnailUsage.Information -> information
+        ThumbnailUsage.Content -> true
+    }
+}
 enum class SortKey { Name, Modified, Created, Type, Size }
 enum class ColorTheme { System, Paper, Cream, Mist, Sage, Ink }
 enum class FontChoice { Sans, Serif, WenKai, System }
@@ -48,6 +57,7 @@ data class Workspace(
     val showRecentExcerpt: Boolean = true,
     val recentSort: RecentSort = RecentSort.Opened,
     val directoryImages: DirectoryImages = DirectoryImages.Thumbnail,
+    val thumbnailCaching: ThumbnailCaching = ThumbnailCaching(),
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {

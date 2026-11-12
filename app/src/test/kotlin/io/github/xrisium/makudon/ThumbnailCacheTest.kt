@@ -37,6 +37,13 @@ class ThumbnailCacheTest {
         File(dir, key(1)).delete(); assertNull(cache.read(key(1)))
         assertFalse(cache.clear()); assertEquals(20L, cache.bytes())
     }
+    @Test fun disabledPolicyFencesPendingCacheWriteWithoutRemovingExistingData() {
+        val dir = temp.newFolder(); val cache = ThumbnailDiskCache(dir)
+        assertTrue(cache.put(key(1), byteArrayOf(1), cache.generation))
+        assertFalse(cache.put(key(2), byteArrayOf(2), cache.generation) { false })
+        assertArrayEquals(byteArrayOf(1), cache.read(key(1))); assertNull(cache.read(key(2)))
+        assertEquals(1L, cache.bytes())
+    }
     @Test fun cacheKeysCannotEscapeTheDedicatedDirectory() {
         val cache = ThumbnailDiskCache(temp.newFolder())
         try { cache.read("../original.png"); fail("invalid key") } catch (_: IllegalArgumentException) { }
