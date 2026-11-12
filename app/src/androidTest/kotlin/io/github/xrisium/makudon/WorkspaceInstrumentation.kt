@@ -1479,7 +1479,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("条目操作"); click("重命名")
             verify(!shown("文件类型保持不变") && shown(".txt"), "Rename removes explanatory text and retains protected extension")
             setText("名称", names[1]); click("重命名")
-            verify(shown("此位置已有同名条目，请换一个名称；未覆盖原条目。"), "Editor rename rejects sibling conflicts")
+            verify(shown("此位置已有同名条目，请换一个名称。"), "Editor rename rejects sibling conflicts")
             setText("名称", names[0] + "-改名"); click("重命名"); ready()
             verify(main { model.ui.activeId == ids[0] && model.ui.page == Page.Editor && model.ui.workspace?.entry(ids[0])?.name == names[0] + "-改名" }, "Rename retains active editor ID and file type")
             click(names[0] + "-改名"); click("取消")

@@ -22,19 +22,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.xrisium.makudon.R
 
-internal data class LicenseEntry(@param:StringRes val title: Int, @param:StringRes val license: Int, @param:StringRes val description: Int?, @param:RawRes val resource: Int)
+internal data class LicenseEntry(@param:StringRes val title: Int, @param:StringRes val license: Int, @param:RawRes val resource: Int)
 
 internal val licenseEntries = listOf(
-    LicenseEntry(R.string.notice_commonmark, R.string.notice_bsd, null, R.raw.notice_commonmark),
-    LicenseEntry(R.string.notice_noto, R.string.notice_ofl, R.string.notice_noto_description, R.raw.notice_noto),
-    LicenseEntry(R.string.notice_noto_serif, R.string.notice_ofl, null, R.raw.notice_noto_serif),
-    LicenseEntry(R.string.notice_wenkai, R.string.notice_ofl, null, R.raw.notice_wenkai),
-    LicenseEntry(R.string.notice_lucide, R.string.notice_isc_mit, R.string.notice_lucide_description, R.raw.notice_lucide),
-    LicenseEntry(R.string.notice_fluent, R.string.notice_mit, R.string.notice_fluent_description, R.raw.notice_fluent),
-    LicenseEntry(R.string.notice_fredoka, R.string.notice_ofl, R.string.notice_fredoka_description, R.raw.notice_fredoka),
-    LicenseEntry(R.string.notice_coroutines, R.string.notice_apache, null, R.raw.notice_coroutines),
-    LicenseEntry(R.string.notice_androidx, R.string.notice_apache, null, R.raw.notice_androidx),
-    LicenseEntry(R.string.notice_android_robot, R.string.notice_cc, null, R.raw.notice_android_robot),
+    LicenseEntry(R.string.notice_commonmark, R.string.notice_bsd, R.raw.notice_commonmark),
+    LicenseEntry(R.string.notice_noto, R.string.notice_ofl, R.raw.notice_noto),
+    LicenseEntry(R.string.notice_noto_serif, R.string.notice_ofl, R.raw.notice_noto_serif),
+    LicenseEntry(R.string.notice_wenkai, R.string.notice_ofl, R.raw.notice_wenkai),
+    LicenseEntry(R.string.notice_lucide, R.string.notice_isc_mit, R.raw.notice_lucide),
+    LicenseEntry(R.string.notice_fluent, R.string.notice_mit, R.raw.notice_fluent),
+    LicenseEntry(R.string.notice_fredoka, R.string.notice_ofl, R.raw.notice_fredoka),
+    LicenseEntry(R.string.notice_coroutines, R.string.notice_apache, R.raw.notice_coroutines),
+    LicenseEntry(R.string.notice_androidx, R.string.notice_apache, R.raw.notice_androidx),
+    LicenseEntry(R.string.notice_android_robot, R.string.notice_cc, R.raw.notice_android_robot),
 )
 
 @Composable
@@ -65,7 +65,6 @@ internal fun LicensesPage(model: WorkspaceViewModel) {
         } else {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 20.dp)) {
                 Text(stringResource(entry.license), style = MaterialTheme.typography.titleMedium)
-                entry.description?.let { Text(stringResource(it), Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyMedium) }
                 Text(model.licenseTexts.getOrNull(selected).orEmpty().trim(), Modifier.padding(top = 20.dp, bottom = 24.dp), style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 24.sp))
             }
         }

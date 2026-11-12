@@ -48,13 +48,13 @@ internal fun ClipboardDialogs(model: WorkspaceViewModel) {
                     if (request.targets.related.size > 1) Text(stringResource(R.string.paste_multiple_locations), style = MaterialTheme.typography.bodySmall)
                     val candidates = request.targets.related + listOfNotNull(request.targets.common)
                     candidates.forEach { id ->
-                        FolderChoice(workspace, clip, id, destination, if (id == request.targets.common) R.string.paste_common_parent else R.string.paste_related_folder, !ui.busy && !stale) { destination = id }
+                        FolderChoice(workspace, clip, id, destination, R.string.paste_common_parent.takeIf { id == request.targets.common }, !ui.busy && !stale) { destination = id }
                     }
                     TextButton(onClick = { others = !others }, enabled = !ui.busy) { Text(stringResource(if (request.targets.related.size > 1) R.string.paste_other_folders else R.string.paste_change_location)) }
                     if (others) workspace.entries.filter { it.folder && it.id !in candidates }.sortedBy { workspace.path(it.id) }.forEach { entry ->
                         FolderChoice(workspace, clip, entry.id, destination, null, !ui.busy && !stale) { destination = entry.id }
                     }
-                    Text(stringResource(if (clip.cut) R.string.paste_cut_note else R.string.paste_copy_note), style = MaterialTheme.typography.labelSmall)
+                    if (!clip.cut) Text(stringResource(R.string.paste_copy_note), style = MaterialTheme.typography.labelSmall)
                     if (failure != null) Text(stringResource(errorLabel(failure)), color = MaterialTheme.colorScheme.error)
                     OperationFailure(model)
                 }

@@ -25,12 +25,12 @@
   <string name="markdown" translatable="false">Markdown</string>
   <string name="import_document">Import</string>
   <string name="import_hint">Choose a UTF-8 text or Markdown file to import an independent copy. The original file stays unchanged.</string>
-  <string name="import_done">Independent copy imported. Changes will not affect the original file.</string>
+  <string name="import_done">Copy imported</string>
   <string name="export_copy">Export a .txt copy</string>
-  <string name="export_done">Copy written to the selected location. If interrupted, check the exported file. The original document’s save status is unchanged.</string>
+  <string name="export_done">Copy exported</string>
   <string name="directory_hint">Select a folder to choose where new documents go. Touch and hold for more actions.</string>
   <string name="empty_recent">No recently opened documents yet</string>
-  <string name="empty_excerpt">No text yet.</string>
+  <string name="empty_excerpt">Empty document</string>
   <string name="search">Search documents</string>
   <string name="search_hint">Search document names</string>
   <string name="search_empty">No matching documents</string>
@@ -78,8 +78,8 @@
   </plurals>
   <!-- %1$d: raw count; pass it as both quantity and format argument. -->
   <plurals name="clipboard_cut_count">
-    <item quantity="one">%1$d item cut. Originals stay in place until pasted successfully.</item>
-    <item quantity="other">%1$d items cut. Originals stay in place until pasted successfully.</item>
+    <item quantity="one">%1$d item cut</item>
+    <item quantity="other">%1$d items cut</item>
   </plurals>
   <!-- %1$d: raw count; pass it as both quantity and format argument. -->
   <plurals name="clipboard_copy_source">
@@ -93,14 +93,12 @@
   </plurals>
   <string name="paste_choose_one">Choose a paste location</string>
   <string name="paste_confirm_location">Confirm paste location</string>
-  <string name="paste_multiple_locations">The selection spans multiple folders. Choose one destination for all items.</string>
-  <string name="paste_related_folder">From the current selection</string>
+  <string name="paste_multiple_locations">Choose one paste location.</string>
   <string name="paste_common_parent">Common parent</string>
   <string name="paste_other_folders">Other folders</string>
   <string name="paste_change_location">Change location</string>
   <string name="paste_here">Paste here</string>
-  <string name="paste_copy_note">Name conflicts create independent copies without replacing existing documents.</string>
-  <string name="paste_cut_note">The clipboard clears after a successful paste. Items already in the destination stay in place.</string>
+  <string name="paste_copy_note">Documents with matching names will be saved as copies.</string>
   <string name="paste_already_here">These items are already in this folder. No move is needed.</string>
   <string name="clipboard_too_large">The copied text exceeds 8 MiB. Copy in smaller batches. The previous clipboard and documents are preserved.</string>
   <string name="catalog_full">The folder entries or index have reached the supported size. Organize the library before trying again.</string>
@@ -115,7 +113,7 @@
   <string name="reload_directory">Reload folders</string>
   <string name="selection_inherited">Selected with its parent folder</string>
   <string name="copy_ready">Copied. Touch and hold a destination to paste.</string>
-  <string name="cut_ready">Cut. Originals stay in place until pasted successfully.</string>
+  <string name="cut_ready">Cut</string>
   <string name="paste_done">Pasted into the destination folder</string>
   <string name="clipboard_empty">Clipboard is empty</string>
   <string name="paste_location">Paste into: %1$s</string>
@@ -178,24 +176,19 @@
   <string name="notice_mit" translatable="false">MIT</string>
   <string name="notice_apache" translatable="false">Apache License 2.0</string>
   <string name="notice_cc" translatable="false">Creative Commons Attribution 3.0</string>
-  <string name="notice_noto_description">Complete local variable font, interface 500 / editor 450.</string>
-  <string name="notice_lucide_description">Selected icons converted to Android VectorDrawable.</string>
-  <string name="notice_fluent_description">Markdown 20 Filled file-type icon.</string>
-  <string name="notice_fredoka_description">Used for the outlined wordmark only. The font is not bundled.</string>
   <string name="error_invalid_name">Use a non-empty name of at most 120 characters, without slashes, control characters, or leading or trailing spaces.</string>
-  <string name="error_conflict">An item with this name already exists here. Choose another name. The existing item was not replaced.</string>
+  <string name="error_conflict">An item with this name already exists here. Choose another name.</string>
   <string name="error_cycle">Cannot paste into the item itself or its subfolders. The library root cannot be moved.</string>
   <string name="error_missing">This item or request is no longer available. Go back and try again.</string>
   <string name="error_invalid_text">Unsupported content. Choose UTF-8 text or Markdown. Binary files, GBK and UTF-16 are not supported.</string>
-  <string name="error_too_large">Content must not exceed 100,000 Unicode code points or 1 MiB. This edit or import was rejected in full.</string>
+  <string name="error_too_large">Content exceeds 100,000 characters or 1 MiB. This change was not applied.</string>
   <string name="error_storage">The local file operation failed. Existing documents and your input are preserved. Check available storage and retry.</string>
-  <string name="error_corrupt">The library or document could not be read. Writing has stopped. Retry opening the document. No empty document was substituted.</string>
+  <string name="error_corrupt">Cannot read the library or document. Saving is paused. Try again.</string>
   <string name="error_cleanup">The items were removed from the folder, but some private files could not be cleaned up.</string>
   <string name="open_failed">Cannot read this document</string>
   <string name="loading">Opening workspace</string>
   <string name="undo">Undo</string>
   <string name="redo">Redo</string>
-  <string name="editor_placeholder">Write your first sentence here.</string>
   <string name="backup_title">Backup and restore</string>
   <string name="backup_summary">Uninstalling deletes your documents. Export backups regularly.</string>
   <string name="backup_separate">Restore to a new folder</string>
@@ -204,7 +197,7 @@
   <string name="backup_separate_description">Restore the backup into a new folder at the library root. You can move its contents later.</string>
   <string name="backup_incremental_description">Keep the local library and add new files from the backup. Resolve differing versions one by one.</string>
   <string name="backup_replace_description">Destructive operation: removes the current local library and replaces it with the backup. Choose with care.</string>
-  <string name="backup_format_hint">Use a normal ZIP folder structure with UTF-8 .md or .txt files. No manifest is needed. You can create the ZIP on a computer. Unsupported files are listed and skipped.</string>
+  <string name="backup_format_hint">Supports ZIP files containing UTF-8 .md / .txt documents, including ZIPs created on a computer. Other files will be skipped.</string>
   <string name="backup_export">Export the entire library as ZIP</string>
   <string name="backup_import">Restore from ZIP</string>
   <string name="backup_filename">Makudon-backup-%1$s.zip</string>
@@ -261,34 +254,34 @@
   <string name="backup_clear_warning">Delete the pre-restore snapshot and any old snapshot material awaiting cleanup? The current library stays unchanged. You will no longer be able to undo this restore.</string>
   <string name="backup_cleanup_pending">Old snapshot material still needs cleanup. You can retry here.</string>
   <string name="backup_cancel">Cancel this operation</string>
-  <string name="backup_export_ready">The complete ZIP is ready and validated. Choose where to save it.</string>
+  <string name="backup_export_ready">ZIP created. Choose where to save it.</string>
   <string name="backup_save_zip">Choose save location</string>
   <string name="backup_export_retry_hint">Export did not finish. The destination may contain an incomplete ZIP. The complete private ZIP is preserved; choose another location to retry.</string>
   <string name="backup_exported">Library ZIP saved.</string>
   <string name="backup_restored">Library restored. You can undo the last restore in Settings.</string>
   <string name="backup_library_changed">Library switched. View the restore snapshot in Settings → Backup and restore.</string>
-  <string name="backup_undone">Library switched. Its previous state is preserved as the new snapshot.</string>
+  <string name="backup_undone">Restore undone. You can switch back again.</string>
   <string name="backup_snapshot_cleared">Restore snapshot deleted.</string>
-  <string name="backup_unchanged">No documents need changes. The library and previous restore snapshot are unchanged.</string>
-  <string name="backup_done_cleanup">The operation was committed, but some private material still needs cleanup. Retry in Backup and restore.</string>
-  <string name="backup_invalid_archive">The ZIP is damaged, encrypted, or has an invalid structure. Check for duplicate paths, file/folder name conflicts, absolute paths and path traversal.</string>
+  <string name="backup_unchanged">No documents need updating.</string>
+  <string name="backup_done_cleanup">Restore completed, but some temporary files remain. Retry cleanup in Backup and restore.</string>
+  <string name="backup_invalid_archive">The ZIP is damaged, encrypted, or has an invalid structure and cannot be restored.</string>
   <string name="backup_limit">ZIP or expanded contents must not exceed 512 MiB, 20,000 entries, 128 folder levels, or 16 MiB of ZIP directory metadata. The operation was stopped.</string>
   <string name="backup_empty">The ZIP has no restorable .md or .txt files. The local library is unchanged.</string>
   <string name="backup_stale">The local library has changed and this preview is out of date. Cancel and select the ZIP again.</string>
   <string name="backup_no_snapshot">No restore snapshot is available to switch back to.</string>
   <string name="backup_space">Not enough storage to keep the current library, pre-restore snapshot and complete candidate library together.</string>
-  <string name="file_select_app">Choose an app to select files</string>
+  <string name="file_select_app">Choose a file app</string>
   <string name="file_export_method">Choose export method</string>
-  <string name="file_system_picker">Android system file picker</string>
+  <string name="file_system_picker">System file picker</string>
   <string name="file_system_save">Choose save location</string>
   <string name="file_save_downloads">Save to Downloads</string>
   <string name="file_share_other">Share via another app</string>
   <string name="file_download_saved">Saved to Download/Makudon/%1$s</string>
   <string name="file_saved_location">Written to the selected location.</string>
   <string name="file_app_unavailable">Cannot open the selected app. Choose another app or the system picker.</string>
-  <string name="file_invalid_selection">No single readable file was received. Select a file again.</string>
+  <string name="file_invalid_selection">Cannot read the selected file. Choose one file again.</string>
   <string name="file_request_expired">This file request has expired. Close it and start again.</string>
-  <string name="file_operation_error">The file operation did not finish. Retry or choose another method. The original document and export copy are preserved; the destination may contain an incomplete file.</string>
+  <string name="file_operation_error">File operation did not finish. Retry or choose another method. The destination may contain an incomplete file.</string>
   <string name="file_download_cleanup_error">Saving failed and the incomplete download could not be removed. Check it in your file manager. You can retry with the same copy.</string>
   <string name="data_management">Data management</string>
   <string name="trash_title">Recycle bin</string>
@@ -328,7 +321,7 @@
   <string name="trash_preview_hint">Read-only preview. Restore to edit.</string>
   <string name="trash_deleted">Deleted. Restore from the recycle bin in Settings.</string>
   <string name="trash_purged">Selected content removed from the recycle bin.</string>
-  <string name="trash_cleanup_pending">Operation committed. Some private material still needs cleanup and is included in the storage total. Retry here.</string>
+  <string name="trash_cleanup_pending">Some files still need cleanup and take up space. Retry cleanup.</string>
   <string name="trash_retry_cleanup">Retry cleanup</string>
   <!-- %1$s: existing name; %2$s: restored display location. Do not translate either argument. -->
   <string name="trash_restored_item">Restored “%1$s” to: %2$s</string>
@@ -342,7 +335,7 @@
   <string name="language_title">Language</string>
   <string name="language_native_name">English</string>
   <string name="language_system">System default</string>
-  <string name="language_error">Could not save the language preference. Your documents are unchanged. Retry.</string>
+  <string name="language_error">Could not save the language setting. Try again.</string>
   <string name="language_load_error">Could not read the previous language preference. Using the current system app language setting.</string>
   <string name="language_migration">Keep the app language used before upgrading Android?</string>
   <string name="language_keep_previous">Keep previous language</string>
