@@ -22,7 +22,7 @@ import io.github.xrisium.makudon.domain.ThumbnailUsage
 internal fun ThumbnailCachePage(model: WorkspaceViewModel) {
     val ui = model.ui
     val preferences = ui.workspace?.thumbnailCaching ?: return
-    val enabled = (!ui.busy || ui.savingPreferences) && !model.cacheBusy
+    val enabled = (!ui.busy || ui.savingPreferences) && (!model.cacheBusy || ui.savingPreferences)
     Column(Modifier.fillMaxSize().testTag("thumbnail-cache-page")) {
         PageBar(stringResource(R.string.image_cache), model::closeCache)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -37,15 +37,12 @@ internal fun ThumbnailCachePage(model: WorkspaceViewModel) {
                         if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant)
                         val label = stringResource(labelId)
                         Row(Modifier.fillMaxWidth().padding(18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text(label, Modifier.weight(1f))
+                            Column(Modifier.weight(1f)) {
+                                Text(label)
+                                Text(Formatter.formatFileSize(LocalContext.current, model.cacheSizes[usage] ?: 0L), Modifier.testTag("thumbnail-cache-size-${usage.name}"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             Switch(preferences.enabled(usage), onCheckedChange = { value ->
-                                val next = when (usage) {
-                                    ThumbnailUsage.Directory -> preferences.copy(directory = value)
-                                    ThumbnailUsage.Menu -> preferences.copy(menu = value)
-                                    ThumbnailUsage.Information -> preferences.copy(information = value)
-                                    ThumbnailUsage.Content -> preferences
-                                }
-                                model.preferences(thumbnailCaching = next)
+                                model.changeThumbnailCaching(usage, value)
                             }, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }.testTag("thumbnail-cache-${usage.name}"))
                         }
                     }
@@ -56,12 +53,28 @@ internal fun ThumbnailCachePage(model: WorkspaceViewModel) {
                 Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.image_cache_usage), style = MaterialTheme.typography.titleSmall)
                     Text(Formatter.formatFileSize(LocalContext.current, model.cacheBytes), Modifier.testTag("thumbnail-cache-bytes"))
+                    val otherBytes = model.cacheSizes[ThumbnailUsage.Content] ?: 0L
+                    if (otherBytes > 0) Text(stringResource(R.string.image_cache_other, Formatter.formatFileSize(LocalContext.current, otherBytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(stringResource(R.string.image_cache_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (model.cacheBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (model.cacheBusy && !ui.savingPreferences) LinearProgressIndicator(Modifier.fillMaxWidth())
                     if (model.cacheError) Text(stringResource(R.string.image_cache_error), color = MaterialTheme.colorScheme.error)
-                    OutlinedButton(onClick = model::clearCache, enabled = !ui.busy && !model.cacheBusy && model.cacheBytes > 0) { Text(stringResource(R.string.image_cache_clear)) }
+                    OutlinedButton(onClick = model::clearCache, enabled = enabled && model.cacheBytes > 0, modifier = Modifier.testTag("thumbnail-cache-clear")) { Text(stringResource(R.string.image_cache_clear)) }
                 }
             }
         }
     }
+    model.cacheDisableRequest?.let { usage ->
+        AlertDialog(onDismissRequest = model::cancelCacheDisable, title = { Text(stringResource(R.string.image_cache_disable_title)) }, text = {
+            Text(stringResource(R.string.image_cache_disable_message, stringResource(thumbnailUsageLabel(usage))), Modifier.verticalScroll(rememberScrollState()))
+        }, confirmButton = { TextButton(onClick = model::confirmCacheDisable, enabled = !ui.busy) { Text(stringResource(R.string.image_cache_disable_confirm)) } },
+            dismissButton = { TextButton(onClick = model::cancelCacheDisable, enabled = !ui.busy) { Text(stringResource(R.string.cancel)) } })
+    }
+}
+
+
+internal fun thumbnailUsageLabel(usage: ThumbnailUsage): Int = when (usage) {
+    ThumbnailUsage.Directory -> R.string.image_cache_directory
+    ThumbnailUsage.Menu -> R.string.image_cache_menu
+    ThumbnailUsage.Information -> R.string.image_cache_information
+    ThumbnailUsage.Content -> R.string.image_cache
 }

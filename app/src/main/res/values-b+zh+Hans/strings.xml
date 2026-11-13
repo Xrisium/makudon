@@ -393,7 +393,11 @@
   <string name="image_cache_information">更多信息</string>
   <string name="image_cache_usage">缓存占用</string>
   <string name="image_cache_options">缓存场景</string>
-  <string name="image_cache_options_hint">关闭后，对应场景将直接从原图生成预览。已有缓存可通过下方按钮清理。</string>
+  <string name="image_cache_options_hint">各场景独立缓存。关闭时会清理对应的缩略图；再次开启后按需生成。</string>
+  <string name="image_cache_other">其他预览：%1$s</string>
+  <string name="image_cache_disable_title">关闭并清理缓存？</string>
+  <string name="image_cache_disable_message">将关闭“%1$s”的缓存并清理对应缩略图。这不会删除原图。</string>
+  <string name="image_cache_disable_confirm">关闭并清理</string>
   <string name="image_cache_clear">清理缓存</string>
   <string name="image_cache_error">部分缩略图未能清理，请重试。</string>
   <string name="image_invalid">图片不受支持或已损坏，请选择 JPEG、PNG 或静态 WebP。</string>

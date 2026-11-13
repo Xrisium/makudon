@@ -16,6 +16,7 @@ import io.github.xrisium.makudon.data.TrashStore
 import io.github.xrisium.makudon.data.TrashInventory
 import io.github.xrisium.makudon.data.TrashRestoreResult
 import io.github.xrisium.makudon.data.ImageLoader
+import io.github.xrisium.makudon.data.ThumbnailInventory
 import io.github.xrisium.makudon.data.AndroidImages
 import io.github.xrisium.makudon.data.LibraryArchive
 import io.github.xrisium.makudon.data.ExportItem
@@ -174,6 +175,11 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var cacheBytes by mutableLongStateOf(0)
         private set
+    var cacheSizes by mutableStateOf<Map<ThumbnailUsage, Long>>(emptyMap())
+        private set
+    var cacheDisableRequest by mutableStateOf<ThumbnailUsage?>(null)
+        private set
+    private var cacheInventoryRequest = 0L
     var cacheBusy by mutableStateOf(false)
         private set
     var cacheError by mutableStateOf(false)
@@ -286,13 +292,49 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         refreshCache()
         navigate(Page.ThumbnailCache)
     } }
-    fun closeCache() { if (!cacheBusy && ui.page == Page.ThumbnailCache) back() }
-    fun refreshCache() { viewModelScope.launch { cacheBytes = images.bytes() } }
+    fun closeCache() { if (!cacheBusy && cacheDisableRequest == null && ui.page == Page.ThumbnailCache) back() }
+    private suspend fun refreshCacheInventory(): ThumbnailInventory {
+        val request = ++cacheInventoryRequest
+        return images.inventory().also { inventory ->
+            if (request == cacheInventoryRequest) { cacheBytes = inventory.bytes; cacheSizes = inventory.sizes }
+        }
+    }
+    fun refreshCache() { if (!cacheBusy) viewModelScope.launch { refreshCacheInventory() } }
+    fun changeThumbnailCaching(usage: ThumbnailUsage, enabled: Boolean) {
+        val current = ui.workspace?.thumbnailCaching ?: return
+        if (usage == ThumbnailUsage.Content || current.enabled(usage) == enabled || cacheBusy || cacheDisableRequest != null) return
+        launchWork(savingPreferences = true) {
+            if (!enabled && usage in refreshCacheInventory().populated) cacheDisableRequest = usage
+            else saveThumbnailCaching(usage, enabled)
+        }
+    }
+    fun cancelCacheDisable() { if (!ui.busy) cacheDisableRequest = null }
+    fun confirmCacheDisable() {
+        val usage = cacheDisableRequest ?: return
+        launchWork(savingPreferences = true) {
+            cacheDisableRequest = null
+            saveThumbnailCaching(usage, false)
+        }
+    }
+    private suspend fun saveThumbnailCaching(usage: ThumbnailUsage, enabled: Boolean) {
+        val workspace = ui.workspace ?: return
+        val next = workspace.thumbnailCaching.with(usage, enabled)
+        // Publish the preference first. A failed authoritative write must not clear any cache.
+        disk { store.settings(workspace.theme, workspace.sort, workspace.descending, workspace.foldersFirst, thumbnailCaching = next) }
+        acceptWorkspace(disk { store.refresh() })
+        if (!enabled) {
+            cacheBusy = true; cacheError = false; cacheInventoryRequest++
+            try { cacheError = !images.clear(usage) }
+            finally { cacheBusy = false }
+        }
+        refreshCacheInventory()
+    }
     fun clearCache() {
-        if (cacheBusy) return
+        if (cacheBusy || ui.busy || cacheDisableRequest != null) return
         cacheBusy = true; cacheError = false
+        cacheInventoryRequest++
         viewModelScope.launch {
-            try { cacheError = !images.clear(); cacheBytes = images.bytes() }
+            try { cacheError = !images.clear(); refreshCacheInventory() }
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { cacheError = true }
             finally { cacheBusy = false }

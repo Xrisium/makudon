@@ -71,12 +71,12 @@ class ImageLoader(private val application: Application) : ComponentCallbacks2 {
     init { application.registerComponentCallbacks(this) }
     suspend fun load(info: ImageInfo, targetPixels: Int, usage: ThumbnailUsage = ThumbnailUsage.Content, original: suspend () -> File): Bitmap = withContext(Dispatchers.IO) {
         val size = when { targetPixels <= 128 -> 128; targetPixels <= 512 -> 512; else -> 1024 }
-        val key = "${info.sha256}-$size-v1.png"
+        val key = ThumbnailKeys.key(info.sha256, size, usage)
         if (caching.enabled(usage)) memory.get(key)?.let { return@withContext it }
         val generation = disk.generation
         decodeLock.withLock {
-            val policy = caching
-            fun cacheAllowed() = caching === policy && policy.enabled(usage)
+            val cacheEnabled = caching.enabled(usage)
+            fun cacheAllowed() = cacheEnabled && caching.enabled(usage)
             if (cacheAllowed()) memory.get(key)?.let { return@withLock it }
             val cached = (if (cacheAllowed()) disk.read(key) else null)?.let { data ->
                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -93,7 +93,7 @@ class ImageLoader(private val application: Application) : ComponentCallbacks2 {
                 val bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
                 disk.put(key, bytes, generation, ::cacheAllowed)
             }
-            disk.current(generation) { if (cacheAllowed()) memory.put(key, bitmap) }
+            disk.current(generation, usage) { if (cacheAllowed()) memory.put(key, bitmap) }
             bitmap
         }
     }
@@ -105,7 +105,17 @@ class ImageLoader(private val application: Application) : ComponentCallbacks2 {
         AndroidImages.decode(file, pixels, info.orientation)
     } }
     suspend fun bytes(): Long = withContext(Dispatchers.IO) { disk.bytes() }
-    suspend fun clear(): Boolean = withContext(Dispatchers.IO) { disk.clear { memory.evictAll() } }
+    suspend fun inventory(): ThumbnailInventory = withContext(Dispatchers.IO) {
+        val sizes = disk.sizes()
+        val inMemory = memory.snapshot().keys.mapNotNull(ThumbnailKeys::usage).toSet()
+        ThumbnailInventory(sizes, sizes.filterValues { it > 0 }.keys + inMemory)
+    }
+    suspend fun clear(usage: ThumbnailUsage? = null): Boolean = withContext(Dispatchers.IO) {
+        disk.clear(usage) {
+            if (usage == null) memory.evictAll()
+            else memory.snapshot().keys.filter { ThumbnailKeys.usage(it) == usage }.forEach(memory::remove)
+        }
+    }
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onTrimMemory(level: Int) { memory.evictAll() }
     @Suppress("OVERRIDE_DEPRECATION")

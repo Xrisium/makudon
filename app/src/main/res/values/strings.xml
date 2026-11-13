@@ -437,7 +437,11 @@
   <string name="image_cache_information">File information</string>
   <string name="image_cache_usage">Cache size</string>
   <string name="image_cache_options">Cache thumbnails for</string>
-  <string name="image_cache_options_hint">When disabled, previews for that context are generated from the original image. Use the button below to clear existing cached thumbnails.</string>
+  <string name="image_cache_options_hint">Each context has its own cache. Turning it off clears its thumbnails; they are recreated as needed when enabled again.</string>
+  <string name="image_cache_other">Other previews: %1$s</string>
+  <string name="image_cache_disable_title">Turn off and clear cache?</string>
+  <string name="image_cache_disable_message">Caching for %1$s will be turned off and its thumbnails cleared. This does not delete original images.</string>
+  <string name="image_cache_disable_confirm">Turn off and clear</string>
   <string name="image_cache_clear">Clear cache</string>
   <string name="image_cache_error">Some thumbnails could not be cleared. Try again.</string>
   <string name="image_invalid">Unsupported or damaged image. Choose a JPEG, PNG or static WebP.</string>

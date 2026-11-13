@@ -7,6 +7,12 @@ enum class DocumentKind(val extension: String) { Folder(""), Plain("txt"), Markd
 enum class DirectoryImages { Thumbnail, Icon }
 enum class ThumbnailUsage { Directory, Menu, Information, Content }
 data class ThumbnailCaching(val directory: Boolean = true, val menu: Boolean = true, val information: Boolean = true) {
+    fun with(usage: ThumbnailUsage, enabled: Boolean): ThumbnailCaching = when (usage) {
+        ThumbnailUsage.Directory -> copy(directory = enabled)
+        ThumbnailUsage.Menu -> copy(menu = enabled)
+        ThumbnailUsage.Information -> copy(information = enabled)
+        ThumbnailUsage.Content -> this
+    }
     fun enabled(usage: ThumbnailUsage): Boolean = when (usage) {
         ThumbnailUsage.Directory -> directory
         ThumbnailUsage.Menu -> menu

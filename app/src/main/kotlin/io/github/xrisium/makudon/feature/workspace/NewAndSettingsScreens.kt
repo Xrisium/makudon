@@ -86,6 +86,21 @@ fun SettingsPage(model: WorkspaceViewModel) {
                 }
             }
         }
+        item { Text(stringResource(R.string.font), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item {
+            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
+                    listOf(true, false).forEach { uiFont ->
+                        val preference = if (uiFont) workspace.uiFont else workspace.editorFont
+                        Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { model.fontSettings(uiFont) }.padding(vertical = 14.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(stringResource(if (uiFont) R.string.ui_font else R.string.editor_font)); Text(stringResource(R.string.font_summary, stringResource(fontLabel(preference.choice)), stringResource(thicknessLabel(preference.thickness))), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Glyph(R.drawable.ic_chevron_right)
+                        }
+                        if (uiFont) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            }
+        }
         item { Text(stringResource(R.string.directory), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
@@ -132,21 +147,6 @@ fun SettingsPage(model: WorkspaceViewModel) {
                                 Text(stringResource(if (option == RecentSort.Modified) R.string.recent_modified else R.string.recent_opened), Modifier.weight(1f))
                             }
                         }
-                    }
-                }
-            }
-        }
-        item { Text(stringResource(R.string.font), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item {
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
-                Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
-                    listOf(true, false).forEach { uiFont ->
-                        val preference = if (uiFont) workspace.uiFont else workspace.editorFont
-                        Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { model.fontSettings(uiFont) }.padding(vertical = 14.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text(stringResource(if (uiFont) R.string.ui_font else R.string.editor_font)); Text(stringResource(R.string.font_summary, stringResource(fontLabel(preference.choice)), stringResource(thicknessLabel(preference.thickness))), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            Glyph(R.drawable.ic_chevron_right)
-                        }
-                        if (uiFont) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
             }

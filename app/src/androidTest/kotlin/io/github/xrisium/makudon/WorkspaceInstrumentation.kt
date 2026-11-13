@@ -35,6 +35,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyMarkdownOutline = false
     private var onlyLaunch = false
     private var onlyImages = false
+    private var onlyThumbnailCache = false
     private var onlyLong = false
     private var onlyMotion = false
     private var onlyVisual = false
@@ -67,6 +68,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyMarkdownOutline = arguments?.getString("case") == "markdown-outline"
         onlyLaunch = arguments?.getString("case") == "launch"
         onlyImages = arguments?.getString("case") == "images"
+        onlyThumbnailCache = arguments?.getString("case") == "thumbnail-cache"
         onlyLong = arguments?.getString("case") == "long"
         onlyMotion = arguments?.getString("case") == "motion"
         onlyVisual = arguments?.getString("case") == "motion-visual"
@@ -90,7 +92,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     override fun onStart() {
         try {
-            if (onlyImages || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+            if (onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitFor("language bootstrap and first workspace frame") {
                 val label = main { currentActivity?.getString(R.string.recent) }
@@ -103,7 +105,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -176,7 +178,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
         visit(root)
-        if (onlyImages || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
+        if (onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
             val activeLayer = uiAutomation.windows.firstOrNull { it.id == root.windowId }?.layer ?: 0
             uiAutomation.windows.filter { it.layer > activeLayer && it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.forEach { window -> window.root?.let(::visit) }
         }
@@ -239,6 +241,141 @@ class WorkspaceInstrumentation : Instrumentation() {
         waitFor("context menu") { nodes().any { it.text?.toString() == main { model.languages.context().getString(R.string.rename) } } }
         find(label)
     }
+    private fun thumbnailCacheTest() {
+        val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
+        fun <T> disk(block: () -> T): T = runBlocking { withContext(Dispatchers.IO) { lock.withLock { block() } } }
+        val original = main { checkNotNull(model.ui.workspace) }
+        val oldScale = shell("settings get system font_scale")
+        val oldSize = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        var imageId: String? = null
+        fun label(usage: ThumbnailUsage) = main { model.languages.context().getString(thumbnailUsageLabel(usage)) }
+        fun scrollTop() { repeat(5) { nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); SystemClock.sleep(100) } }
+        fun refresh() {
+            val expected = runBlocking { model.images.inventory() }
+            main { model.refreshCache() }
+            waitFor("fresh per-scene sizes") { main { model.cacheSizes == expected.sizes && model.cacheBytes == expected.bytes } }
+        }
+        try {
+            shell("wm size reset"); shell("settings put system font_scale 1.0"); SystemClock.sleep(500); ready()
+            val bitmap = android.graphics.Bitmap.createBitmap(640, 360, android.graphics.Bitmap.Config.ARGB_8888)
+            android.graphics.Canvas(bitmap).apply { drawColor(android.graphics.Color.GREEN); drawCircle(320f, 180f, 140f, android.graphics.Paint().apply { color = android.graphics.Color.BLUE }) }
+            val data = java.io.ByteArrayOutputStream().also { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }.toByteArray(); bitmap.recycle()
+            imageId = disk { currentStore().createImage("缓存专项-${SystemClock.uptimeMillis()}", Workspace.ROOT, data, ImageRules.inspect(data)) }
+            main { model.reload() }; ready()
+            val entry = main { checkNotNull(model.ui.workspace?.entry(checkNotNull(imageId))) }
+            val info = checkNotNull(entry.image)
+            val target = WorkspaceViewModel.ImageTarget(entry)
+            fun load(usage: ThumbnailUsage, pixels: Int = 128) = runBlocking { model.images.load(info, pixels, usage) { model.imageFile(target) } }
+            main { model.preferences(thumbnailCaching = ThumbnailCaching(), theme = ColorTheme.Paper) }; ready()
+            runBlocking { model.images.clear() }
+            val bitmaps = ThumbnailUsage.entries.map { load(it) }
+            verify(bitmaps.toSet().size == 4, "Same image and size have independent decoded variants for all contexts")
+            ThumbnailUsage.entries.forEachIndexed { index, usage ->
+                verify(runBlocking { model.images.load(info, 128, usage) { error("cache miss") } } === bitmaps[index], "$usage reuses only its own memory cache")
+            }
+            main { model.go(Page.Settings) }; ready()
+            val headings = listOf(R.string.theme, R.string.font, R.string.directory).map { main { model.languages.context().getString(it) } }
+            val headingY = headings.map { text -> nodes().filter { it.text?.toString() == text }.minOf { Rect().also(it::getBoundsInScreen).top } }
+            verify(headingY.zipWithNext().all { (before, after) -> before < after }, "Settings places Fonts after color theme and before Folders")
+            screenshot("scoped-cache-settings-order")
+            main { model.showCache() }; ready(); refresh()
+            val sizes = main { model.cacheSizes }
+            verify(ThumbnailUsage.entries.all { (sizes[it] ?: 0L) > 0 } && main { model.cacheBytes } == sizes.values.sum(), "Each context reports its own actual disk bytes and total includes other previews")
+            screenshot("scoped-cache-sizes")
+            for (usage in listOf(ThumbnailUsage.Directory, ThumbnailUsage.Menu, ThumbnailUsage.Information)) {
+                val before = runBlocking { model.images.inventory() }
+                click(label(usage)); ready()
+                verify(main { model.cacheDisableRequest == usage && checkNotNull(model.ui.workspace).thumbnailCaching.enabled(usage) }, "$usage with cached thumbnails requests confirmation without changing switch")
+                if (usage == ThumbnailUsage.Directory) screenshot("scoped-cache-confirm")
+                click("取消"); ready()
+                verify(main { model.cacheDisableRequest == null && checkNotNull(model.ui.workspace).thumbnailCaching.enabled(usage) } && runBlocking { model.images.inventory() } == before, "$usage cancellation preserves preference and both caches")
+                if (usage == ThumbnailUsage.Information) {
+                    click(label(usage)); ready()
+                    val pending = File(workspaceDirectory(), "catalog.properties.new"); check(pending.mkdir())
+                    try {
+                        click("关闭并清理"); ready()
+                        verify(main { checkNotNull(model.ui.workspace).thumbnailCaching.information && model.ui.error != null } && runBlocking { model.images.inventory() } == before,
+                            "Failed preference write leaves switch enabled and does not clear any thumbnail")
+                    } finally { check(pending.delete()) }
+                    main { model.reload() }; ready(); refresh()
+                }
+                click(label(usage)); ready(); click("关闭并清理"); ready(); refresh()
+                val after = runBlocking { model.images.inventory() }
+                verify(main { !checkNotNull(model.ui.workspace).thumbnailCaching.enabled(usage) } && usage !in after.populated, "$usage confirmed shutdown clears its disk and memory thumbnails")
+                verify(before.sizes.filterKeys { it != usage } == after.sizes, "$usage shutdown preserves all other context versions")
+                main { model.changeThumbnailCaching(usage, true) }; ready()
+                click(label(usage)); ready()
+                verify(main { model.cacheDisableRequest == null && !checkNotNull(model.ui.workspace).thumbnailCaching.enabled(usage) }, "$usage empty context turns off without confirmation")
+            }
+            // Leave Content cached so the clear button stays enabled while a setting waits for disk.
+            val clear = generateSequence(find("清理缓存")) { it.parent }.first { it.isClickable }
+            val bounds = Rect().also(clear::getBoundsInScreen)
+            val beforeWrite = checkNotNull(uiAutomation.takeScreenshot())
+            runBlocking { lock.lock() }
+            try {
+                click("目录树")
+                verify(main { model.ui.busy && model.ui.savingPreferences }, "Preference persistence is genuinely blocked by the shared IO mutex")
+                val duringWrite = checkNotNull(uiAutomation.takeScreenshot())
+                try {
+                    val beforePixels = android.graphics.Bitmap.createBitmap(beforeWrite, bounds.left, bounds.top, bounds.width(), bounds.height())
+                    val duringPixels = android.graphics.Bitmap.createBitmap(duringWrite, bounds.left, bounds.top, bounds.width(), bounds.height())
+                    try { verify(beforePixels.sameAs(duringPixels), "Clear-cache outlined button keeps identical pixels while switch preference writes") }
+                    finally { beforePixels.recycle(); duringPixels.recycle() }
+                } finally { duringWrite.recycle() }
+                val bytes = runBlocking { model.images.bytes() }
+                click("清理缓存")
+                verify(!main { model.cacheBusy } && runBlocking { model.images.bytes() } == bytes, "Stable-looking clear button still rejects conflicting actions")
+            } finally { lock.unlock(); beforeWrite.recycle() }
+            ready()
+            main { model.changeThumbnailCaching(ThumbnailUsage.Menu, true) }; ready(); load(ThumbnailUsage.Menu)
+            val menuFile = File(targetContext.cacheDir, "image-thumbnails/" + io.github.xrisium.makudon.data.ThumbnailKeys.key(info.sha256, 128, ThumbnailUsage.Menu))
+            check(menuFile.delete()); refresh()
+            click("长按菜单"); ready()
+            verify(main { model.cacheDisableRequest == ThumbnailUsage.Menu }, "Memory-only thumbnail cache also requests confirmation")
+            click("取消"); ready(); runBlocking { model.images.clear(ThumbnailUsage.Menu) }; refresh()
+            click("长按菜单"); ready()
+            verify(main { model.cacheDisableRequest == null && !checkNotNull(model.ui.workspace).thumbnailCaching.menu }, "Clearing the scene removes memory-only data and suppresses empty confirmation")
+            main { model.preferences(thumbnailCaching = ThumbnailCaching()) }; ready()
+            runBlocking {
+                model.images.clear()
+                val entered = kotlinx.coroutines.CompletableDeferred<Unit>(); val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+                val own = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).async {
+                    model.images.load(info, 128, ThumbnailUsage.Directory) { entered.complete(Unit); release.await(); model.imageFile(target) }
+                }
+                entered.await()
+                val other = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).async { model.images.load(info, 128, ThumbnailUsage.Menu) { model.imageFile(target) } }
+                main { model.changeThumbnailCaching(ThumbnailUsage.Directory, false) }; ready()
+                verify(main { model.cacheDisableRequest == null }, "An in-flight decode without cached data does not ask for empty cleanup")
+                release.complete(Unit); own.await(); other.await()
+                val inventory = model.images.inventory()
+                verify(ThumbnailUsage.Directory !in inventory.populated && ThumbnailUsage.Menu in inventory.populated, "Scene shutdown fences its old decode while another scene still caches")
+            }
+            verify(disk { currentStore().readMaterial(entry.id).contentEquals(data) }, "All scoped clears preserve original image bytes")
+            main { model.reload() }; ready()
+            verify(main { model.ui.workspace?.thumbnailCaching?.directory == false }, "Confirmed preference survives reload")
+            for ((language, theme) in listOf("zh-Hans" to ColorTheme.Paper, "en" to ColorTheme.Ink)) {
+                main { model.changeLanguage(language) }; ready(); main { model.preferences(theme = theme) }; ready()
+                shell("wm size 840x1800"); shell("settings put system font_scale 2.0"); SystemClock.sleep(500); ready(); scrollTop()
+                val menuLabel = label(ThumbnailUsage.Menu)
+                click(menuLabel); ready(); screenshot("scoped-cache-$language-confirm-200")
+                click(main { model.languages.context().getString(R.string.cancel) }); ready()
+                verify(main { model.ui.workspace?.thumbnailCaching?.menu == true }, "$language large-font confirmation cancellation preserves enabled state")
+                repeat(8) { nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); SystemClock.sleep(100) }
+                val clearLabel = main { model.languages.context().getString(R.string.image_cache_clear) }
+                verify(find(clearLabel).isVisibleToUser, "$language clear action remains reachable at 320dp and 200% font")
+                screenshot("scoped-cache-$language-page-200")
+            }
+        } finally {
+            shell(if (oldSize == null) "wm size reset" else "wm size $oldSize"); shell("settings put system font_scale $oldScale")
+            main { model.cancelCacheDisable(); model.closeCache() }; ready()
+            main { model.changeLanguage("zh-Hans") }; ready()
+            main { model.preferences(theme = original.theme, thumbnailCaching = original.thumbnailCaching) }; ready()
+            runBlocking { model.images.clear() }
+            imageId?.let { id -> disk { if (currentStore().contains(id)) currentStore().deleteAll(listOf(id)) } }
+            main { model.reload() }; ready()
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun imageTest() {
         val lock = WorkspaceViewModel::class.java.getDeclaredField("ioLock").apply { isAccessible = true }.get(model) as kotlinx.coroutines.sync.Mutex
@@ -544,7 +681,9 @@ class WorkspaceInstrumentation : Instrumentation() {
                 repeat(5) { nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); SystemClock.sleep(150) }
                 val cacheLabels = main { listOf(R.string.image_cache_directory, R.string.image_cache_menu, R.string.image_cache_information).map { model.languages.context().getString(it) } }
                 cacheLabels.forEach { cacheLabel ->
-                    click(cacheLabel); ready(); click(cacheLabel); ready()
+                    click(cacheLabel); ready()
+                    if (main { model.cacheDisableRequest != null }) { click(main { model.languages.context().getString(R.string.image_cache_disable_confirm) }); ready() }
+                    click(cacheLabel); ready()
                 }
                 screenshot("images-$language-large-cache")
                 val clearLabel = main { model.languages.context().getString(R.string.image_cache_clear) }
