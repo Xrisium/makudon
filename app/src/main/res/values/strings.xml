@@ -181,7 +181,7 @@
   <string name="error_missing">This item or request is no longer available. Go back and try again.</string>
   <string name="error_invalid_text">Unsupported content. Choose UTF-8 text or Markdown. Binary files, GBK and UTF-16 are not supported.</string>
   <string name="error_too_large">Content exceeds 100,000 characters or 1 MiB. This change was not applied.</string>
-  <string name="error_storage">The local file operation failed. Existing documents and your input are preserved. Check available storage and retry.</string>
+  <string name="error_storage">The local file operation failed. Check available storage and retry.</string>
   <string name="error_corrupt">Cannot read the library or document. Saving is paused. Try again.</string>
   <string name="error_cleanup">The items were removed from the folder, but some private files could not be cleaned up.</string>
   <string name="open_failed">Cannot read this document</string>
@@ -197,7 +197,7 @@
   <string name="backup_separate_description">Restore the backup into a new folder at the library root. You can move its contents later.</string>
   <string name="backup_incremental_description">Keep the local library and add new files from the backup. Resolve differing versions one by one.</string>
   <string name="backup_replace_description">Destructive operation: removes the current local library and replaces it with the backup. Choose with care.</string>
-  <string name="backup_format_hint">Supports ZIP files containing UTF-8 .md / .txt documents, including ZIPs created on a computer. Other files will be skipped.</string>
+  <string name="backup_format_hint">Supports ZIP files containing UTF-8 .md / .txt documents and JPEG, PNG, or static WebP images, including ZIPs created on a computer. Other files will be skipped.</string>
   <string name="backup_export">Export the entire library as ZIP</string>
   <string name="backup_import">Restore from ZIP</string>
   <string name="backup_filename">Makudon-backup-%1$s.zip</string>
@@ -229,7 +229,7 @@
   <string name="backup_keep_local">Keep local</string>
   <string name="backup_use_archive">Use backup</string>
   <string name="backup_keep_both">Keep both</string>
-  <string name="backup_content_differs">The same path has different text. Choose a version explicitly. Modification times never trigger automatic replacement.</string>
+  <string name="backup_content_differs">The same path has different content. Choose which version to keep.</string>
   <string name="backup_conflict_number">Conflict %1$d / %2$d</string>
   <string name="backup_local_info">Local size (bytes): %1$d · %2$s</string>
   <string name="backup_archive_info">Backup size (bytes): %1$d · %2$s</string>
@@ -435,14 +435,16 @@
   <string name="image_cache_directory">Directory tree</string>
   <string name="image_cache_menu">Context menu</string>
   <string name="image_cache_information">File information</string>
-  <string name="image_cache_usage">Cache size</string>
+  <string name="image_cache_usage">Total cache size</string>
   <string name="image_cache_options">Cache thumbnails for</string>
-  <string name="image_cache_options_hint">Each context has its own cache. Turning it off clears its thumbnails; they are recreated as needed when enabled again.</string>
   <string name="image_cache_other">Other previews: %1$s</string>
   <string name="image_cache_disable_title">Turn off and clear cache?</string>
   <string name="image_cache_disable_message">Caching for %1$s will be turned off and its thumbnails cleared. This does not delete original images.</string>
   <string name="image_cache_disable_confirm">Turn off and clear</string>
-  <string name="image_cache_clear">Clear cache</string>
+  <string name="image_cache_overview">Cache overview</string>
+  <string name="image_cache_clear_title">Clear all thumbnail caches?</string>
+  <string name="image_cache_clear_message">Thumbnail caches for all contexts will be cleared. This does not delete original images.</string>
+  <string name="image_cache_clear">Clear all caches</string>
   <string name="image_cache_error">Some thumbnails could not be cleared. Try again.</string>
   <string name="image_invalid">Unsupported or damaged image. Choose a JPEG, PNG or static WebP.</string>
   <string name="image_too_large">Image exceeds 20 MiB or 100 million pixels.</string>

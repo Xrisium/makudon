@@ -48,17 +48,24 @@ internal fun ThumbnailCachePage(model: WorkspaceViewModel) {
                     }
                 }
             }
-            Text(stringResource(R.string.image_cache_options_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.image_cache_overview), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
-                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(stringResource(R.string.image_cache_usage), style = MaterialTheme.typography.titleSmall)
-                    Text(Formatter.formatFileSize(LocalContext.current, model.cacheBytes), Modifier.testTag("thumbnail-cache-bytes"))
-                    val otherBytes = model.cacheSizes[ThumbnailUsage.Content] ?: 0L
-                    if (otherBytes > 0) Text(stringResource(R.string.image_cache_other, Formatter.formatFileSize(LocalContext.current, otherBytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(stringResource(R.string.image_cache_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (model.cacheBusy && !ui.savingPreferences) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (model.cacheError) Text(stringResource(R.string.image_cache_error), color = MaterialTheme.colorScheme.error)
-                    OutlinedButton(onClick = model::clearCache, enabled = enabled && model.cacheBytes > 0, modifier = Modifier.testTag("thumbnail-cache-clear")) { Text(stringResource(R.string.image_cache_clear)) }
+                Column(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text(stringResource(R.string.image_cache_usage), Modifier.weight(1f))
+                            Text(Formatter.formatFileSize(LocalContext.current, model.cacheBytes), Modifier.testTag("thumbnail-cache-bytes"))
+                        }
+                        val otherBytes = model.cacheSizes[ThumbnailUsage.Content] ?: 0L
+                        if (otherBytes > 0) Text(stringResource(R.string.image_cache_other, Formatter.formatFileSize(LocalContext.current, otherBytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.image_cache_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (model.cacheBusy && !ui.savingPreferences) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        if (model.cacheError) Text(stringResource(R.string.image_cache_error), color = MaterialTheme.colorScheme.error)
+                        OutlinedButton(onClick = model::requestCacheClear, enabled = enabled && model.cacheBytes > 0, modifier = Modifier.testTag("thumbnail-cache-clear")) { Text(stringResource(R.string.image_cache_clear)) }
+                    }
                 }
             }
         }
@@ -69,6 +76,11 @@ internal fun ThumbnailCachePage(model: WorkspaceViewModel) {
         }, confirmButton = { TextButton(onClick = model::confirmCacheDisable, enabled = !ui.busy) { Text(stringResource(R.string.image_cache_disable_confirm)) } },
             dismissButton = { TextButton(onClick = model::cancelCacheDisable, enabled = !ui.busy) { Text(stringResource(R.string.cancel)) } })
     }
+    if (model.cacheClearRequest) AlertDialog(onDismissRequest = model::cancelCacheClear,
+        title = { Text(stringResource(R.string.image_cache_clear_title)) }, text = {
+            Text(stringResource(R.string.image_cache_clear_message), Modifier.verticalScroll(rememberScrollState()))
+        }, confirmButton = { TextButton(onClick = model::confirmCacheClear, enabled = !ui.busy && !model.cacheBusy) { Text(stringResource(R.string.image_cache_clear)) } },
+        dismissButton = { TextButton(onClick = model::cancelCacheClear, enabled = !model.cacheBusy) { Text(stringResource(R.string.cancel)) } })
 }
 
 

@@ -281,6 +281,10 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.showCache() }; ready(); refresh()
             val sizes = main { model.cacheSizes }
             verify(ThumbnailUsage.entries.all { (sizes[it] ?: 0L) > 0 } && main { model.cacheBytes } == sizes.values.sum(), "Each context reports its own actual disk bytes and total includes other previews")
+            verify(nodes().none { it.text?.toString()?.contains("各场景独立缓存") == true }, "Cache page omits the removed mechanism explanation")
+            val overview = Rect().also { find("缓存概览").getBoundsInScreen(it) }
+            val total = Rect().also { find("缓存总占用").getBoundsInScreen(it) }
+            verify(overview.bottom < total.top, "Cache overview is an external heading above the total-usage field")
             screenshot("scoped-cache-sizes")
             for (usage in listOf(ThumbnailUsage.Directory, ThumbnailUsage.Menu, ThumbnailUsage.Information)) {
                 val before = runBlocking { model.images.inventory() }
@@ -308,7 +312,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 verify(main { model.cacheDisableRequest == null && !checkNotNull(model.ui.workspace).thumbnailCaching.enabled(usage) }, "$usage empty context turns off without confirmation")
             }
             // Leave Content cached so the clear button stays enabled while a setting waits for disk.
-            val clear = generateSequence(find("清理缓存")) { it.parent }.first { it.isClickable }
+            val clear = generateSequence(find("清理全部缓存")) { it.parent }.first { it.isClickable }
             val bounds = Rect().also(clear::getBoundsInScreen)
             val beforeWrite = checkNotNull(uiAutomation.takeScreenshot())
             runBlocking { lock.lock() }
@@ -323,10 +327,29 @@ class WorkspaceInstrumentation : Instrumentation() {
                     finally { beforePixels.recycle(); duringPixels.recycle() }
                 } finally { duringWrite.recycle() }
                 val bytes = runBlocking { model.images.bytes() }
-                click("清理缓存")
-                verify(!main { model.cacheBusy } && runBlocking { model.images.bytes() } == bytes, "Stable-looking clear button still rejects conflicting actions")
+                click("清理全部缓存")
+                verify(!main { model.cacheBusy || model.cacheClearRequest } && runBlocking { model.images.bytes() } == bytes, "Stable-looking clear button still rejects conflicting actions")
             } finally { lock.unlock(); beforeWrite.recycle() }
             ready()
+            val beforeAll = runBlocking { model.images.inventory() }
+            val beforePreferences = main { model.ui.workspace?.thumbnailCaching }
+            click("清理全部缓存"); ready()
+            verify(main { model.cacheClearRequest && !model.cacheBusy } && runBlocking { model.images.inventory() } == beforeAll,
+                "Clear-all button requests confirmation before touching disk or memory")
+            screenshot("cache-all-confirm")
+            click("取消"); ready()
+            verify(main { !model.cacheClearRequest && model.ui.workspace?.thumbnailCaching == beforePreferences } && runBlocking { model.images.inventory() } == beforeAll,
+                "Canceling clear-all preserves all cached variants and preferences")
+            click("清理全部缓存"); ready()
+            main { currentActivity?.recreate() }; ready()
+            verify(main { model.cacheClearRequest } && nodes().any { it.text?.toString() == "清理全部缩略图缓存？" }, "Clear-all confirmation survives Activity recreation")
+            main { model.changeThumbnailCaching(ThumbnailUsage.Directory, false) }; ready()
+            verify(main { model.ui.workspace?.thumbnailCaching == beforePreferences }, "Pending clear-all confirmation gates conflicting switch actions")
+            click("清理全部缓存")
+            waitFor("all cache cleared after confirmation") { main { !model.cacheBusy && !model.cacheClearRequest && model.cacheBytes == 0L } }
+            verify(runBlocking { model.images.inventory().populated.isEmpty() } && main { model.ui.workspace?.thumbnailCaching == beforePreferences },
+                "Confirmed clear-all removes disk and memory caches without changing switches")
+            load(ThumbnailUsage.Content); refresh()
             main { model.changeThumbnailCaching(ThumbnailUsage.Menu, true) }; ready(); load(ThumbnailUsage.Menu)
             val menuFile = File(targetContext.cacheDir, "image-thumbnails/" + io.github.xrisium.makudon.data.ThumbnailKeys.key(info.sha256, 128, ThumbnailUsage.Menu))
             check(menuFile.delete()); refresh()
@@ -364,10 +387,15 @@ class WorkspaceInstrumentation : Instrumentation() {
                 val clearLabel = main { model.languages.context().getString(R.string.image_cache_clear) }
                 verify(find(clearLabel).isVisibleToUser, "$language clear action remains reachable at 320dp and 200% font")
                 screenshot("scoped-cache-$language-page-200")
+                val beforeClear = runBlocking { model.images.inventory() }
+                click(clearLabel); ready(); screenshot("cache-all-$language-confirm-200")
+                verify(main { model.cacheClearRequest } && nodes().any { it.text?.toString() == main { model.languages.context().getString(R.string.image_cache_clear_title) } }, "$language clear-all confirmation is visible at 320dp and 200% font")
+                click(main { model.languages.context().getString(R.string.cancel) }); ready()
+                verify(!main { model.cacheClearRequest } && runBlocking { model.images.inventory() } == beforeClear, "$language large-font clear-all cancel preserves cached data")
             }
         } finally {
             shell(if (oldSize == null) "wm size reset" else "wm size $oldSize"); shell("settings put system font_scale $oldScale")
-            main { model.cancelCacheDisable(); model.closeCache() }; ready()
+            main { model.cancelCacheDisable(); model.cancelCacheClear(); model.closeCache() }; ready()
             main { model.changeLanguage("zh-Hans") }; ready()
             main { model.preferences(theme = original.theme, thumbnailCaching = original.thumbnailCaching) }; ready()
             runBlocking { model.images.clear() }
@@ -612,7 +640,7 @@ class WorkspaceInstrumentation : Instrumentation() {
 
             main { model.go(Page.Settings) }; ready(); main { model.showCache() }; ready()
             waitFor("cache size") { main { model.cacheBytes > 0 } }
-            click("清理缓存"); waitFor("cache cleared") { main { !model.cacheBusy && model.cacheBytes == 0L } }
+            click("清理全部缓存"); ready(); click("清理全部缓存"); waitFor("cache cleared") { main { !model.cacheBusy && model.cacheBytes == 0L } }
             verify(!main { model.cacheError }, "Thumbnail cache clears without error")
             verify(disk { currentStore().readMaterial(png.id).contentEquals(File(sources, png.filename).readBytes()) }, "Cache clear preserves original image")
             verify(main { model.ui.page == Page.ThumbnailCache } && nodes().none { it.text?.toString() == "关闭" }, "Cache opens as a secondary page rather than a dialog")

@@ -150,7 +150,7 @@
   <string name="error_missing">条目或任务已不可用，请返回重试。</string>
   <string name="error_invalid_text">不支持此内容。请选择 UTF-8 纯文本或 Markdown，不支持二进制、GBK 或 UTF-16。</string>
   <string name="error_too_large">内容超过 10 万字符或 1 MiB，未应用此次更改。</string>
-  <string name="error_storage">无法完成本机文件操作，现有文稿与编辑内容已保留。请检查可用空间后重试。</string>
+  <string name="error_storage">无法完成本机文件操作。请检查可用空间后重试。</string>
   <string name="error_corrupt">无法读取文稿库或文稿，已暂停保存。请重试。</string>
   <string name="error_cleanup">条目已移出目录，但私有残留文件清理未完成。</string>
   <string name="open_failed">无法读取此文稿</string>
@@ -166,7 +166,7 @@
   <string name="backup_separate_description">将备份恢复到根目录中新建的单独文件夹，留待后续手动移动文件位置。</string>
   <string name="backup_incremental_description">保留本机文档库，并仅增加备份中的新文件。如果存在文件冲突（新旧版本不一），需依次手动进行处理。</string>
   <string name="backup_replace_description">破坏性操作，会导致当前本机文稿库被清空并替换为备份文件中的内容，慎重选择！</string>
-  <string name="backup_format_hint">支持包含 UTF-8 .md / .txt 文稿的 ZIP，也可在电脑上创建。其他文件将跳过。</string>
+  <string name="backup_format_hint">支持包含 UTF-8 .md / .txt 文稿及 JPEG、PNG、静态 WebP 图片的 ZIP，也可在电脑上创建。其他文件将跳过。</string>
   <string name="backup_export">打包导出整个文稿库</string>
   <string name="backup_import">从 ZIP 恢复</string>
   <string name="backup_filename">Makudon-备份-%1$s.zip</string>
@@ -195,7 +195,7 @@
   <string name="backup_keep_local">保留本地</string>
   <string name="backup_use_archive">采用备份</string>
   <string name="backup_keep_both">保留双方</string>
-  <string name="backup_content_differs">同一路径的正文不同，请手动选择；不会按修改时间自动覆盖。</string>
+  <string name="backup_content_differs">同一路径的内容不同，请选择保留方式。</string>
   <string name="backup_conflict_number">冲突 %1$d / %2$d</string>
   <string name="backup_local_info">本地：%1$d 字节 · %2$s</string>
   <string name="backup_archive_info">备份：%1$d 字节 · %2$s</string>
@@ -391,14 +391,16 @@
   <string name="image_cache_directory">目录树</string>
   <string name="image_cache_menu">长按菜单</string>
   <string name="image_cache_information">更多信息</string>
-  <string name="image_cache_usage">缓存占用</string>
+  <string name="image_cache_usage">缓存总占用</string>
   <string name="image_cache_options">缓存场景</string>
-  <string name="image_cache_options_hint">各场景独立缓存。关闭时会清理对应的缩略图；再次开启后按需生成。</string>
   <string name="image_cache_other">其他预览：%1$s</string>
   <string name="image_cache_disable_title">关闭并清理缓存？</string>
   <string name="image_cache_disable_message">将关闭“%1$s”的缓存并清理对应缩略图。这不会删除原图。</string>
   <string name="image_cache_disable_confirm">关闭并清理</string>
-  <string name="image_cache_clear">清理缓存</string>
+  <string name="image_cache_overview">缓存概览</string>
+  <string name="image_cache_clear_title">清理全部缩略图缓存？</string>
+  <string name="image_cache_clear_message">将清理全部场景的缩略图缓存。这不会删除原图。</string>
+  <string name="image_cache_clear">清理全部缓存</string>
   <string name="image_cache_error">部分缩略图未能清理，请重试。</string>
   <string name="image_invalid">图片不受支持或已损坏，请选择 JPEG、PNG 或静态 WebP。</string>
   <string name="image_too_large">图片超过 20 MiB 或 1 亿像素。</string>

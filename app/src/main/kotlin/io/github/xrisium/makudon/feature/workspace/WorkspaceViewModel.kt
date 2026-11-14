@@ -179,6 +179,8 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var cacheDisableRequest by mutableStateOf<ThumbnailUsage?>(null)
         private set
+    var cacheClearRequest by mutableStateOf(false)
+        private set
     private var cacheInventoryRequest = 0L
     var cacheBusy by mutableStateOf(false)
         private set
@@ -292,7 +294,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         refreshCache()
         navigate(Page.ThumbnailCache)
     } }
-    fun closeCache() { if (!cacheBusy && cacheDisableRequest == null && ui.page == Page.ThumbnailCache) back() }
+    fun closeCache() { if (!cacheBusy && cacheDisableRequest == null && !cacheClearRequest && ui.page == Page.ThumbnailCache) back() }
     private suspend fun refreshCacheInventory(): ThumbnailInventory {
         val request = ++cacheInventoryRequest
         return images.inventory().also { inventory ->
@@ -302,7 +304,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     fun refreshCache() { if (!cacheBusy) viewModelScope.launch { refreshCacheInventory() } }
     fun changeThumbnailCaching(usage: ThumbnailUsage, enabled: Boolean) {
         val current = ui.workspace?.thumbnailCaching ?: return
-        if (usage == ThumbnailUsage.Content || current.enabled(usage) == enabled || cacheBusy || cacheDisableRequest != null) return
+        if (usage == ThumbnailUsage.Content || current.enabled(usage) == enabled || cacheBusy || cacheDisableRequest != null || cacheClearRequest) return
         launchWork(savingPreferences = true) {
             if (!enabled && usage in refreshCacheInventory().populated) cacheDisableRequest = usage
             else saveThumbnailCaching(usage, enabled)
@@ -329,8 +331,18 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
         refreshCacheInventory()
     }
-    fun clearCache() {
-        if (cacheBusy || ui.busy || cacheDisableRequest != null) return
+    fun requestCacheClear() {
+        if (cacheBusy || ui.busy || ui.transitioning || cacheDisableRequest != null || cacheBytes <= 0) return
+        cacheClearRequest = true
+    }
+    fun cancelCacheClear() { if (!cacheBusy) cacheClearRequest = false }
+    fun confirmCacheClear() {
+        if (!cacheClearRequest || cacheBusy || ui.busy) return
+        cacheClearRequest = false
+        clearCache()
+    }
+    private fun clearCache() {
+        if (cacheBusy || ui.busy || cacheDisableRequest != null || cacheClearRequest) return
         cacheBusy = true; cacheError = false
         cacheInventoryRequest++
         viewModelScope.launch {
