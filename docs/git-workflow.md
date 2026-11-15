@@ -20,12 +20,55 @@ git config --local push.default simple
 
 ## 日常循环
 
-1. 查看状态与差异，保留未提交的手动修改；需要远程更新时 `git fetch origin`，干净且可快进时 `git pull --ff-only`。
-2. 小改动可直接留在 main；较大功能建议 `git switch -c codex/<topic>`，方便整体审查或暂停。
+1. 开始和接续会话时执行 `git status --short --branch`、`git branch --show-current`、`git worktree list`，首次进度说明报告实际分支；默认目标为 `main`，不能根据会话标题、上轮记忆或任务名称推断当前分支。保留未提交的手动修改；需要远程更新时 `git fetch origin --prune`，干净且可快进时 `git pull --ff-only`。
+2. 单人串行任务默认直接在 `main` 开发和提交，不因功能较大自动建分支。一次只允许一个会修改同一工作区的开发会话；VS Code、终端和 Agent 共用的工作区切换分支会互相影响。
 3. 完成一件可说明的改动，执行相关检查，随时用测试入口试用。
-4. `git diff` / VS Code Source Control 审查，按文件暂存。避免无检查地 `git add .`。
-5. 每轮会话完成、且对项目有实际修改后，自动对本次修改的内容创建细粒度的 commit（规范见下），对于不同模块的改动（例如同时改变了业务代码和文档）应该拆分后分开提交。
-6. 禁止自动 push 到远程仓库（push 这一步应该由用户本人完成）。
+4. `git diff` / VS Code Source Control 审查，按文件暂存。避免无检查地 `git add .`。每次暂存 / 提交前重新执行 `git branch --show-current` 与 `git status --short --branch`，确认仍在本任务目标分支；不能只在会话开始时检查一次。
+5. 每轮会话完成、且对项目有实际修改后，自动对本次修改的内容创建细粒度的 commit（规范见下），对于不同模块的改动（例如同时改变了业务代码和文档）应该拆分后分开提交。提交后检查工作区，交付报告实际分支、提交号、验证结果及相对上游的未推送提交数。
+6. 默认由用户本人 push；用户当轮明确授权 Agent 推送时可执行，无需重复确认。本地提交 / 合并 / 删分支不会自动更新 GitHub。
+
+### 分支不符合目标时
+
+- 实际分支不是 `main`，且本轮没有明确授权在该功能分支开发时，先停止修改文件。工作区干净、`main` 未被其他 worktree 占用，且 `git merge-base --is-ancestor HEAD main` 返回 0 时，可直接 `git switch main` 并重新核对状态。
+- 如果有未提交改动、当前分支有 main 未包含的提交、main 被占用或处于 detached HEAD，先报告实际情况并明确归属；不得自动 stash、丢弃、带着改动跨分支或在旧分支继续新任务。合并与清理需要属于当前用户授权范围，本次分支整理不构成今后任意合并的长期授权。
+- 不把“GitHub 默认分支为 main”当作本地已切到 main 的证据；日常可在 VS Code 状态栏核对分支。
+
+### 临时分支的例外与收尾
+
+仅用户明确要求隔离试验、暂停未完成工作或并行开发时创建 `codex/<topic>`；从已核对的 main 建立，任务计划写明目标分支、范围、验收和合并方式。新任务超出该分支范围时回到 main，不继续堆叠。
+
+授权隔离任务默认包含本地收尾：验证完成后回到 main，优先 `git merge --ff-only codex/<topic>`；发生分叉先审查差异，不能为得到直线历史而自动改写提交。确认 `git merge-base --is-ancestor codex/<topic> main` 成功后，使用 `git branch -d codex/<topic>` 安全删除。暂时不能合并时报告原因和剩余分支，不能宣称已收尾。远端分支删除和 push 仍需用户授权。
+
+### 直接在 main 开发的边界
+
+单人串行开发可以只使用 main；分支用于隔离，并非保存历史的前提。保持小步、可说明的提交，完成相关检查后再提交；撤销已共享修改优先用新的 `git revert` 提交，发布版本继续用标签定位。定期由用户推送，避免唯一副本只在电脑上。
+
+此模式下 main 表示最新开发状态，不保证每个中间提交都是正式发布版本。需要长期保留不完整试验、同时维护旧版本或并行会话时，再明确启用临时分支。可在 GitHub 保护 main，禁止删除和强制推送并约束管理员绕过；保持允许直接推送，不强制 PR / 他人批准，否则与该模式冲突。GitHub 保护只能约束远端更新，无法阻止本地提交到错误分支；文档核对是行为约定，不是强制技术拦截。参见 [GitHub 分支保护](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)。
+
+## 2026-11-16 整理后的 GitHub 交接
+
+本次本地快进保留全部原提交，删除五个已合入的本地功能分支，仅保留 main；`v0.1.0` 标签及远端分支未改动。清理前完整 Git bundle 与引用清单位于被忽略的 `.local/git-cleanup-2026-11-16/`；任务和验证见 [0041](tasks/0041-main-branch-consolidation.md)。GitHub 默认分支已核实为 main，无需改名或新建仓库。
+
+1. 在本仓库核对 `git status --short --branch` 后执行 `git push origin main`，无需 force。若非快进被拒绝，先 fetch 并审查远端新提交，不要强推。
+2. 到 [GitHub Actions](https://github.com/Xrisium/makudon/actions) 检查本次 main 推送的构建、单测与 Lint；远端成功不能用本地 Check 代替。
+3. 推送成功后执行下列脚本：先 fetch 并逐一核对祖先关系，任何一步失败即停止，不删除分支。若分支在此期间新增未合入提交，保留并重新审查。删除远端分支只移除分支名，已合入 main 的历史和版本标签继续保留。
+
+```powershell
+git fetch origin --prune
+if ($LASTEXITCODE -ne 0) { throw 'Fetch failed' }
+$obsoleteBranches = @('codex/markdown-images', 'codex/markdown-three-modes')
+foreach ($branch in $obsoleteBranches) {
+    git merge-base --is-ancestor "origin/$branch" origin/main
+    if ($LASTEXITCODE -ne 0) { throw "Stop: review $branch before deletion" }
+}
+git push origin --delete $obsoleteBranches
+if ($LASTEXITCODE -ne 0) { throw 'Remote branch deletion failed' }
+git fetch origin --prune
+if ($LASTEXITCODE -ne 0) { throw 'Fetch failed' }
+git branch -avv
+```
+
+也可在 [GitHub 分支页](https://github.com/Xrisium/makudon/branches) 核对后删除这两个功能分支。若有相关未关闭 PR，核对内容已进入 main 后再处理，不重复 squash / 合并已有提交。[GitHub 分支管理](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-branches-in-your-repository)。不要删除 `v0.1.0` 或现有 Release；标签是否推送及发布附件仍按原发布任务单独处理。
 
 ## Commit Message 规范（Agent 必须遵守）
 
