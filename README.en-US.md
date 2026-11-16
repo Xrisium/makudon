@@ -46,7 +46,7 @@ Debug signing keys may differ between build environments. If an update reports a
 - **Folder management**: a folder tree, name search, sorting, recently opened documents, and batch copy, cut, and delete for documents and folders.
 - **Portable files**: import UTF-8 `.md` and `.txt` files, export source copies, and back up the library as a standard ZIP that preserves folders. Extract and edit it on a PC, or use the ZIP to restore a backup.
 - **A separate recycle bin**: preview and restore deleted documents and folders. Items do not expire automatically, so accidental deletions can still be found later.
-- **Reading your way**: five color themes, including light and dark options, with system theme support; separate interface and document fonts and weights; and document text size you can change while editing.
+- **Reading your way**: five color themes, including light and dark options, with system theme support; separate interface and document fonts and weights; adjustable document text size and line spacing; and fast scrolling with top/bottom shortcuts for long documents.
 
 ## Get started
 
@@ -54,7 +54,7 @@ Debug signing keys may differ between build environments. If an update reports a
 
 On **Recent**, tap **＋** in the top-right corner and choose **Plain text** or **Markdown**. New documents go in the library root by default. To write in a particular folder, select it on **Folders** before creating a document.
 
-Your text saves automatically as you edit. Tap the document title at the top of the editor to rename it.
+Your text saves automatically as you edit. Tap the document title at the top of the editor to rename it. Plain text documents offer **Edit / Reading** tabs. Reading locks editing while allowing selection, copying, and search.
 
 ### Manage folders
 
@@ -109,7 +109,9 @@ Each document must be UTF-8, with at most 100,000 Unicode code points and an enc
 
 Open **Settings** to choose a color theme and separate interface and document fonts. Noto Sans SC, Noto Serif SC, and LXGW WenKai are included, or you can use your phone’s system font. All fonts work offline, with three weight options.
 
-The editor’s more menu offers three document **Text size** settings: S / M / L.
+The editor’s more menu offers three **Text size** settings, S / M / L, followed by three **Line spacing** settings, W / M / N (wide / medium / narrow). Both apply to all document views.
+
+Long documents show a fast scroller and top/bottom shortcuts when you are far enough from either end. Short documents hide these controls. Choose the left or right side in **Settings → Document navigation → Control side**; the default is right.
 
 The app currently supports Simplified Chinese and English. Under **Settings → Language**, choose **System default / 简体中文 / English**.
 
