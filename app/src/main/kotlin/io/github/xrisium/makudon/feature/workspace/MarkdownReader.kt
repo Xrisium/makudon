@@ -71,6 +71,21 @@ internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocumen
                 }
             }
         }
+        DocumentEdgeFade(model,
+            fromStart = {
+                if (!model.readingList.canScrollBackward) 0f
+                else if (model.readingList.firstVisibleItemIndex == 0) model.readingList.firstVisibleItemScrollOffset.toFloat()
+                else Float.MAX_VALUE
+            },
+            fromEnd = {
+                if (!model.readingList.canScrollForward) 0f else {
+                    val info = model.readingList.layoutInfo
+                    val last = info.visibleItemsInfo.lastOrNull()
+                    if (last != null && last.index == info.totalItemsCount - 1)
+                        (last.offset + last.size + info.afterContentPadding - info.viewportEndOffset).coerceAtLeast(0).toFloat()
+                    else Float.MAX_VALUE
+                }
+            })
         MarkdownNavigation(model, document, style)
     }
 }

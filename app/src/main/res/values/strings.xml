@@ -470,4 +470,5 @@
     <string name="navigation_inset">Navigation control inset</string>
     <string name="navigation_inset_standard">Standard</string>
     <string name="navigation_inset_wide">Wide</string>
+    <string name="fade_document_edges">Fade document edges</string>
 </resources>

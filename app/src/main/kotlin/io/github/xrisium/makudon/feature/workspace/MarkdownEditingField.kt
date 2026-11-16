@@ -157,6 +157,9 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = bodyStyle, color = colors.onSurfaceVariant); inner() } })
         if (typeset && layout != null) MarkdownEditingOverlays(model, parsed, projection, checkNotNull(layout), source, active,
             imageParagraphs, imageIndents, imageHeights, tables, tableLayouts, bodyStyle, editable, viewportHeight, viewportWidth)
+        DocumentEdgeFade(model, verticalInset = 16.dp,
+            fromStart = { if (model.editorScroll.maxValue == Int.MAX_VALUE) 0f else model.editorScroll.value.toFloat() },
+            fromEnd = { if (model.editorScroll.maxValue == Int.MAX_VALUE) 0f else (model.editorScroll.maxValue - model.editorScroll.value).toFloat() })
         EditingNavigation(model, viewportHeight)
     }
 }

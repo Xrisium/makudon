@@ -109,4 +109,21 @@ class ViewportPositionTest {
         assertEquals(NavigationInset.Standard, store(dir).refresh().navigationInset)
     }
 
+    @Test fun edgeFadePreferenceSurvivesRestartAndOtherSettingsWithoutChangingDocuments() {
+        val dir = temp.newFolder()
+        val original = store(dir)
+        val id = original.create("羽化", Workspace.ROOT, DocumentKind.Markdown, "# 不修改正文😀")
+        original.settings(ColorTheme.System, SortKey.Name, false, true, fadeDocumentEdges = false)
+        val reopened = store(dir)
+        assertFalse(reopened.refresh().fadeDocumentEdges)
+        reopened.settings(ColorTheme.Paper, SortKey.Size, true, false, navigationInset = NavigationInset.Wide)
+        assertFalse(store(dir).refresh().fadeDocumentEdges)
+        assertEquals("# 不修改正文😀", store(dir).read(id))
+        val catalog = File(dir, "catalog.properties")
+        catalog.writeText(catalog.readText().lineSequence().filterNot { it.startsWith("fadeDocumentEdges=") }.joinToString("\n"))
+        assertTrue(store(dir).refresh().fadeDocumentEdges)
+        catalog.appendText("\nfadeDocumentEdges=unknown\n")
+        assertTrue(store(dir).refresh().fadeDocumentEdges)
+    }
+
 }

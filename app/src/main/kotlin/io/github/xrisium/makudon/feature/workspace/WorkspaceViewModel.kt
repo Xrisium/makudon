@@ -879,7 +879,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(selected = restored.parent ?: Workspace.ROOT, revealFolder = restored.parent ?: Workspace.ROOT, directoryRevision = ui.directoryRevision + 1)
         navigate(Page.Directory, backwards = true)
     }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null, directoryImages: DirectoryImages? = null, thumbnailCaching: ThumbnailCaching? = null, editorLineSpacing: EditorLineSpacing? = null, navigationSide: NavigationSide? = null, navigationInset: NavigationInset? = null) {
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null, directoryImages: DirectoryImages? = null, thumbnailCaching: ThumbnailCaching? = null, editorLineSpacing: EditorLineSpacing? = null, navigationSide: NavigationSide? = null, navigationInset: NavigationInset? = null, fadeDocumentEdges: Boolean? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme
         val nextSort = sort ?: w.sort
@@ -892,16 +892,17 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         val nextLineSpacing = editorLineSpacing ?: w.editorLineSpacing
         val nextNavigationSide = navigationSide ?: w.navigationSide
         val nextNavigationInset = navigationInset ?: w.navigationInset
+        val nextFadeDocumentEdges = fadeDocumentEdges ?: w.fadeDocumentEdges
         val nextShowRecentExcerpt = showRecentExcerpt ?: w.showRecentExcerpt
         val nextRecentSort = recentSort ?: w.recentSort
         val nextDirectoryImages = directoryImages ?: w.directoryImages
         val nextThumbnailCaching = thumbnailCaching ?: w.thumbnailCaching
-        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort && nextDirectoryImages == w.directoryImages && nextThumbnailCaching == w.thumbnailCaching && nextLineSpacing == w.editorLineSpacing && nextNavigationSide == w.navigationSide && nextNavigationInset == w.navigationInset) return
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort && nextDirectoryImages == w.directoryImages && nextThumbnailCaching == w.thumbnailCaching && nextLineSpacing == w.editorLineSpacing && nextNavigationSide == w.navigationSide && nextNavigationInset == w.navigationInset && nextFadeDocumentEdges == w.fadeDocumentEdges) return
         launchWork(savingPreferences = true) {
             // Animate this switch on input, independently of catalog writes and body refreshes.
             ui = ui.copy(workspace = w.copy(showRecentExcerpt = nextShowRecentExcerpt))
             try {
-                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort, nextDirectoryImages, nextThumbnailCaching, nextLineSpacing, nextNavigationSide, nextNavigationInset) }
+                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort, nextDirectoryImages, nextThumbnailCaching, nextLineSpacing, nextNavigationSide, nextNavigationInset, nextFadeDocumentEdges) }
                 acceptWorkspace(disk { store.refresh() })
             } catch (e: Exception) {
                 ui = ui.copy(workspace = ui.workspace?.copy(showRecentExcerpt = w.showRecentExcerpt))

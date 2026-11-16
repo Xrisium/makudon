@@ -48,6 +48,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyRecentOverview = false
     private var onlyDetails = false
     private var navigationCase: String? = null
+    private var onlyEdgeFade = false
     private var onlyEditorControls = false
     private var onlyTextSize = false
     private var onlyBackup = false
@@ -84,6 +85,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyRecentOverview = arguments?.getString("case") == "recent-overview"
         onlyDetails = arguments?.getString("case") == "details"
         navigationCase = arguments?.getString("case")?.takeIf { it.startsWith("document-navigation") }
+        onlyEdgeFade = arguments?.getString("case") == "edge-fade"
         onlyEditorControls = arguments?.getString("case") == "editor-controls"
         onlyTextSize = arguments?.getString("case") == "text-size"
         onlyBackup = arguments?.getString("case") == "backup"
@@ -111,7 +113,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyEditorControls -> editorControlsTest(); onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyEdgeFade -> edgeFadeTest(); onlyEditorControls -> editorControlsTest(); onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -761,6 +763,156 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+
+    private fun edgeFadeTest() {
+        val original = main { checkNotNull(model.ui.workspace) }
+        val oldFont = shell("settings get system font_scale")
+        val oldScreen = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val ids = mutableListOf<String>()
+        val plain = (1..220).joinToString("\n") { "第${it}行，阳光穿过树叶，慢慢落在窗台。阅读与编辑都在这里继续。" }
+        val markdown = "# 羽化长文\n\n" + (1..220).joinToString("\n") { "第${it}行，**阳光穿过树叶**，慢慢落在窗台。阅读与编辑都在这里继续。" }
+        val density = targetContext.resources.displayMetrics.density
+        var readerViewport: Rect? = null
+        fun fade(value: Boolean) { main { model.preferences(fadeDocumentEdges = value) }; ready() }
+        fun capture() = checkNotNull(uiAutomation.takeScreenshot())
+        fun bodyBounds(readingMarkdown: Boolean): Rect {
+            if (!readingMarkdown) return Rect().also(find(main { model.languages.context().getString(R.string.edit_body) })::getBoundsInScreen)
+            val node = nodes().filter { it.isScrollable }.maxByOrNull { Rect().also(it::getBoundsInScreen).height() }
+            if (node != null) return Rect().also(node::getBoundsInScreen).also { readerViewport = it }
+            // A short reader intentionally exposes no scroll action. Its viewport still has
+            // the same measured bounds as the long reader in this unchanged screen layout.
+            return Rect(checkNotNull(readerViewport)).also { area ->
+                check(main { model.readingList.layoutInfo.viewportSize.height == area.height() && !model.readingList.canScrollForward && !model.readingList.canScrollBackward })
+            }
+        }
+        fun differences(a: android.graphics.Bitmap, b: android.graphics.Bitmap, area: Rect): Int {
+            var count = 0
+            for (y in area.top.coerceAtLeast(0) until area.bottom.coerceAtMost(a.height)) for (x in area.left.coerceAtLeast(0) until area.right.coerceAtMost(a.width)) {
+                val first = a.getPixel(x,y); val second = b.getPixel(x,y)
+                // The emulator's text rasterizer can change edge antialiasing by up to 4 levels
+                // when the gradient draw batch changes; compare visible changes, not this noise.
+                val delta = maxOf(kotlin.math.abs(android.graphics.Color.red(first)-android.graphics.Color.red(second)),
+                    kotlin.math.abs(android.graphics.Color.green(first)-android.graphics.Color.green(second)),
+                    kotlin.math.abs(android.graphics.Color.blue(first)-android.graphics.Color.blue(second)))
+                if (delta > 4) count++
+            }
+            return count
+        }
+        fun edges(area: Rect): Triple<Rect,Rect,Rect> {
+            val height = (24*density).toInt()
+            val left = area.left + (24*density).toInt()
+            val right = area.right - (48*density).toInt()
+            return Triple(Rect(left,area.top,right,area.top+height),Rect(left,area.bottom-height,right,area.bottom),Rect(left,area.centerY()-height,right,area.centerY()+height))
+        }
+        fun scroll(reading: Boolean, fraction: Float) {
+            runBlocking { withContext(Dispatchers.Main) {
+                if (!reading) model.editorScroll.scrollTo((model.editorScroll.maxValue*fraction).toInt())
+                else if (fraction <= 0) model.readingList.scrollToItem(0)
+                else if (fraction >= 1) model.readingList.scrollToItem(checkNotNull(model.markdownDocument).root.children.size)
+                else model.readingList.scrollToItem(1, 12000)
+            } }; ready()
+        }
+        fun compare(label: String, reading: Boolean, place: String) {
+            fade(true); val on = capture()
+            val area = bodyBounds(reading)
+            val (top,bottom,middle) = edges(area)
+            val field = main { model.textState }
+            val selection = main { model.currentSelection() }
+            val beforeScroll = main { if (reading) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value }
+            try {
+                fade(false); val off = capture()
+                try {
+                    val topChanges = differences(on,off,top); val bottomChanges = differences(on,off,bottom)
+                    sendStatus(0, Bundle().apply { putString("stream", "Fade $label $place: top=$topChanges bottom=$bottomChanges bounds=$area\n") })
+                    if (place == "middle") verify(topChanges > 0 && bottomChanges > 0, "$label middle fades actual text pixels at both scroll edges")
+                    if (place == "top") verify(topChanges == 0, "$label at document top leaves first-line pixels unchanged")
+                    if (place == "bottom") verify(bottomChanges == 0, "$label at document bottom leaves last-line pixels unchanged")
+                    if (place == "short") verify(differences(on,off,area) == 0, "$label short document draws no fade at either edge")
+                    val centralChanges = differences(on,off,middle)
+                    if (centralChanges > 0) {
+                        File(targetContext.cacheDir, "workspace-test-fade-diagnostic-on.png").outputStream().use { on.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
+                        File(targetContext.cacheDir, "workspace-test-fade-diagnostic-off.png").outputStream().use { off.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
+                        sendStatus(0, Bundle().apply { putString("stream", main { "Fade center changes=$centralChanges before=$beforeScroll now=${if(reading) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value} max=${model.editorScroll.maxValue} parsed=${model.markdownDocument?.source == model.textState?.text?.toString()}\n" }) })
+                    }
+                    verify(centralChanges == 0, "$label $place leaves central document pixels unchanged")
+                    val rail = nodes().firstOrNull { it.contentDescription?.toString() == "快速滚动" }
+                    if (place == "middle" && rail != null) {
+                        val bounds = Rect().also(rail::getBoundsInScreen)
+                        val gutter = (24*density).toInt()
+                        if (main { model.ui.workspace?.navigationSide == NavigationSide.Left }) bounds.right = bounds.left + gutter else bounds.left = bounds.right - gutter
+                        verify(differences(on,off,bounds) == 0, "$label keeps fast-scroll controls outside the fade")
+                    }
+                } finally { off.recycle() }
+            } finally { on.recycle() }
+            verify(main { model.textState === field && model.currentSelection() == selection && (if (reading) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value) == beforeScroll }, "$label $place toggle retains the native buffer, selection and scroll position")
+        }
+        try {
+            shell("settings put system font_scale 1.0"); ready()
+            runBlocking { withContext(Dispatchers.IO) {
+                val store = currentStore()
+                ids += store.create("羽化像素纯文本", Workspace.ROOT, DocumentKind.Plain, plain)
+                ids += store.create("羽化像素Markdown", Workspace.ROOT, DocumentKind.Markdown, markdown)
+                ids += store.create("羽化短稿", Workspace.ROOT, DocumentKind.Plain, "第一行与最后一行。")
+                ids += store.create("羽化Markdown短稿", Workspace.ROOT, DocumentKind.Markdown, "# 短文\n\n最后一行。")
+            } }
+            main { model.reload() }; ready(); main { model.preferences(theme = ColorTheme.Paper, navigationInset = NavigationInset.Standard) }; ready()
+            for ((index,modes) in listOf(0 to listOf(EditorMode.Source,EditorMode.Reading), 1 to EditorMode.entries.toList())) {
+                main { model.open(ids[index]) }; ready()
+                if (index == 1) waitFor("fade Markdown parsing settled") { main { model.markdownDocument?.source == markdown } }
+                for (mode in modes) {
+                    val label = if (mode == EditorMode.Source) { if (index == 0) "编辑" else "源码" } else if (mode == EditorMode.Typeset) "排版" else "阅读"
+                    if (main { model.ui.editorMode != mode }) { click(label); ready() }
+                    val reading = index == 1 && mode == EditorMode.Reading
+                    val name = "${if(index==0) "Plain" else "Markdown"}-${mode.name}"
+                    scroll(reading,.5f); compare(name,reading,"middle")
+                    scroll(reading,0f); compare(name,reading,"top")
+                    fade(true); screenshot("fade-$name-top")
+                    scroll(reading,1f); compare(name,reading,"bottom")
+                    fade(true); screenshot("fade-$name-bottom")
+                    verify(main { model.textState?.text?.toString() == if(index==0) plain else markdown }, "$name preserves exact source after fade checks")
+                }
+                main { model.go(Page.Recent) }; ready()
+            }
+            for (index in listOf(2,3)) {
+                main { model.open(ids[index]) }; ready()
+                if (index == 3) {
+                    waitFor("short fade Markdown parsing settled") { main { model.markdownDocument?.source == model.textState?.text?.toString() } }
+                    click("阅读"); ready()
+                }
+                compare("Short-$index", index == 3, "short")
+                main { model.go(Page.Recent) }; ready()
+            }
+            main { model.open(ids[0]) }; ready(); scroll(false,.5f)
+            main { model.preferences(theme = ColorTheme.Ink) }; ready()
+            compare("Dark-Plain",false,"middle"); fade(true); screenshot("fade-dark-middle")
+            main { model.go(Page.Settings) }; ready()
+            fun show(label: String) {
+                repeat(12) {
+                    if (nodes().any { it.isVisibleToUser && (it.text?.toString()==label || it.contentDescription?.toString()==label) }) return
+                    nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); ready()
+                }
+                error("Settings item not visible: $label")
+            }
+            fade(true); show("正文边缘羽化"); click("正文边缘羽化"); ready()
+            verify(main { model.ui.workspace?.fadeDocumentEdges == false }, "Native document-editing switch turns edge fade off")
+            main { currentActivity?.recreate() }; ready()
+            verify(main { model.ui.workspace?.fadeDocumentEdges == false }, "Edge fade off survives activity recreation")
+            main { model.reload() }; ready()
+            verify(main { model.ui.workspace?.fadeDocumentEdges == false }, "Edge fade off survives catalog reload")
+            shell("wm size 840x1600"); shell("settings put system font_scale 2.0"); ready()
+            show("正文边缘羽化"); screenshot("fade-settings-zh-200")
+            main { model.changeLanguage("en") }; ready()
+            show("Fade document edges"); screenshot("fade-settings-en-200")
+            click("Fade document edges"); ready()
+            verify(main { model.ui.workspace?.fadeDocumentEdges == true }, "English large-font switch turns edge fade back on")
+        } finally {
+            shell(if (oldScreen == null) "wm size reset" else "wm size $oldScreen")
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            main { model.changeLanguage("zh-Hans") }; ready(); main { model.go(Page.Recent) }; ready()
+            ids.forEach { id -> main { model.delete(id) }; ready() }
+            main { model.preferences(theme = original.theme, navigationInset = original.navigationInset, fadeDocumentEdges = original.fadeDocumentEdges) }; ready()
+        }
+    }
 
     private fun editorControlsTest() {
         val original = main { checkNotNull(model.ui.workspace) }

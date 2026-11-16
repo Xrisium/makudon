@@ -71,6 +71,7 @@ data class Workspace(
     val editorLineSpacing: EditorLineSpacing = EditorLineSpacing.Medium,
     val navigationSide: NavigationSide = NavigationSide.Right,
     val navigationInset: NavigationInset = NavigationInset.Standard,
+    val fadeDocumentEdges: Boolean = true,
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {

@@ -160,7 +160,6 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                 MarkdownModePicker(ui.editorMode, controlsEnabled, { if (editable) changeMode(it) }, markdown)
             }
-            HorizontalDivider(color = colors.outlineVariant)
         }
         if (status.phase == SavePhase.Failed) Surface(color = colors.errorContainer, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp).semantics { liveRegion = LiveRegionMode.Polite }) {

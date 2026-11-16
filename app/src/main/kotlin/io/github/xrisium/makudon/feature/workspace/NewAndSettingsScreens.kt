@@ -130,6 +130,13 @@ fun SettingsPage(model: WorkspaceViewModel) {
                             }
                         }
                     }
+                    HorizontalDivider(Modifier.padding(horizontal = 18.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(stringResource(R.string.fade_document_edges), Modifier.weight(1f))
+                        RecentOverviewSwitch(workspace.fadeDocumentEdges, enabled, stringResource(R.string.fade_document_edges)) {
+                            model.preferences(fadeDocumentEdges = it)
+                        }
+                    }
                 }
             }
         }
