@@ -28,6 +28,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private val checks = mutableListOf<String>()
     private var profileMarkdownLong = false
     private var onlyMarkdownLong = false
+    private var onlyMarkdownScroll = false
     private var onlyMarkdownToolbar = false
     private var onlyMarkdownVisual = false
     private var onlyMarkdown = false
@@ -63,6 +64,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         profileMarkdownLong = arguments?.getString("profile") == "true"
         onlyMarkdownToolbar = arguments?.getString("case") == "markdown-toolbar"
         onlyMarkdownLong = arguments?.getString("case") == "markdown-long"
+        onlyMarkdownScroll = arguments?.getString("case") == "markdown-scroll"
         onlyMarkdownVisual = arguments?.getString("case") == "markdown-visual"
         onlyMarkdown = arguments?.getString("case") == "markdown"
         onlyMarkdownTable = arguments?.getString("case") == "markdown-table"
@@ -107,7 +109,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -2775,6 +2777,77 @@ class WorkspaceInstrumentation : Instrumentation() {
             shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
             shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
             ready(); main { model.delete(ids[0]) }; ready(); main { model.preferences(theme = oldTheme) }; ready()
+        }
+    }
+
+    private fun markdownScrollTest() {
+        main { model.newDocument(Page.Recent) }; ready(); main { model.create(DocumentKind.Markdown) }; ready()
+        val id = main { checkNotNull(model.ui.activeId) }
+        val frames = mutableListOf<Long>()
+        try {
+            click("源码")
+            val unit = "## 长文章节 😀\n\n这是 **粗体** 与 *斜体*，包含 [链接](https://example.com) 的正文。\n\n- [ ] 待完成任务\n- [x] 已完成任务\n\n> 引用的中文段落。\n\n"
+            val points = unit.codePointCount(0, unit.length)
+            val sample = unit.repeat(100_000 / points) + "中".repeat(100_000 % points)
+            setText("编辑正文", sample); saved(60_000)
+            waitFor("scroll sample parsed", 60_000) { main { model.markdownDocument?.source == sample } }
+            main { model.textState!!.edit { selection = androidx.compose.ui.text.TextRange(0) } }
+            click("排版"); ready()
+            main { (currentActivity!!.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(currentActivity!!.window.decorView.windowToken, 0) }; ready()
+            runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }; ready()
+            verify(main { model.ui.page == Page.Editor && model.editorScroll.maxValue > 25_000 }, "Typeset performance sample has a laid-out long viewport")
+            sendStatus(0, Bundle().apply { putString("stream", main { "SCROLL_START position=${model.editorScroll.value} maximum=${model.editorScroll.maxValue} animatorScale=${android.animation.ValueAnimator.getDurationScale()}\n" }) })
+            verify(main { model.editorScroll.value < 1000 }, "Performance sampling starts near the document top")
+            val selection = main { model.currentSelection() }
+            val revision = main { model.editorRevision }
+            // Same frame-driven distances in both builds; no accessibility polling during measurement.
+            repeat(4) { pass ->
+                val done = java.util.concurrent.CountDownLatch(1)
+                frames.clear()
+                main {
+                    val choreographer = android.view.Choreographer.getInstance()
+                    choreographer.postFrameCallback(object : android.view.Choreographer.FrameCallback {
+                        var started = 0L
+                        var previousFrame = 0L
+                        var last = 0
+                        override fun doFrame(frameTimeNanos: Long) {
+                            val now = System.nanoTime()
+                            if (started == 0L) started = now
+                            if (previousFrame != 0L) frames += now - previousFrame
+                            previousFrame = now
+                            val at = ((now - started) / 3_000_000_000.0 * 5000).toInt().coerceAtMost(5000)
+                            model.editorScroll.dispatchRawDelta((at - last).toFloat()); last = at
+                            if (at < 5000) choreographer.postFrameCallback(this) else done.countDown()
+                        }
+                    })
+                }
+                check(done.await(45, java.util.concurrent.TimeUnit.SECONDS))
+                waitForIdleSync()
+                val sorted = main { frames.sorted() }
+                check(sorted.size >= 5) { "Too few scroll frames: ${sorted.size}" }
+                fun percentile(p: Double) = sorted[((sorted.size - 1) * p).toInt()] / 1_000_000.0
+                sendStatus(0, Bundle().apply { putString("stream", "SCROLL_CALLBACK_INTERVAL pass=$pass frames=${sorted.size} p50_ms=${percentile(.5)} p95_ms=${percentile(.95)} over32=${sorted.count { it > 32_000_000 }}\n") })
+            }
+            verify(main { model.editorScroll.value >= 19_900 }, "100000-point typeset continuously scrolls through multiple style windows")
+            verify(main { model.textState!!.text.toString() == sample && model.currentSelection() == selection && model.editorRevision == revision }, "Scrolling preserves all source, selection and edit revision")
+            val before = main { model.editorScroll.value }
+            swipe(.5f, .65f, .5f, .3f); ready()
+            verify(main { model.editorScroll.value > before }, "A physical typeset swipe advances the long document")
+            screenshot("markdown-scroll")
+            main { model.back() }; ready(); main { model.open(id) }; ready()
+            verify(main { model.ui.editorMode == EditorMode.Typeset && model.editorScroll.value > 15_000 }, "Reopening resumes the long typeset viewport")
+            click("切换任务完成状态"); saved()
+            val toggled = main { model.textState!!.text.toString() }
+            val differences = sample.indices.filter { sample[it] != toggled[it] }
+            verify(toggled.length == sample.length && differences.size == 1 && differences.single() > 1000 &&
+                setOf(sample[differences.single()], toggled[differences.single()]) == setOf(' ', 'x'),
+                "A task exposed after distant scrolling toggles exactly its own source marker")
+            click("撤销"); saved()
+            verify(main { model.textState!!.text.toString() == sample }, "A distant task toggle remains one shared undo step")
+            verify(source(id, DocumentKind.Markdown) == sample, "Long scroll and reopen leave saved UTF-8 source unchanged")
+        } finally {
+            if (main { model.ui.page == Page.Editor }) { main { model.back() }; ready() }
+            main { model.delete(id) }; ready()
         }
     }
 

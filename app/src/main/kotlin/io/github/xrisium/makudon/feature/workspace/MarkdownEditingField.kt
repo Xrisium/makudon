@@ -45,19 +45,23 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     val sourceSelection = field.selection.let { TextSelection(it.start, it.end) }
     val composition = field.composition?.let { SourceRange(it.start, it.end) }
     val active = if (focused || findOpen) sourceSelection else null
-    val tables = if (typeset) parsed.elements.filter { it.kind == "TableBlock" } else emptyList()
-    val imageParagraphs = if (typeset) ImageReferences.standalone(parsed).filter { node ->
+    val tables = remember(typeset, parsed) { if (typeset) parsed.elements.filter { it.kind == "TableBlock" } else emptyList() }
+    val imageParagraphs = remember(typeset, parsed, active, composition) { if (typeset) ImageReferences.standalone(parsed).filter { node ->
         active?.let { node.range.intersects(it.min, it.max) } != true && composition?.let { node.range.intersects(it.start, it.end) } != true
-    } else emptyList()
-    val projection = if (typeset) projection(parsed, active, composition, tables + imageParagraphs) else MarkdownProjection(emptyList())
+    } else emptyList() }
+    val projection = remember(typeset, parsed, active, composition, tables, imageParagraphs) {
+        if (typeset) projection(parsed, active, composition, tables + imageParagraphs) else MarkdownProjection(emptyList())
+    }
     val textMeasurer = rememberTextMeasurer()
-    val imageIndents = imageParagraphs.associate { node ->
-        val start = source.lastIndexOf('\n', node.range.start - 1) + 1
-        var prefix = source.substring(start, node.range.start)
-        projection.changes.filter { it.range.start >= start && it.range.end <= node.range.start }.asReversed().forEach { change ->
-            prefix = prefix.replaceRange(change.range.start - start, change.range.end - start, change.text)
+    val imageIndents = remember(imageParagraphs, source, projection, textMeasurer, bodyStyle) {
+        imageParagraphs.associate { node ->
+            val start = source.lastIndexOf('\n', node.range.start - 1) + 1
+            var prefix = source.substring(start, node.range.start)
+            projection.changes.filter { it.range.start >= start && it.range.end <= node.range.start }.asReversed().forEach { change ->
+                prefix = prefix.replaceRange(change.range.start - start, change.range.end - start, change.text)
+            }
+            node.range.start to if (prefix.isEmpty()) 0 else textMeasurer.measure(prefix, bodyStyle).size.width
         }
-        node.range.start to if (prefix.isEmpty()) 0 else textMeasurer.measure(prefix, bodyStyle).size.width
     }
     val tableLayouts = tables.associate { table -> table.range.start to key(table.range.start) { rememberTableLayout(table, parsed, bodyStyle) } }
     val imageHeights = imageParagraphs.associate { node ->
@@ -141,8 +145,6 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
         }
     }
     val description = stringResource(R.string.edit_body)
-    val taskDescription = stringResource(R.string.md_toggle_task)
-    val editToken = model.editToken()
     Box(modifier.clipToBounds().onSizeChanged { viewportHeight = it.height; viewportWidth = it.width }) {
         BasicTextField(state = field, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp).focusRequester(requester)
             .onFocusChanged { focused = it.isFocused }
@@ -153,59 +155,95 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             outputTransformation = stableOutput, scrollState = model.editorScroll,
             onTextLayout = { get -> layout = get() },
             decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = bodyStyle, color = colors.onSurfaceVariant); inner() } })
-        val result = layout
-        if (typeset && result != null && result.layoutInput.text.text.length > 0) {
-            for (paragraph in imageParagraphs) {
-                val offset = projection.offset(paragraph.range.start)
-                if (offset < result.layoutInput.text.length && result.layoutInput.text[offset] == '\uFFFC') {
-                    val top = result.getLineTop(result.getLineForOffset(offset)) - model.editorScroll.value
-                    val height = imageHeights.getValue(paragraph.range.start)
-                    if (top + height >= 0 && top < viewportHeight) {
-                        val indent = imageIndents.getValue(paragraph.range.start)
-                        val width = (viewportWidth - with(density) { 48.dp.roundToPx() } - indent).coerceAtLeast(1)
-                        Box(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() } + indent, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
-                            .width(with(density) { width.toDp() }).height(with(density) { height.toDp() }).background(colors.background)) {
-                            MarkdownImage(model, paragraph.children.single(), Modifier.fillMaxSize())
-                        }
+        if (typeset && layout != null) MarkdownEditingOverlays(model, parsed, projection, checkNotNull(layout), source, active,
+            imageParagraphs, imageIndents, imageHeights, tables, tableLayouts, bodyStyle, editable, viewportHeight, viewportWidth)
+        EditingNavigation(model, viewportHeight)
+    }
+}
+
+/** Only overlays and navigation observe scroll pixels; the continuous input owns its own placement. */
+@Composable
+private fun MarkdownEditingOverlays(
+    model: WorkspaceViewModel, parsed: MarkdownDocument, projection: MarkdownProjection, result: TextLayoutResult,
+    source: String, active: TextSelection?, imageParagraphs: List<MdElement>, imageIndents: Map<Int, Int>,
+    imageHeights: Map<Int, Float>, tables: List<MdElement>, tableLayouts: Map<Int, TableLayout>,
+    bodyStyle: TextStyle, editable: Boolean, viewportHeight: Int, viewportWidth: Int,
+) {
+    val density = LocalDensity.current
+    val colors = MaterialTheme.colorScheme
+    val taskDescription = stringResource(R.string.md_toggle_task)
+    val editToken = model.editToken()
+    if (result.layoutInput.text.isNotEmpty()) {
+        for (paragraph in imageParagraphs) {
+            val offset = projection.offset(paragraph.range.start)
+            if (offset < result.layoutInput.text.length && result.layoutInput.text[offset] == '\uFFFC') {
+                val top = result.getLineTop(result.getLineForOffset(offset)) - model.editorScroll.value
+                val height = imageHeights.getValue(paragraph.range.start)
+                if (top + height >= 0 && top < viewportHeight) {
+                    val indent = imageIndents.getValue(paragraph.range.start)
+                    val width = (viewportWidth - with(density) { 48.dp.roundToPx() } - indent).coerceAtLeast(1)
+                    Box(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() } + indent, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
+                        .width(with(density) { width.toDp() }).height(with(density) { height.toDp() }).background(colors.background)) {
+                        MarkdownImage(model, paragraph.children.single(), Modifier.fillMaxSize())
                     }
                 }
             }
-            for (table in tables) {
-                val offset = projection.offset(table.range.start)
-                if (offset < result.layoutInput.text.length && result.layoutInput.text[offset] == '\uFFFC') {
-                    val top = result.getLineTop(result.getLineForOffset(offset)) - model.editorScroll.value
-                    val tableLayout = tableLayouts.getValue(table.range.start)
-                    val heightPx = tableLayout.height.toFloat()
-                    if (top + heightPx >= 0 && top < viewportHeight) {
-                        Column(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() }, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
-                            .fillMaxWidth().padding(end = 48.dp).wrapContentHeight(align = androidx.compose.ui.Alignment.Top, unbounded = true)
-                            .height(with(density) { heightPx.toDp() }).background(colors.background)) {
-                            MarkdownEditableTable(model, parsed, bodyStyle, editable, Modifier.fillMaxSize(), tableLayout,
-                                -top - 200f, viewportHeight - top + 200f)
-                        }
+        }
+        for (table in tables) {
+            val offset = projection.offset(table.range.start)
+            if (offset < result.layoutInput.text.length && result.layoutInput.text[offset] == '\uFFFC') {
+                val top = result.getLineTop(result.getLineForOffset(offset)) - model.editorScroll.value
+                val tableLayout = tableLayouts.getValue(table.range.start)
+                val heightPx = tableLayout.height.toFloat()
+                if (top + heightPx >= 0 && top < viewportHeight) {
+                    Column(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() }, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
+                        .fillMaxWidth().padding(end = 48.dp).wrapContentHeight(align = androidx.compose.ui.Alignment.Top, unbounded = true)
+                        .height(with(density) { heightPx.toDp() }).background(colors.background)) {
+                        MarkdownEditableTable(model, parsed, bodyStyle, editable, Modifier.fillMaxSize(), tableLayout,
+                            -top - 200f, viewportHeight - top + 200f)
                     }
                 }
             }
-            val tasks = Regex("(?m)^( *)(?:[-+*]|\\d+[.)]) \\[([ xX])] ").findAll(source)
-            for (task in tasks) {
+        }
+        // Cache source targets, then hit-test only the visible lines, not every task in the document.
+        val tasks = remember(source, parsed, projection, active) {
+            Regex("(?m)^( *)(?:[-+*]|\\d+[.)]) \\[([ xX])] ").findAll(source).mapNotNull { task ->
                 val range = SourceRange(task.range.first, task.range.last + 1)
-                if (active?.let { range.intersects(it.min, it.max) } == true || parsed.protected(range.start, range.end)) continue
-                val offset = projection.offset(task.range.first + task.groupValues[1].length)
-                if (offset >= result.layoutInput.text.length) continue
-                val rect = result.getBoundingBox(offset)
-                val y = rect.top - model.editorScroll.value
-                if (y < -rect.height || y > with(density) { 2000.dp.toPx() }) continue
-                val checked = task.groupValues[2].equals("x", true)
-                Box(Modifier.offset { IntOffset(rect.left.roundToInt() + with(density) { 14.dp.roundToPx() }, y.roundToInt() + with(density) { 8.dp.roundToPx() }) }
-                    .size(48.dp).semantics { contentDescription = taskDescription; role = Role.Checkbox; toggleableState = if (checked) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off }
-                    .clickable(enabled = editable, onClickLabel = stringResource(R.string.md_toggle_task)) {
-                        val at = task.groups[2]!!.range.first
-                        model.applyEditorEdit(EditResult(source.replaceRange(at, at + 1, if (checked) " " else "x"), model.currentSelection()), editToken)
-                    })
-            }
+                if (active?.let { range.intersects(it.min, it.max) } == true || parsed.protected(range.start, range.end)) null
+                else TaskTarget(projection.offset(task.range.first + task.groupValues[1].length),
+                    checkNotNull(task.groups[2]).range.first, task.groupValues[2].equals("x", true))
+            }.toList()
         }
-        DocumentNavigation(model, DocumentScrollRange(viewportHeight.toFloat(), model.editorScroll.maxValue.toFloat().takeIf { it < Int.MAX_VALUE }?.plus(viewportHeight) ?: 0f, model.editorScroll.value.toFloat()), model.editorScroll.isScrollInProgress) { progress ->
-            model.editorScroll.scrollTo((model.editorScroll.maxValue * progress).roundToInt())
+        val scroll = model.editorScroll.value
+        val firstLine = (result.getLineForVerticalPosition(scroll.toFloat()) - 1).coerceAtLeast(0)
+        val lastLine = (result.getLineForVerticalPosition((scroll + viewportHeight).toFloat()) + 1).coerceAtMost(result.lineCount - 1)
+        val firstOffset = result.getLineStart(firstLine)
+        val lastOffset = result.getLineEnd(lastLine)
+        val from = tasks.binarySearchBy(firstOffset) { it.displayOffset }.let { if (it < 0) -it - 1 else it }
+        for (index in from until tasks.size) {
+            val task = tasks[index]
+            val offset = task.displayOffset
+            if (offset > lastOffset) break
+            if (offset >= result.layoutInput.text.length) continue
+            val rect = result.getBoundingBox(offset)
+            val y = rect.top - scroll
+            if (y < -rect.height || y > viewportHeight) continue
+            val checked = task.checked
+            Box(Modifier.offset { IntOffset(rect.left.roundToInt() + with(density) { 14.dp.roundToPx() }, y.roundToInt() + with(density) { 8.dp.roundToPx() }) }
+                .size(48.dp).semantics { contentDescription = taskDescription; role = Role.Checkbox; toggleableState = if (checked) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off }
+                .clickable(enabled = editable, onClickLabel = stringResource(R.string.md_toggle_task)) {
+                    val at = task.sourceOffset
+                    model.applyEditorEdit(EditResult(source.replaceRange(at, at + 1, if (checked) " " else "x"), model.currentSelection()), editToken)
+                })
         }
+    }
+}
+
+private data class TaskTarget(val displayOffset: Int, val sourceOffset: Int, val checked: Boolean)
+
+@Composable
+private fun BoxScope.EditingNavigation(model: WorkspaceViewModel, viewportHeight: Int) {
+    DocumentNavigation(model, DocumentScrollRange(viewportHeight.toFloat(), model.editorScroll.maxValue.toFloat().takeIf { it < Int.MAX_VALUE }?.plus(viewportHeight) ?: 0f, model.editorScroll.value.toFloat()), model.editorScroll.isScrollInProgress) { progress ->
+        model.editorScroll.scrollTo((model.editorScroll.maxValue * progress).roundToInt())
     }
 }
