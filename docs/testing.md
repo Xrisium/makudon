@@ -125,3 +125,5 @@ Markdown 三视图专项使用 `-e case markdown`，覆盖原生连续选区、�
 行距、纯文本阅读与长文导航使用 `-e case document-navigation`（28 项）；`document-navigation-restart-seed` → 模拟器 force-stop → `document-navigation-restart-verify` 验证冷进程接续（1 + 2 项）。包含真实拖动、无障碍进度、左右布局、长短文 / 单长段落、重开 / 重建及中英文 320dp / 200% 字号；仅创建 / 清理本次合成稿并恢复临时偏好，详见[验收记录](testing/2026-11-16-reading-navigation.md)。
 
 Markdown 排版长文滚动使用 `-e case markdown-scroll`：正好 10 万 Unicode 码点的密集中文 Markdown，以 Choreographer 从顶端连续滚动，记录主线程滚动回调间隔，检查源文 / 选区 / 修订保真、真实手势、重开接续及远距离任务点击 / 撤销。该数值不是 GPU 耗时或真机帧率；比较须使用同机、相同文本 / 起点 / 距离，详见[性能验收](testing/2026-11-16-markdown-scroll.md)。
+
+`-e case editor-controls`（20 项）验证标准 / 加宽导航在左右侧的实际像素中轴、16dp 位移、正文 / 位置保持、偏好重读、目录长文件名单行与完整无障碍名称、320dp / 200% 中英文，以及更名后的原生设置选项。配合 `document-navigation` 和 `selection` 回归；羽化本轮只验证交互预览，尚未接入 Android，见[验收记录](testing/2026-11-16-editor-controls.md)。
