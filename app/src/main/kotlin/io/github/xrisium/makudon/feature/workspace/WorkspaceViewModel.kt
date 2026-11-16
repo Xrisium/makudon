@@ -88,6 +88,36 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     var editorAnchor by mutableIntStateOf(0)
     var readingAnchorOffset by mutableIntStateOf(0)
     var editorAnchorOffset by mutableIntStateOf(0)
+    var viewportLineHeight = 1f
+    private var positionJob: Job? = null
+    private var pendingPosition: Triple<WorkspaceStore, String, ViewportPosition>? = null
+
+    fun recordViewport(anchor: Int, offset: Int, lineHeight: Float, reading: Boolean) {
+        if (ui.page != Page.Editor || ui.transitioning || lineHeight <= 0f) return
+        val markdownReading = ui.editorMode == EditorMode.Reading && ui.workspace?.entry(ui.activeId.orEmpty())?.kind == DocumentKind.Markdown
+        if (reading != markdownReading) return
+        if (reading) { readingAnchor = anchor; readingAnchorOffset = offset }
+        else { editorAnchor = anchor; editorAnchorOffset = offset }
+        viewportLineHeight = lineHeight
+        val id = ui.activeId ?: return
+        val next = Triple(store, id, ViewportPosition(anchor, offset, lineHeight, ui.editorMode))
+        if (next == pendingPosition) return
+        pendingPosition = next
+        positionJob?.cancel()
+        positionJob = viewModelScope.launch { delay(450); flushPosition() }
+    }
+
+    private suspend fun flushPosition() {
+        val pending = pendingPosition ?: return
+        // Separate serialization: late writes retain the store/id captured by their original session.
+        withContext(Dispatchers.IO + NonCancellable) {
+            ioLock.withLock {
+                // A retired generation may already have been cleaned; never recreate it.
+                if (pending.first === store) pending.first.writePosition(pending.second, pending.third)
+            }
+        }
+    }
+
     var immersive by mutableStateOf(false)
     data class EditToken(val session: Long, val revision: Long, val selection: TextSelection)
     fun editToken() = EditToken(sessionId, editorRevision, currentSelection())
@@ -431,6 +461,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     private suspend fun barrier(retry: Boolean = false): Boolean {
+        flushPosition()
         val coordinator = save ?: return true
         while (true) {
             finishTableBoundary(force = true)
@@ -525,6 +556,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (!barrier()) return
         val text = disk { store.open(id) }
         val refreshed = disk { store.refresh() }
+        val position = disk { store.readPosition(id) }
         observer?.cancel()
         val field = TextFieldState(text)
         val epoch = libraryEpoch
@@ -538,8 +570,12 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         textState = field; save = session
         history = EditHistory(); historySource = text; canUndo = false; canRedo = false
         markdownDocument = null; tableBoundary = null; editorRevision = 0; editorMessage = null; immersive = false
-        editorAnchor = 0; readingAnchor = 0; editorAnchorOffset = 0; readingAnchorOffset = 0
-        ui = ui.copy(activeId = id, origin = origin, editorMode = EditorMode.Typeset, workspace = refreshed)
+        positionJob?.cancel(); pendingPosition = null
+        editorAnchor = (position?.anchor ?: 0).coerceIn(0, text.length); readingAnchor = editorAnchor
+        editorAnchorOffset = position?.offset ?: 0; readingAnchorOffset = editorAnchorOffset
+        viewportLineHeight = position?.lineHeight ?: 1f
+        val mode = position?.mode ?: if (refreshed.entry(id)?.kind == DocumentKind.Plain) EditorMode.Source else EditorMode.Typeset
+        ui = ui.copy(activeId = id, origin = origin, editorMode = mode, workspace = refreshed)
         requestParse(text)
         navigate(Page.Editor)
         observer = viewModelScope.launch {
@@ -573,7 +609,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     // Compatibility for existing test/navigation callers; there is only one editable field now.
-    fun typeset(value: Boolean) = editorMode(if (value) EditorMode.Typeset else EditorMode.Source)
+    fun typeset(value: Boolean) = editorMode(if (value && ui.workspace?.entry(ui.activeId.orEmpty())?.kind == DocumentKind.Markdown) EditorMode.Typeset else EditorMode.Source)
     fun editorMode(value: EditorMode) {
         if (ui.busy || ui.transitioning || ui.page != Page.Editor || ui.editorMode == value) return
         finishTableBoundary(force = true)
@@ -843,7 +879,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         ui = ui.copy(selected = restored.parent ?: Workspace.ROOT, revealFolder = restored.parent ?: Workspace.ROOT, directoryRevision = ui.directoryRevision + 1)
         navigate(Page.Directory, backwards = true)
     }
-    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null, directoryImages: DirectoryImages? = null, thumbnailCaching: ThumbnailCaching? = null) {
+    fun preferences(theme: ColorTheme? = null, sort: SortKey? = null, descending: Boolean? = null, foldersFirst: Boolean? = null, uiFont: FontPreference? = null, editorFont: FontPreference? = null, editorTextSize: EditorTextSize? = null, showRecentExcerpt: Boolean? = null, recentSort: RecentSort? = null, directoryImages: DirectoryImages? = null, thumbnailCaching: ThumbnailCaching? = null, editorLineSpacing: EditorLineSpacing? = null, navigationSide: NavigationSide? = null) {
         val w = ui.workspace ?: return
         val nextTheme = theme ?: w.theme
         val nextSort = sort ?: w.sort
@@ -853,16 +889,18 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         val nextUiFont = uiFont ?: w.uiFont
         val nextEditorFont = editorFont ?: w.editorFont
         val nextEditorTextSize = editorTextSize ?: w.editorTextSize
+        val nextLineSpacing = editorLineSpacing ?: w.editorLineSpacing
+        val nextNavigationSide = navigationSide ?: w.navigationSide
         val nextShowRecentExcerpt = showRecentExcerpt ?: w.showRecentExcerpt
         val nextRecentSort = recentSort ?: w.recentSort
         val nextDirectoryImages = directoryImages ?: w.directoryImages
         val nextThumbnailCaching = thumbnailCaching ?: w.thumbnailCaching
-        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort && nextDirectoryImages == w.directoryImages && nextThumbnailCaching == w.thumbnailCaching) return
+        if (nextTheme == w.theme && nextSort == w.sort && nextDescending == w.descending && nextFoldersFirst == w.foldersFirst && nextUiFont == w.uiFont && nextEditorFont == w.editorFont && nextEditorTextSize == w.editorTextSize && nextShowRecentExcerpt == w.showRecentExcerpt && nextRecentSort == w.recentSort && nextDirectoryImages == w.directoryImages && nextThumbnailCaching == w.thumbnailCaching && nextLineSpacing == w.editorLineSpacing && nextNavigationSide == w.navigationSide) return
         launchWork(savingPreferences = true) {
             // Animate this switch on input, independently of catalog writes and body refreshes.
             ui = ui.copy(workspace = w.copy(showRecentExcerpt = nextShowRecentExcerpt))
             try {
-                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort, nextDirectoryImages, nextThumbnailCaching) }
+                disk { store.settings(nextTheme, nextSort, nextDescending, nextFoldersFirst, nextUiFont, nextEditorFont, nextEditorTextSize, nextShowRecentExcerpt, nextRecentSort, nextDirectoryImages, nextThumbnailCaching, nextLineSpacing, nextNavigationSide) }
                 acceptWorkspace(disk { store.refresh() })
             } catch (e: Exception) {
                 ui = ui.copy(workspace = ui.workspace?.copy(showRecentExcerpt = w.showRecentExcerpt))

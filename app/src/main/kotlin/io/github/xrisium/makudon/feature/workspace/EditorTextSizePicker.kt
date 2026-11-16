@@ -28,12 +28,36 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.EditorTextSize
+import io.github.xrisium.makudon.domain.EditorLineSpacing
+import io.github.xrisium.makudon.domain.Workspace
+import io.github.xrisium.makudon.ui.theme.EditorStyle
+import androidx.compose.ui.unit.sp
+
+@Composable
+internal fun editorBodyStyle(workspace: Workspace?): androidx.compose.ui.text.TextStyle {
+    val size = workspace?.editorTextSize ?: EditorTextSize.Medium
+    val spacing = workspace?.editorLineSpacing ?: EditorLineSpacing.Medium
+    return EditorStyle.copy(fontSize = size.sp.sp, lineHeight = (spacing.height * size.sp / 18f).sp)
+}
 
 @Composable
 internal fun EditorTextSizePicker(selected: EditorTextSize, enabled: Boolean, onSelect: (EditorTextSize) -> Unit) {
+    EditorOptionPicker(stringResource(R.string.editor_text_size), selected.ordinal, enabled,
+        listOf(R.string.editor_size_small_short, R.string.editor_size_medium_short, R.string.editor_size_large_short),
+        listOf(R.string.editor_size_small, R.string.editor_size_medium, R.string.editor_size_large)) { onSelect(EditorTextSize.entries[it]) }
+}
+
+@Composable
+internal fun EditorLineSpacingPicker(selected: EditorLineSpacing, enabled: Boolean, onSelect: (EditorLineSpacing) -> Unit) {
+    EditorOptionPicker(stringResource(R.string.editor_line_spacing), selected.ordinal, enabled,
+        listOf(R.string.spacing_wide_short, R.string.spacing_medium_short, R.string.spacing_narrow_short),
+        listOf(R.string.spacing_wide, R.string.spacing_medium, R.string.spacing_narrow)) { onSelect(EditorLineSpacing.entries[it]) }
+}
+
+@Composable
+private fun EditorOptionPicker(title: String, selected: Int, enabled: Boolean, labels: List<Int>, descriptions: List<Int>, onSelect: (Int) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val position by animateFloatAsState(selected.ordinal.toFloat(), tween(240, easing = FastOutSlowInEasing), label = "editor-text-size")
-    val title = stringResource(R.string.editor_text_size)
+    val position by animateFloatAsState(selected.toFloat(), tween(240, easing = FastOutSlowInEasing), label = "editor-text-size")
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.labelMedium)
         Box(Modifier.fillMaxWidth().background(colors.surfaceVariant, RoundedCornerShape(14.dp)).padding(4.dp)) {
@@ -43,12 +67,8 @@ internal fun EditorTextSizePicker(selected: EditorTextSize, enabled: Boolean, on
                     size = Size(size.width / 3, size.height), cornerRadius = CornerRadius(11.dp.toPx()))
             }
             Row(Modifier.fillMaxWidth().selectableGroup()) {
-                EditorTextSize.entries.forEach { option ->
-                    val (short, full) = when (option) {
-                        EditorTextSize.Small -> R.string.editor_size_small_short to R.string.editor_size_small
-                        EditorTextSize.Medium -> R.string.editor_size_medium_short to R.string.editor_size_medium
-                        EditorTextSize.Large -> R.string.editor_size_large_short to R.string.editor_size_large
-                    }
+                labels.forEachIndexed { option, short ->
+                    val full = descriptions[option]
                     val description = "$title: ${stringResource(full)}"
                     Box(Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(11.dp))
                         .selectable(selected = selected == option, enabled = enabled, role = Role.RadioButton, onClick = { onSelect(option) })

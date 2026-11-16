@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.Workspace
 import io.github.xrisium.makudon.data.TrashNode
-import io.github.xrisium.makudon.ui.theme.EditorStyle
 import java.text.DateFormat
 import java.util.Date
 
@@ -81,7 +80,7 @@ internal fun TrashPage(model: WorkspaceViewModel) {
                     Box(Modifier.fillMaxWidth().height(240.dp).clickable { model.viewImage(preview.entry, preview.id) }, contentAlignment = Alignment.Center) {
                         ImageThumbnail(model, WorkspaceViewModel.ImageTarget(preview.entry, preview.id), Modifier.fillMaxSize(), 1024, showError = true)
                     }
-                } else item { SelectionContainer { Text(model.trashText.orEmpty(), Modifier.fillMaxWidth(), style = EditorStyle) } }
+                } else item { SelectionContainer { Text(model.trashText.orEmpty(), Modifier.fillMaxWidth(), style = editorBodyStyle(model.ui.workspace)) } }
             } else {
                 if (folder != null && selection == null) {
                     item { TrashMetadata(folder, model) }

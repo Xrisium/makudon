@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
-import io.github.xrisium.makudon.ui.theme.EditorStyle
 
 private data class OpenOutline(val anchor: Int, val source: String, val selection: TextRange?)
 
@@ -40,10 +39,10 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     val status by session.status.collectAsState()
     val colors = MaterialTheme.colorScheme
     val textSize = ui.workspace?.editorTextSize ?: EditorTextSize.Medium
-    val scale = textSize.sp / 18f
-    val bodyStyle = EditorStyle.copy(fontSize = textSize.sp.sp, lineHeight = (33 * scale).sp)
+    val spacing = ui.workspace?.editorLineSpacing ?: EditorLineSpacing.Medium
+    val bodyStyle = editorBodyStyle(ui.workspace)
     val markdown = entry.kind == DocumentKind.Markdown
-    val reading = markdown && ui.editorMode == EditorMode.Reading
+    val reading = ui.editorMode == EditorMode.Reading
     val editable = !ui.busy && !ui.transitioning && !ui.storageBlocked && ui.page == Page.Editor
     val controlsEnabled = (!ui.busy || ui.savingPreferences) && !ui.transitioning && !ui.storageBlocked && ui.page == Page.Editor
     var more by remember { mutableStateOf(false) }
@@ -74,12 +73,12 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         }
     } }
     val matches = remember(source, query, caseSensitive, reading, document) {
-        if (!reading) LiteralSearch.matches(source, query, caseSensitive)
+        if (!reading || !markdown) LiteralSearch.matches(source, query, caseSensitive)
         else document?.root?.children?.flatMap { LiteralSearch.matches(mdText(it, document, colors.primary).text, query, caseSensitive) }.orEmpty()
     }
     LaunchedEffect(reading) { if (reading) { focusManager.clearFocus(); keyboard?.hide() } }
     LaunchedEffect(query, caseSensitive, target, reading, findOpen) {
-        if (!reading && findOpen && matches.isNotEmpty()) {
+        if ((!reading || !markdown) && findOpen && matches.isNotEmpty()) {
             val match = matches[Math.floorMod(target, matches.size)]
             field.edit { selection = TextRange(match.start, match.end) }
         }
@@ -88,8 +87,8 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         if (formatMenu != 0) formatMenu = 0 else if (model.immersive) model.immersive = false else findOpen = false
     }
     fun changeMode(mode: EditorMode) {
-        if (mode == EditorMode.Reading) { model.readingAnchor = model.editorAnchor; model.readingAnchorOffset = model.editorAnchorOffset; focusManager.clearFocus(); keyboard?.hide() }
-        else if (reading) { model.editorAnchor = model.readingAnchor; model.editorAnchorOffset = model.readingAnchorOffset }
+        if (markdown && mode == EditorMode.Reading) { model.readingAnchor = model.editorAnchor; model.readingAnchorOffset = model.editorAnchorOffset; focusManager.clearFocus(); keyboard?.hide() }
+        else if (markdown && reading) { model.editorAnchor = model.readingAnchor; model.editorAnchorOffset = model.readingAnchorOffset }
         model.editorMode(mode)
     }
     fun dismissOutline(outline: OpenOutline) {
@@ -143,6 +142,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
                 Tool(R.drawable.ic_more_horizontal, stringResource(R.string.item_actions), enabled = controlsEnabled, onClick = { if (editable) more = !more })
                 DropdownMenu(more, { more = false }, shape = RoundedCornerShape(18.dp), containerColor = colors.surface, modifier = Modifier.widthIn(min = 260.dp, max = 300.dp)) {
                     EditorTextSizePicker(textSize, enabled = controlsEnabled) { if (editable) model.preferences(editorTextSize = it) }
+                    EditorLineSpacingPicker(spacing, enabled = controlsEnabled) { if (editable) model.preferences(editorLineSpacing = it) }
                     DropdownMenuItem(text = { Text(stringResource(if (reading) R.string.md_find_reading else R.string.md_find)) }, leadingIcon = { Glyph(R.drawable.ic_search) }, onClick = { findOpen = true; more = false })
                     if (reading) DropdownMenuItem(text = { Text(stringResource(R.string.md_immersive)) }, onClick = { model.immersive = true; more = false })
                     HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
@@ -157,10 +157,8 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
             }
         }
         if (!model.immersive) {
-            if (markdown) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    MarkdownModePicker(ui.editorMode, controlsEnabled) { if (editable) changeMode(it) }
-                }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                MarkdownModePicker(ui.editorMode, controlsEnabled, { if (editable) changeMode(it) }, markdown)
             }
             HorizontalDivider(color = colors.outlineVariant)
         }
@@ -174,10 +172,10 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         model.editorMessage?.let { Text(stringResource(it), Modifier.padding(horizontal = 16.dp, vertical = 4.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall, color = colors.error) }
         if (findOpen) EditorFindBar(reading, query, replacement, caseSensitive, matches.size, target,
             { query = it; target = 0 }, { replacement = it }, { caseSensitive = it; target = 0 }, { target = it }, ::replace, { findOpen = false })
-        if (reading) {
+        if (reading && markdown) {
             if (document != null) MarkdownReader(model, document, bodyStyle, Modifier.weight(1f).fillMaxWidth().testTag("reading-view"), if (findOpen) query else "", caseSensitive, target, outlineJump) { outlineJump = null }
             else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.md_preparing)) }
-        } else MarkdownEditingField(model, markdown, bodyStyle, editable, findOpen, Modifier.weight(1f).fillMaxWidth(), outlineJump, { outlineJump = null })
+        } else MarkdownEditingField(model, markdown, bodyStyle, editable && !reading, findOpen, Modifier.weight(1f).fillMaxWidth(), outlineJump, { outlineJump = null })
         if (!model.immersive) {
             if (markdown && !reading && !findOpen && tools) MarkdownTools(model, controlsEnabled, toolGroup,
                 formatMenu, { formatMenu = it }, { formatAnchor = it },

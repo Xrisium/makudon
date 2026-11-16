@@ -46,6 +46,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyRecent = false
     private var onlyRecentOverview = false
     private var onlyDetails = false
+    private var navigationCase: String? = null
     private var onlyTextSize = false
     private var onlyBackup = false
     private var onlyBackupVisual = false
@@ -79,6 +80,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyRecent = arguments?.getString("case") == "recent"
         onlyRecentOverview = arguments?.getString("case") == "recent-overview"
         onlyDetails = arguments?.getString("case") == "details"
+        navigationCase = arguments?.getString("case")?.takeIf { it.startsWith("document-navigation") }
         onlyTextSize = arguments?.getString("case") == "text-size"
         onlyBackup = arguments?.getString("case") == "backup"
         onlyBackupVisual = arguments?.getString("case") == "backup-visual"
@@ -105,7 +107,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -755,6 +757,139 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+
+    private fun documentNavigationTest(case: String) {
+        fun body() = main { checkNotNull(model.textState).text.toString() }
+        fun visible(label: String) = nodes().any { it.isVisibleToUser && it.contentDescription?.toString() == label }
+        fun scroll(fraction: Float) {
+            runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo((model.editorScroll.maxValue * fraction).toInt()) } }
+            SystemClock.sleep(250); waitForIdleSync()
+        }
+        fun diskPosition(id: String) = runBlocking { withContext(Dispatchers.IO) { currentStore().readPosition(id) } }
+        if (case.endsWith("restart-seed")) {
+            val id = runBlocking { withContext(Dispatchers.IO) { currentStore().create("位置冷启动测试", Workspace.ROOT, DocumentKind.Plain, (1..400).joinToString("\n") { "第${it}行，窗外的风经过树梢，书桌上留着一页尚未写完的故事。😀" }) } }
+            main { model.reload() }; ready(); main { model.open(id) }; ready()
+            scroll(0.6f); click("阅读"); ready()
+            main { model.backgroundSave() }; ready()
+            waitFor("cold resume position persisted") { diskPosition(id)?.mode == EditorMode.Reading && (diskPosition(id)?.anchor ?: 0) > 100 }
+            val position = checkNotNull(diskPosition(id))
+            File(targetContext.cacheDir, "navigation-restart.txt").writeText("$id,${position.anchor}")
+            verify(position.anchor > 100, "Cold restart seed stores a nonzero read viewport")
+            return
+        }
+        if (case.endsWith("restart-verify")) {
+            val saved = File(targetContext.cacheDir, "navigation-restart.txt").readText().split(',')
+            main { model.open(saved[0]) }; ready()
+            waitFor("cold restart restored") { main { model.editorScroll.value > 0 && model.editorAnchor == saved[1].toInt() } }
+            verify(main { model.ui.editorMode == EditorMode.Reading }, "Cold process reopens the last plain-text reading mode and viewport")
+            verify(!find(targetContext.getString(R.string.edit_body)).isEditable, "Cold restored plain-text reader is locked")
+            screenshot("navigation-cold-resume")
+            main { model.go(Page.Recent) }; ready(); main { model.delete(saved[0]) }; ready()
+            return
+        }
+        val original = main { checkNotNull(model.ui.workspace) }
+        val oldFont = shell("settings get system font_scale")
+        val oldScreen = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val ids = mutableListOf<String>()
+        val plain = (1..350).joinToString("\n") { "第${it}行，阳光穿过树叶，缓缓落在安静的窗台上。这里可以继续记录今天的故事。😀" }
+        val markdown = (1..60).joinToString("\n\n") { "## 第${it}章\n\n一段**粗体**与普通正文。" + "慢慢阅读，观察行间的留白。".repeat(12) + "\n\n> 窗外有风，书页轻轻翻动。\n\n- 记录一个想法\n- 留下另一句话" }
+        try {
+            runBlocking { withContext(Dispatchers.IO) {
+                val store = currentStore()
+                ids += store.create("长文导航纯文本", Workspace.ROOT, DocumentKind.Plain, plain)
+                ids += store.create("长文导航Markdown", Workspace.ROOT, DocumentKind.Markdown, markdown)
+                ids += store.create("短文导航", Workspace.ROOT, DocumentKind.Plain, "只有一行。")
+                ids += store.create("单段长文导航", Workspace.ROOT, DocumentKind.Markdown, "长段落文字".repeat(1800))
+            } }
+            main { model.reload() }; ready(); main { model.open(ids[2]) }; ready()
+            verify(!visible("快速滚动") && !visible("回到顶部") && !visible("回到底部"), "Short documents hide all long-document controls")
+            verify(visible("编辑") && visible("阅读") && !visible("排版"), "Plain text provides exactly edit and read mode tabs")
+            main { model.go(Page.Recent) }; ready(); main { model.open(ids[0]) }; ready()
+            waitFor("long controls") { visible("快速滚动") && visible("回到底部") }
+            verify(!visible("回到顶部"), "At the top only the bottom jump is shown")
+            scroll(0.5f)
+            val middle = main { model.editorScroll.value }
+            val selection = main { model.currentSelection() }
+            click("阅读"); ready()
+            verify(main { model.ui.editorMode == EditorMode.Reading && kotlin.math.abs(model.editorScroll.value - middle) <= 2 }, "Plain-text hot switch retains scroll progress")
+            val reader = find(targetContext.getString(R.string.edit_body))
+            verify(!reader.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }, "Plain-text reading exposes no edit action")
+            verify(body() == plain && main { model.currentSelection() == selection }, "Reading preserves body, selection and shared session")
+            click("编辑"); ready()
+            verify(kotlin.math.abs(main { model.editorScroll.value } - middle) <= 2, "Returning to edit keeps the reading viewport")
+            click(main { model.languages.context().getString(R.string.item_actions) }); click("行距: 宽"); ready()
+            verify(main { model.ui.workspace?.editorLineSpacing == EditorLineSpacing.Wide }, "Real menu selects global wide spacing")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+            val wideRange = main { model.editorScroll.maxValue }
+            val anchor = main { model.editorAnchor }
+            main { model.preferences(editorLineSpacing = EditorLineSpacing.Narrow) }; ready()
+            verify(main { model.editorScroll.maxValue < wideRange && kotlin.math.abs(model.editorAnchor - anchor) < 100 }, "Narrow spacing changes layout and retains the source neighborhood")
+            verify(body() == plain, "Spacing never edits document content")
+            main { model.preferences(navigationSide = NavigationSide.Left) }; ready()
+            val left = Rect().also { find("快速滚动").getBoundsInScreen(it) }
+            verify(left.left < 40, "Left-side preference moves the actual fast-scroll touch region")
+            main { model.preferences(navigationSide = NavigationSide.Right) }; ready()
+            val right = Rect().also { find("快速滚动").getBoundsInScreen(it) }
+            verify(right.left > left.right, "Right-side preference moves all navigation controls together")
+            val beforeSeek = main { model.editorScroll.value }
+            val scroller = find("快速滚动")
+            verify(scroller.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id, Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, .8f) }), "Fast scroller supports accessible progress actions")
+            waitFor("accessible seek") { main { model.editorScroll.value > beforeSeek } }
+            val touch = Rect().also { find("快速滚动").getBoundsInScreen(it) }
+            swipe(touch.centerX().toFloat() / targetContext.resources.displayMetrics.widthPixels, (touch.top + touch.height() * .2f) / targetContext.resources.displayMetrics.heightPixels, touch.centerX().toFloat() / targetContext.resources.displayMetrics.widthPixels, (touch.top + touch.height() * .65f) / targetContext.resources.displayMetrics.heightPixels)
+            ready()
+            verify(main { model.editorScroll.value in (model.editorScroll.maxValue * .55f).toInt()..(model.editorScroll.maxValue * .8f).toInt() }, "Physical dragging seeks long text without moving the caret")
+            verify(main { model.currentSelection() == selection } && body() == plain, "Fast navigation preserves selection, undo buffer and source")
+            click("回到顶部"); ready()
+            verify(main { model.editorScroll.value == 0 } && !visible("回到顶部"), "Top jump reaches zero and hides near the top")
+            click("回到底部"); ready()
+            verify(main { model.editorScroll.value == model.editorScroll.maxValue } && !visible("回到底部"), "Bottom jump reaches the end and hides near the bottom")
+            scroll(.45f); click("阅读"); ready()
+            val remembered = main { model.editorAnchor }
+            main { model.go(Page.Recent) }; ready(); main { model.open(ids[0]) }; ready()
+            verify(main { model.editorAnchor == remembered && model.ui.editorMode == EditorMode.Reading }, "Reopening plain text restores its last viewport and mode")
+            main { currentActivity?.recreate() }; ready()
+            verify(main { model.editorAnchor == remembered && model.editorScroll.value > 0 }, "Activity recreation retains the document viewport")
+            main { model.go(Page.Recent) }; ready(); main { model.open(ids[1]) }; ready()
+            waitFor("Markdown parsed") { main { model.markdownDocument?.source == markdown } }
+            click("源码"); ready(); scroll(.4f)
+            val codeAnchor = main { model.editorAnchor }
+            click("阅读"); ready()
+            verify(main { kotlin.math.abs(model.readingAnchor - codeAnchor) < 400 }, "Markdown source-to-reader switches retain the source block")
+            verify(visible("快速滚动") && visible("回到顶部") && visible("回到底部"), "Markdown reader provides long-document navigation in the middle")
+            click("回到底部"); ready()
+            verify(main { !model.readingList.canScrollForward }, "Markdown bottom jump reaches the final block")
+            click("回到顶部"); ready()
+            verify(main { !model.readingList.canScrollBackward }, "Markdown top jump reaches the first block")
+            runBlocking { withContext(Dispatchers.Main) { model.readingList.scrollToItem(100, 32) } }; ready()
+            val mdAnchor = main { model.readingAnchor }
+            main { model.go(Page.Recent) }; ready(); main { model.open(ids[1]) }; ready()
+            waitFor("Markdown reader restore") { main { model.readingAnchor == mdAnchor && model.readingList.firstVisibleItemIndex > 0 } }
+            verify(body() == markdown, "Markdown reopening restores reader viewport without rewriting source")
+            screenshot("navigation-markdown-reading")
+            main { model.go(Page.Recent) }; ready(); main { model.open(ids[3]) }; ready(); click("阅读"); ready()
+            verify(visible("快速滚动"), "A single long Markdown paragraph also gets a fast scroller")
+            click("回到底部"); ready()
+            verify(main { !model.readingList.canScrollForward }, "Single-paragraph Markdown reaches its end")
+            main { model.go(Page.Recent) }; ready(); main { model.open(ids[0]) }; ready()
+            shell("wm size 840x1600"); shell("settings put system font_scale 2.0")
+            waitFor("navigation 200 percent") { main { currentActivity?.resources?.configuration?.fontScale == 2f } }; ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); screenshot("navigation-zh-200-menu")
+            verify(visible("行距: 宽") && visible("行距: 中") && visible("行距: 窄"), "Chinese spacing choices fit 320dp at 200 percent")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+            main { model.changeLanguage("en") }; ready()
+            click(main { model.languages.context().getString(R.string.item_actions) }); screenshot("navigation-en-200-menu")
+            verify(visible("Line spacing: Wide") && visible("Line spacing: Narrow"), "English spacing choices remain accessible at 200 percent")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready(); screenshot("navigation-en-200-reader")
+        } finally {
+            shell(if (oldScreen == null) "wm size reset" else "wm size $oldScreen")
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            main { model.changeLanguage("zh-Hans") }; ready()
+            main { model.go(Page.Recent) }; ready()
+            ids.forEach { id -> main { model.delete(id) }; ready() }
+            main { model.preferences(editorLineSpacing = original.editorLineSpacing, navigationSide = original.navigationSide) }; ready()
+        }
+    }
 
     private fun textSizeTest() {
         val oldSize = main { checkNotNull(model.ui.workspace).editorTextSize }

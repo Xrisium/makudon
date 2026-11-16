@@ -22,6 +22,7 @@ import androidx.compose.ui.text.*
 import androidx.compose.ui.unit.*
 import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.*
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -103,14 +104,18 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             model.recordInput(before, asCharSequence().toString(), beforeSelection, TextSelection(selection.start, selection.end))
         } catch (e: WorkspaceException) { revertAllChanges(); model.inputRejected(e.reason) }
     } }
-    // Resolve anchors only after the new mode has supplied a matching text layout.
-    val restoreAnchor = remember(field, model.ui.editorMode) { model.editorAnchor to model.editorAnchorOffset }
-    LaunchedEffect(model.ui.editorMode) {
+    val lineHeight = with(density) { bodyStyle.lineHeight.toPx() }
+    // Capture before the layout changes; recording is gated until restoration completes.
+    val restoreAnchor = remember(field, model.ui.editorMode, bodyStyle, viewportWidth) {
+        model.editorAnchor to (model.editorAnchorOffset * lineHeight / model.viewportLineHeight).roundToInt()
+    }
+    var restoring by remember(field, model.ui.editorMode, bodyStyle, viewportWidth) { mutableStateOf(true) }
+    LaunchedEffect(restoreAnchor, model.ui.editorMode, bodyStyle, viewportWidth) {
         withFrameNanos { }
-        layout?.let { result ->
-            val at = projection.offset(restoreAnchor.first).coerceIn(0, result.layoutInput.text.length)
-            model.editorScroll.scrollTo(result.getLineTop(result.getLineForOffset(at)).roundToInt() + restoreAnchor.second)
-        }
+        val result = snapshotFlow { layout }.first { it != null && it.layoutInput.style.fontSize == bodyStyle.fontSize && it.layoutInput.style.lineHeight == bodyStyle.lineHeight } ?: return@LaunchedEffect
+        val at = projection.offset(restoreAnchor.first).coerceIn(0, result.layoutInput.text.length)
+        model.editorScroll.scrollTo((result.getLineTop(result.getLineForOffset(at)).roundToInt().toLong() + restoreAnchor.second).coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
+        restoring = false
     }
     LaunchedEffect(outlineJump, layout, projection) {
         val jump = outlineJump ?: return@LaunchedEffect
@@ -120,7 +125,8 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
         model.editorScroll.scrollTo(result.getLineTop(result.getLineForOffset(at)).roundToInt())
         onOutlineJumped()
     }
-    LaunchedEffect(layout, projection, parsed, viewportHeight) {
+    LaunchedEffect(layout, projection, parsed, viewportHeight, restoring) {
+        if (restoring) return@LaunchedEffect
         val result = layout ?: return@LaunchedEffect
         snapshotFlow { model.editorScroll.value }.collect { scroll ->
             val visible = result.getOffsetForPosition(Offset(0f, scroll.toFloat()))
@@ -129,10 +135,9 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             visibleSourceStart = (original / 1024) * 1024
             visibleSourceEnd = (((projection.sourceOffset(bottom).coerceIn(original, source.length) / 1024) + 1) * 1024).coerceAtMost(source.length)
             val block = parsed.root.children.lastOrNull { it.range.start <= original }
-            val start = block?.range?.start ?: original
+            val start = if (markdown) block?.range?.start ?: original else result.getLineStart(result.getLineForOffset(visible))
             val at = projection.offset(start).coerceIn(0, result.layoutInput.text.length)
-            model.editorAnchor = start
-            model.editorAnchorOffset = (scroll - result.getLineTop(result.getLineForOffset(at)).roundToInt()).coerceAtLeast(0)
+            model.recordViewport(start, (scroll - result.getLineTop(result.getLineForOffset(at)).roundToInt()).coerceAtLeast(0), lineHeight, reading = false)
         }
     }
     val description = stringResource(R.string.edit_body)
@@ -142,8 +147,8 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
         BasicTextField(state = field, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp).focusRequester(requester)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent {
-                if (it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key in listOf(Key.Z, Key.Y)) { model.undo(it.key == Key.Y || it.isShiftPressed); true } else false
-            }.testTag(if (typeset) "typeset-editor" else "source-editor").semantics { contentDescription = description },
+                if (editable && it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key in listOf(Key.Z, Key.Y)) { model.undo(it.key == Key.Y || it.isShiftPressed); true } else false
+            }.testTag(if (model.ui.editorMode == EditorMode.Reading) "reading-view" else if (typeset) "typeset-editor" else "source-editor").semantics { contentDescription = description },
             readOnly = !editable, textStyle = bodyStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
             outputTransformation = stableOutput, scrollState = model.editorScroll,
             onTextLayout = { get -> layout = get() },
@@ -198,6 +203,9 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
                         model.applyEditorEdit(EditResult(source.replaceRange(at, at + 1, if (checked) " " else "x"), model.currentSelection()), editToken)
                     })
             }
+        }
+        DocumentNavigation(model, DocumentScrollRange(viewportHeight.toFloat(), model.editorScroll.maxValue.toFloat().takeIf { it < Int.MAX_VALUE }?.plus(viewportHeight) ?: 0f, model.editorScroll.value.toFloat()), model.editorScroll.isScrollInProgress) { progress ->
+            model.editorScroll.scrollTo((model.editorScroll.maxValue * progress).roundToInt())
         }
     }
 }

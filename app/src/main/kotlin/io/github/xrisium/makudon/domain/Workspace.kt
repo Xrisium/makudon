@@ -25,6 +25,9 @@ enum class ColorTheme { System, Paper, Cream, Mist, Sage, Ink }
 enum class FontChoice { Sans, Serif, WenKai, System }
 enum class FontThickness { Light, Normal, Bold }
 enum class EditorTextSize(val sp: Int) { Small(16), Medium(18), Large(20) }
+enum class EditorLineSpacing(val height: Int) { Wide(39), Medium(33), Narrow(27) }
+enum class NavigationSide { Left, Right }
+data class ViewportPosition(val anchor: Int, val offset: Int, val lineHeight: Float, val mode: EditorMode)
 enum class RecentSort { Modified, Opened }
 data class FontPreference(val choice: FontChoice = FontChoice.Sans, val thickness: FontThickness = FontThickness.Normal)
 
@@ -64,6 +67,8 @@ data class Workspace(
     val recentSort: RecentSort = RecentSort.Opened,
     val directoryImages: DirectoryImages = DirectoryImages.Thumbnail,
     val thumbnailCaching: ThumbnailCaching = ThumbnailCaching(),
+    val editorLineSpacing: EditorLineSpacing = EditorLineSpacing.Medium,
+    val navigationSide: NavigationSide = NavigationSide.Right,
 ) {
     fun entry(id: String) = entries.firstOrNull { it.id == id }
     fun path(id: String): String {

@@ -451,4 +451,20 @@
   <string name="image_missing">A referenced image is missing or damaged. Restore the image before exporting the ZIP.</string>
   <string name="image_delete_affected">These documents will show missing images until the images are restored:</string>
   <string name="image_details">Format: %1$s\nDimensions: %2$d × %3$d px\nFile size: %4$s\nLocation: %5$s\nCreated: %6$s\nLast modified: %7$s</string>
+
+    <string name="editor_line_spacing">Line spacing</string>
+    <string name="spacing_wide">Wide</string>
+    <string name="spacing_medium">Medium</string>
+    <string name="spacing_narrow">Narrow</string>
+    <string name="edit_view">Edit</string>
+    <string name="document_navigation">Document navigation</string>
+    <string name="navigation_side">Control side</string>
+    <string name="navigation_left">Left</string>
+    <string name="navigation_right">Right</string>
+    <string name="scroll_top">Scroll to top</string>
+    <string name="scroll_bottom">Scroll to bottom</string>
+    <string name="fast_scroll">Fast scroll</string>
+    <string name="spacing_wide_short">W</string>
+    <string name="spacing_medium_short">M</string>
+    <string name="spacing_narrow_short">N</string>
 </resources>

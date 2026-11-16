@@ -22,23 +22,24 @@ import io.github.xrisium.makudon.R
 import io.github.xrisium.makudon.domain.EditorMode
 
 @Composable
-internal fun MarkdownModePicker(mode: EditorMode, enabled: Boolean, onMode: (EditorMode) -> Unit) {
+internal fun MarkdownModePicker(mode: EditorMode, enabled: Boolean, onMode: (EditorMode) -> Unit, markdown: Boolean = true) {
     val colors = MaterialTheme.colorScheme
     val measurer = rememberTextMeasurer()
     val style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
-    val position by animateFloatAsState(mode.ordinal.toFloat(), tween(160), label = "editor-view-selection")
+    val modes = if (markdown) EditorMode.entries else listOf(EditorMode.Source, EditorMode.Reading)
+    val position by animateFloatAsState(modes.indexOf(mode).coerceAtLeast(0).toFloat(), tween(160), label = "editor-view-selection")
     // Padding belongs outside the shared indicator / selectable coordinate space.
     Box(Modifier.fillMaxWidth().background(colors.surfaceVariant, RoundedCornerShape(14.dp)).padding(4.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val segment = maxWidth / 3
+            val segment = maxWidth / modes.size
             Canvas(Modifier.matchParentSize().testTag("editor-mode-indicator")) {
-                drawRoundRect(colors.surface, topLeft = Offset(size.width / 3 * position, 0f), size = Size(size.width / 3, size.height), cornerRadius = CornerRadius(11.dp.toPx()))
+                drawRoundRect(colors.surface, topLeft = Offset(size.width / modes.size * position, 0f), size = Size(size.width / modes.size, size.height), cornerRadius = CornerRadius(11.dp.toPx()))
             }
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-                EditorMode.entries.forEach { item ->
-                    val label = stringResource(when (item) { EditorMode.Source -> R.string.source_view; EditorMode.Typeset -> R.string.typeset_view; EditorMode.Reading -> R.string.reading_view })
-                    val compact = stringResource(when (item) { EditorMode.Source -> R.string.source_view_compact; EditorMode.Typeset -> R.string.typeset_view_compact; EditorMode.Reading -> R.string.reading_view_compact })
-                    val icon = when (item) { EditorMode.Source -> R.drawable.ic_code_xml; EditorMode.Typeset -> R.drawable.ic_text_cursor_input; EditorMode.Reading -> R.drawable.ic_book_open }
+                modes.forEach { item ->
+                    val label = stringResource(if (!markdown && item == EditorMode.Source) R.string.edit_view else when (item) { EditorMode.Source -> R.string.source_view; EditorMode.Typeset -> R.string.typeset_view; EditorMode.Reading -> R.string.reading_view })
+                    val compact = stringResource(if (!markdown && item == EditorMode.Source) R.string.edit_view else when (item) { EditorMode.Source -> R.string.source_view_compact; EditorMode.Typeset -> R.string.typeset_view_compact; EditorMode.Reading -> R.string.reading_view_compact })
+                    val icon = when (item) { EditorMode.Source -> if (markdown) R.drawable.ic_code_xml else R.drawable.ic_text_cursor_input; EditorMode.Typeset -> R.drawable.ic_text_cursor_input; EditorMode.Reading -> R.drawable.ic_book_open }
                     val width = with(LocalDensity.current) { (segment - 12.dp).toPx() }
                     val display = if (measurer.measure(label, style, softWrap = false).size.width > width) compact else label
                     val stacked = measurer.measure(display, style, softWrap = false).size.width > with(LocalDensity.current) { (segment - 38.dp).toPx() }

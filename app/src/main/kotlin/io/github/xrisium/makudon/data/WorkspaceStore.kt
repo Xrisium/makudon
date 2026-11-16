@@ -56,6 +56,8 @@ class WorkspaceStore(
             )
             val candidate = Workspace(entries, ColorTheme.valueOf(p.getProperty("theme")), SortKey.valueOf(p.getProperty("sort")), p.getProperty("descending").toBooleanStrict(), p.getProperty("foldersFirst").toBooleanStrict(), p.getProperty("lastImportRequest"), font("uiFont"), font("editorFont"), p.getProperty("trashOperation"))
             val sized = candidate.copy(
+                editorLineSpacing = EditorLineSpacing.entries.firstOrNull { it.name == p.getProperty("editorLineSpacing") } ?: EditorLineSpacing.Medium,
+                navigationSide = NavigationSide.entries.firstOrNull { it.name == p.getProperty("navigationSide") } ?: NavigationSide.Right,
                 editorTextSize = EditorTextSize.entries.firstOrNull { it.name == p.getProperty("editorTextSize") } ?: EditorTextSize.Medium,
                 showRecentExcerpt = p.getProperty("showRecentExcerpt")?.toBooleanStrictOrNull() ?: true,
                 recentSort = RecentSort.entries.firstOrNull { it.name == p.getProperty("recentSort") } ?: RecentSort.Opened,
@@ -103,6 +105,8 @@ class WorkspaceStore(
         p["uiFont.choice"] = next.uiFont.choice.name; p["uiFont.thickness"] = next.uiFont.thickness.name
         p["editorFont.choice"] = next.editorFont.choice.name; p["editorFont.thickness"] = next.editorFont.thickness.name
         p["editorTextSize"] = next.editorTextSize.name
+        p["editorLineSpacing"] = next.editorLineSpacing.name
+        p["navigationSide"] = next.navigationSide.name
         p["showRecentExcerpt"] = next.showRecentExcerpt.toString()
         p["recentSort"] = next.recentSort.name
         p["directoryImages"] = next.directoryImages.name
@@ -360,8 +364,18 @@ class WorkspaceStore(
         }
         if (incomplete) throw WorkspaceException(Failure.Cleanup)
     }
-    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt, recentSort: RecentSort = state().recentSort, directoryImages: DirectoryImages = state().directoryImages, thumbnailCaching: ThumbnailCaching = state().thumbnailCaching) {
-        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt, recentSort = recentSort, directoryImages = directoryImages, thumbnailCaching = thumbnailCaching))
+    fun readPosition(id: String): ViewportPosition? {
+        if (!idPattern.matches(id) || state().entry(id)?.textDocument != true) return null
+        return ViewportPositions.read(File(directory, "positions/$id.properties"), atomic)
+    }
+
+    fun writePosition(id: String, position: ViewportPosition): Boolean {
+        if (!idPattern.matches(id) || state().entry(id)?.textDocument != true) return false
+        return ViewportPositions.write(File(directory, "positions/$id.properties"), position, atomic)
+    }
+
+    fun settings(theme: ColorTheme, sort: SortKey, descending: Boolean, foldersFirst: Boolean, uiFont: FontPreference = state().uiFont, editorFont: FontPreference = state().editorFont, editorTextSize: EditorTextSize = state().editorTextSize, showRecentExcerpt: Boolean = state().showRecentExcerpt, recentSort: RecentSort = state().recentSort, directoryImages: DirectoryImages = state().directoryImages, thumbnailCaching: ThumbnailCaching = state().thumbnailCaching, editorLineSpacing: EditorLineSpacing = state().editorLineSpacing, navigationSide: NavigationSide = state().navigationSide) {
+        publish(state().copy(theme = theme, sort = sort, descending = descending, foldersFirst = foldersFirst, uiFont = uiFont, editorFont = editorFont, editorTextSize = editorTextSize, showRecentExcerpt = showRecentExcerpt, recentSort = recentSort, directoryImages = directoryImages, thumbnailCaching = thumbnailCaching, editorLineSpacing = editorLineSpacing, navigationSide = navigationSide))
     }
 }
 

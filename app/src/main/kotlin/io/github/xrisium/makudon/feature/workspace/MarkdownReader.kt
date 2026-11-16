@@ -11,9 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -34,10 +34,13 @@ internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocumen
         val index = found.getOrNull(if (found.isEmpty()) 0 else Math.floorMod(target, found.size))
         if (index != null) model.readingList.scrollToItem(index)
     }
-    val restoreAnchor = remember(document) { model.readingAnchor to model.readingAnchorOffset }
-    LaunchedEffect(document) {
+    val lineHeight = with(LocalDensity.current) { style.lineHeight.toPx() }
+    val restoreAnchor = remember(document, style) { model.readingAnchor to (model.readingAnchorOffset * lineHeight / model.viewportLineHeight).roundToInt() }
+    var restoring by remember(document, style) { mutableStateOf(true) }
+    LaunchedEffect(document, style) {
         val index = blocks.indexOfLast { it.range.start <= restoreAnchor.first }.coerceAtLeast(0)
         if (blocks.isNotEmpty()) model.readingList.scrollToItem(index, restoreAnchor.second)
+        restoring = false
     }
     LaunchedEffect(outlineJump, document) {
         val jump = outlineJump ?: return@LaunchedEffect
@@ -47,23 +50,82 @@ internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocumen
         }
         onOutlineJumped()
     }
-    LaunchedEffect(model.readingList, document) {
+    LaunchedEffect(model.readingList, document, restoring) {
+        if (restoring) return@LaunchedEffect
         snapshotFlow { model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset }.collect { (index, offset) ->
-            blocks.getOrNull(index)?.let { model.readingAnchor = it.range.start; model.readingAnchorOffset = offset }
+            blocks.getOrNull(index)?.let { model.recordViewport(it.range.start, offset, lineHeight, reading = true) }
         }
     }
-    SelectionContainer(modifier) {
-        LazyColumn(state = model.readingList, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp)) {
-            items(blocks, key = { it.range.start }) { node ->
-                Column {
-                    ReadingNode(model, node, document, style, query, caseSensitive)
-                    Box(Modifier.fillMaxWidth().height(18.dp).pointerInput(model) { detectTapGestures { model.immersive = !model.immersive } })
+    Box(modifier) {
+        SelectionContainer(Modifier.fillMaxSize()) {
+            LazyColumn(state = model.readingList, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp)) {
+                items(blocks, key = { it.range.start }) { node ->
+                    Column {
+                        ReadingNode(model, node, document, style, query, caseSensitive)
+                        Box(Modifier.fillMaxWidth().height(18.dp).pointerInput(model) { detectTapGestures { model.immersive = !model.immersive } })
+                    }
+                }
+                item {
+                    // A deliberate blank target avoids stealing taps from links, selection and copying.
+                    Box(Modifier.fillMaxWidth().height(96.dp).clickable(onClickLabel = stringResource(R.string.md_immersive)) { model.immersive = !model.immersive })
                 }
             }
-            item {
-                // A deliberate blank target avoids stealing taps from links, selection and copying.
-                Box(Modifier.fillMaxWidth().height(96.dp).clickable(onClickLabel = stringResource(R.string.md_immersive)) { model.immersive = !model.immersive })
+        }
+        MarkdownNavigation(model, document, style)
+    }
+}
+
+private data class ReaderNavigationMetrics(
+    val range: DocumentScrollRange = DocumentScrollRange(0f, 0f, 0f),
+    val starts: List<Float> = emptyList(),
+)
+
+@Composable
+private fun BoxScope.MarkdownNavigation(model: WorkspaceViewModel, document: MarkdownDocument, style: TextStyle) {
+    val blocks = document.root.children
+    val lineHeight = with(LocalDensity.current) { style.lineHeight.toPx() }
+    val characterWidth = with(LocalDensity.current) { style.fontSize.toPx() }
+    val gap = with(LocalDensity.current) { 18.dp.toPx() }
+    val footer = with(LocalDensity.current) { 96.dp.toPx() }
+    val horizontalPadding = with(LocalDensity.current) { 48.dp.toPx() }
+    val metrics by produceState(ReaderNavigationMetrics(), model.readingList, document, style, lineHeight) {
+        var measuredWidth = -1
+        var heights = FloatArray(0)
+        snapshotFlow {
+            Triple(model.readingList.layoutInfo, model.readingList.firstVisibleItemIndex, model.readingList.firstVisibleItemScrollOffset)
+        }.collect { (info, index, offset) ->
+            if (info.viewportSize.width != measuredWidth) {
+                measuredWidth = info.viewportSize.width
+                val width = (measuredWidth - horizontalPadding).coerceAtLeast(characterWidth)
+                heights = FloatArray(blocks.size + 1) { item ->
+                    if (item == blocks.size) footer else {
+                        // An initial wrapping estimate, replaced by actual measured heights as blocks appear.
+                        val lines = document.raw(blocks[item]).lineSequence().sumOf { line ->
+                            kotlin.math.ceil(line.length * characterWidth / width).toInt().coerceAtLeast(1)
+                        }
+                        lines * lineHeight + gap
+                    }
+                }
             }
+            info.visibleItemsInfo.forEach { item -> if (item.index in heights.indices) heights[item.index] = item.size.toFloat() }
+            val starts = ArrayList<Float>(heights.size)
+            var total = 0f
+            heights.forEach { height -> starts += total; total += height }
+            total += info.beforeContentPadding + info.afterContentPadding
+            val viewport = (info.viewportEndOffset - info.viewportStartOffset).toFloat()
+            val position = if (!model.readingList.canScrollForward) (total - viewport).coerceAtLeast(0f)
+                else if (!model.readingList.canScrollBackward) 0f else starts.getOrElse(index) { 0f } + offset
+            value = ReaderNavigationMetrics(DocumentScrollRange(viewport, total, position), starts)
+        }
+    }
+    DocumentNavigation(model, metrics.range, model.readingList.isScrollInProgress) { progress ->
+        if (progress <= 0) model.readingList.scrollToItem(0)
+        else if (progress >= 1) model.readingList.scrollToItem(blocks.size)
+        else {
+            val distance = metrics.range.maximum * progress
+            val index = metrics.starts.indexOfLast { it <= distance }.coerceIn(0, blocks.size)
+            val offset = (distance - metrics.starts.getOrElse(index) { 0f }).coerceAtLeast(0f).roundToInt()
+            model.readingList.scrollToItem(index, offset)
         }
     }
 }

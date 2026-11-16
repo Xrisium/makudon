@@ -101,6 +101,23 @@ fun SettingsPage(model: WorkspaceViewModel) {
                 }
             }
         }
+        item { Text(stringResource(R.string.document_navigation), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item {
+            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp).selectableGroup()) {
+                    Text(stringResource(R.string.navigation_side), Modifier.padding(horizontal = 18.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    NavigationSide.entries.forEach { side ->
+                        val selected = workspace.navigationSide == side
+                        Row(Modifier.fillMaxWidth().selectable(selected, enabled = enabled, role = Role.RadioButton) {
+                            model.preferences(navigationSide = side)
+                        }.padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            RadioButton(selected, onClick = null, enabled = enabled)
+                            Text(stringResource(if (side == NavigationSide.Left) R.string.navigation_left else R.string.navigation_right))
+                        }
+                    }
+                }
+            }
+        }
         item { Text(stringResource(R.string.directory), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
