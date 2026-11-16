@@ -91,4 +91,22 @@ class ViewportPositionTest {
         assertEquals(EditorLineSpacing.Medium, store(dir).refresh().editorLineSpacing)
         assertEquals(NavigationSide.Right, store(dir).refresh().navigationSide)
     }
+    @Test fun navigationInsetSurvivesReopenAndOtherPreferencesWithLegacyFallback() {
+        val dir = temp.newFolder()
+        val original = store(dir)
+        val id = original.create("曲面屏", Workspace.ROOT, DocumentKind.Plain, "完整正文😀")
+        original.settings(ColorTheme.System, SortKey.Name, false, true, navigationInset = NavigationInset.Wide)
+        val reopened = store(dir)
+        assertEquals(NavigationInset.Wide, reopened.refresh().navigationInset)
+        reopened.settings(ColorTheme.Ink, SortKey.Size, true, false, navigationSide = NavigationSide.Left)
+        assertEquals(NavigationInset.Wide, store(dir).refresh().navigationInset)
+        assertEquals("完整正文😀", store(dir).read(id))
+        val catalog = File(dir, "catalog.properties")
+        val encoded = catalog.readText()
+        catalog.writeText(encoded.lineSequence().filterNot { it.startsWith("navigationInset=") }.joinToString("\n"))
+        assertEquals(NavigationInset.Standard, store(dir).refresh().navigationInset)
+        catalog.appendText("\nnavigationInset=unknown\n")
+        assertEquals(NavigationInset.Standard, store(dir).refresh().navigationInset)
+    }
+
 }

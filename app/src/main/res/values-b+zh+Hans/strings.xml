@@ -413,8 +413,8 @@
     <string name="spacing_medium">中</string>
     <string name="spacing_narrow">窄</string>
     <string name="edit_view">编辑</string>
-    <string name="document_navigation">文稿导航</string>
-    <string name="navigation_side">控件位置</string>
+    <string name="document_navigation">文稿编辑</string>
+    <string name="navigation_side">导航控件位置</string>
     <string name="navigation_left">左侧</string>
     <string name="navigation_right">右侧</string>
     <string name="scroll_top">回到顶部</string>
@@ -423,4 +423,7 @@
     <string name="spacing_wide_short">宽</string>
     <string name="spacing_medium_short">中</string>
     <string name="spacing_narrow_short">窄</string>
+    <string name="navigation_inset">导航控件边距</string>
+    <string name="navigation_inset_standard">标准</string>
+    <string name="navigation_inset_wide">加宽</string>
 </resources>

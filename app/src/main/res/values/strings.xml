@@ -457,8 +457,8 @@
     <string name="spacing_medium">Medium</string>
     <string name="spacing_narrow">Narrow</string>
     <string name="edit_view">Edit</string>
-    <string name="document_navigation">Document navigation</string>
-    <string name="navigation_side">Control side</string>
+    <string name="document_navigation">Document editing</string>
+    <string name="navigation_side">Navigation control side</string>
     <string name="navigation_left">Left</string>
     <string name="navigation_right">Right</string>
     <string name="scroll_top">Scroll to top</string>
@@ -467,4 +467,7 @@
     <string name="spacing_wide_short">W</string>
     <string name="spacing_medium_short">M</string>
     <string name="spacing_narrow_short">N</string>
+    <string name="navigation_inset">Navigation control inset</string>
+    <string name="navigation_inset_standard">Standard</string>
+    <string name="navigation_inset_wide">Wide</string>
 </resources>

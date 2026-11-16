@@ -102,7 +102,7 @@ internal fun BoxScope.DocumentNavigation(
                         }
                     }) {
                     val thumb = maxOf(48.dp.toPx(), size.height * ratio).coerceAtMost(size.height)
-                    val x = if (left) 7.dp.toPx() else size.width - 11.dp.toPx()
+                    val x = if (left) 10.dp.toPx() else size.width - 14.dp.toPx()
                     drawRoundRect(colors.onSurfaceVariant.copy(alpha = alpha * 0.2f), Offset(x, 0f), Size(4.dp.toPx(), size.height), CornerRadius(2.dp.toPx()))
                     drawRoundRect(colors.onSurfaceVariant.copy(alpha = alpha), Offset(x, progress * (size.height - thumb)), Size(4.dp.toPx(), thumb), CornerRadius(2.dp.toPx()))
                 }

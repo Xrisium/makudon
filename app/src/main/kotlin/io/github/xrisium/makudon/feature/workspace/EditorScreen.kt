@@ -172,10 +172,11 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         model.editorMessage?.let { Text(stringResource(it), Modifier.padding(horizontal = 16.dp, vertical = 4.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall, color = colors.error) }
         if (findOpen) EditorFindBar(reading, query, replacement, caseSensitive, matches.size, target,
             { query = it; target = 0 }, { replacement = it }, { caseSensitive = it; target = 0 }, { target = it }, ::replace, { findOpen = false })
+        val contentModifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = (ui.workspace?.navigationInset ?: NavigationInset.Standard).edgeDp.dp)
         if (reading && markdown) {
-            if (document != null) MarkdownReader(model, document, bodyStyle, Modifier.weight(1f).fillMaxWidth().testTag("reading-view"), if (findOpen) query else "", caseSensitive, target, outlineJump) { outlineJump = null }
-            else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.md_preparing)) }
-        } else MarkdownEditingField(model, markdown, bodyStyle, editable && !reading, findOpen, Modifier.weight(1f).fillMaxWidth(), outlineJump, { outlineJump = null })
+            if (document != null) MarkdownReader(model, document, bodyStyle, contentModifier.testTag("reading-view"), if (findOpen) query else "", caseSensitive, target, outlineJump) { outlineJump = null }
+            else Box(contentModifier, contentAlignment = Alignment.Center) { Text(stringResource(R.string.md_preparing)) }
+        } else MarkdownEditingField(model, markdown, bodyStyle, editable && !reading, findOpen, contentModifier, outlineJump, { outlineJump = null })
         if (!model.immersive) {
             if (markdown && !reading && !findOpen && tools) MarkdownTools(model, controlsEnabled, toolGroup,
                 formatMenu, { formatMenu = it }, { formatAnchor = it },
