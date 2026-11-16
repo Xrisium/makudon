@@ -48,6 +48,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyRecentOverview = false
     private var onlyDetails = false
     private var navigationCase: String? = null
+    private var onlyEditorControls = false
     private var onlyTextSize = false
     private var onlyBackup = false
     private var onlyBackupVisual = false
@@ -83,6 +84,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyRecentOverview = arguments?.getString("case") == "recent-overview"
         onlyDetails = arguments?.getString("case") == "details"
         navigationCase = arguments?.getString("case")?.takeIf { it.startsWith("document-navigation") }
+        onlyEditorControls = arguments?.getString("case") == "editor-controls"
         onlyTextSize = arguments?.getString("case") == "text-size"
         onlyBackup = arguments?.getString("case") == "backup"
         onlyBackupVisual = arguments?.getString("case") == "backup-visual"
@@ -109,7 +111,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyEditorControls -> editorControlsTest(); onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -759,6 +761,124 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+
+    private fun editorControlsTest() {
+        val original = main { checkNotNull(model.ui.workspace) }
+        val oldFont = shell("settings get system font_scale")
+        val oldScreen = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
+        val ids = mutableListOf<String>()
+        val prefix = "0044-"
+        val longName = prefix + "山间手记与长文件名".repeat(10)
+        val englishName = prefix + "aVeryLongDocumentName".repeat(5)
+        val source = (1..180).joinToString("\n\n") { "第${it}节，午后的阳光穿过树叶，慢慢落在窗台。阅读与编辑都可以在这里继续。" }
+        fun bounds(label: String): Rect {
+            if (main { model.ui.page == Page.Directory } && label.startsWith(prefix)) {
+                fun present() = nodes().any { it.isVisibleToUser && it.contentDescription?.toString() == label }
+                if (!present()) for (direction in listOf(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) {
+                    repeat(6) {
+                        if (!present()) { nodes().firstOrNull { it.isScrollable }?.performAction(direction); ready() }
+                    }
+                    if (present()) break
+                }
+            }
+            if (main { model.ui.page == Page.Directory } && label.startsWith(prefix)) {
+                find(label).performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id); ready()
+            }
+            return Rect().also { find(label).getBoundsInScreen(it) }
+        }
+        fun axis(bitmap: android.graphics.Bitmap, rect: Rect, side: NavigationSide): Float {
+            val strip = (24 * targetContext.resources.displayMetrics.density).toInt().coerceAtMost(rect.width())
+            val left = if (side == NavigationSide.Left) rect.left else rect.right - strip
+            val right = if (side == NavigationSide.Left) rect.left + strip else rect.right
+            var total = 0.0; var weighted = 0.0
+            for (x in left until right) for (y in rect.top until rect.bottom) {
+                val pixel = bitmap.getPixel(x.coerceIn(0, bitmap.width-1), y.coerceIn(0, bitmap.height-1))
+                val weight = (247+247+245-android.graphics.Color.red(pixel)-android.graphics.Color.green(pixel)-android.graphics.Color.blue(pixel)).coerceAtLeast(0)
+                total += weight; weighted += (x+.5)*weight
+            }
+            check(total > 0) { "No visible navigation pixels" }
+            return (weighted/total).toFloat()
+        }
+        try {
+            runBlocking { withContext(Dispatchers.IO) {
+                val store = currentStore()
+                ids += store.create(prefix+"导航边距", Workspace.ROOT, DocumentKind.Plain, source)
+                ids += store.create(longName, Workspace.ROOT, DocumentKind.Markdown, "# 长文件名原文")
+                ids += store.create(prefix+"短名", Workspace.ROOT, DocumentKind.Plain, "短稿原文")
+                ids += store.create(englishName, Workspace.ROOT, DocumentKind.Plain, "英文文件名原文")
+                ids += store.create(prefix+"short", Workspace.ROOT, DocumentKind.Plain, "Short Latin baseline")
+            } }
+            main { model.reload() }; ready(); main { model.preferences(theme = ColorTheme.Paper) }; ready()
+            main { model.open(ids[0]) }; ready()
+            val density = targetContext.resources.displayMetrics.density
+            for (side in NavigationSide.entries) {
+                var standardAxis = 0f
+                for (inset in NavigationInset.entries) {
+                    main { model.preferences(navigationSide = side, navigationInset = inset) }; ready()
+                    runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(model.editorScroll.maxValue/2) } }; ready()
+                    val bitmap = checkNotNull(uiAutomation.takeScreenshot())
+                    try {
+                        val rail = axis(bitmap, bounds("快速滚动"), side)
+                        val up = axis(bitmap, bounds("回到顶部"), side)
+                        val down = axis(bitmap, bounds("回到底部"), side)
+                        verify(kotlin.math.abs(up-rail) <= 2 && kotlin.math.abs(down-rail) <= 2, "$side $inset: rendered scrollbar and jump buttons share the same visual axis")
+                        if (inset == NavigationInset.Standard) standardAxis = rail
+                        else verify(kotlin.math.abs(kotlin.math.abs(rail-standardAxis)-16*density) <= 2, "$side wide inset moves the rendered control axis 16dp inward")
+                    } finally { bitmap.recycle() }
+                    verify(main { model.textState?.text?.toString() == source }, "$side $inset: margin changes preserve exact body")
+                    screenshot("controls-${side.name}-${inset.name}")
+                }
+            }
+            click("阅读"); ready()
+            verify(main { model.ui.editorMode == EditorMode.Reading && model.editorScroll.value > 0 }, "Inset changes retain plain reading progress")
+            main { model.go(Page.Recent) }; ready(); main { model.reload() }; ready()
+            verify(main { model.ui.workspace?.navigationInset == NavigationInset.Wide }, "Wide navigation inset survives catalog reload")
+            main { model.go(Page.Directory) }; ready(); click("搜索文稿")
+            val search = nodes().first { it.isEditable }
+            check(search.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, prefix) }))
+            shell("input keyevent 111"); ready()
+            val fullLong = "$longName.md"
+            val fullShort = "${prefix}短名.txt"
+            verify(kotlin.math.abs(bounds(fullLong).height()-bounds(fullShort).height()) <= 2, "Long directory filename keeps the same single-line height as a short filename")
+            verify(find(fullLong).contentDescription?.toString() == fullLong, "Truncated name retains the complete accessible filename including extension")
+            screenshot("filename-zh")
+            shell("wm size 840x1600"); shell("settings put system font_scale 2.0")
+            waitFor("controls large font") { main { currentActivity?.resources?.configuration?.fontScale == 2f } }; ready()
+            verify(kotlin.math.abs(bounds(fullLong).height()-bounds(fullShort).height()) <= 2, "Chinese long filenames remain single-line at 320dp and 200 percent")
+            screenshot("filename-zh-200")
+            bounds(fullLong); longPress(fullLong)
+            verify(nodes().any { it.text?.toString() == fullLong }, "Context menu still shows the full original name")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+            main { model.changeLanguage("en") }; ready()
+            val englishBounds = bounds("$englishName.txt")
+            val englishShortBounds = bounds("${prefix}short.txt")
+            sendStatus(0, Bundle().apply { putString("stream", "Filename Latin bounds: long=$englishBounds short=$englishShortBounds\n") })
+            bounds("$englishName.txt"); screenshot("filename-en-200")
+            verify(kotlin.math.abs(englishBounds.height()-englishShortBounds.height()) <= 2, "English long filenames remain single-line at 320dp and 200 percent")
+            bounds("$englishName.txt"); screenshot("filename-en-200")
+            shell("wm size reset"); shell("settings put system font_scale 1.0"); ready()
+            main { model.go(Page.Settings) }; ready()
+            // Scroll the settings list to the native document editing group.
+            repeat(8) {
+                if (nodes().any { it.text?.toString() == "Navigation control inset" }) return@repeat
+                nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                ready()
+            }
+            verify(nodes().any { it.text?.toString() == "Document editing" } && nodes().any { it.text?.toString() == "Navigation control side" }, "Settings use the renamed document editing category and navigation field")
+            click("Standard"); ready()
+            verify(main { model.ui.workspace?.navigationInset == NavigationInset.Standard }, "Native settings select standard navigation inset")
+            click("Wide"); ready()
+            verify(main { model.ui.workspace?.navigationInset == NavigationInset.Wide }, "Native settings select wide navigation inset")
+            screenshot("controls-settings-en")
+        } finally {
+            shell(if (oldScreen == null) "wm size reset" else "wm size $oldScreen")
+            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
+            main { model.changeLanguage("zh-Hans") }; ready()
+            main { model.go(Page.Recent) }; ready()
+            ids.forEach { id -> main { model.delete(id) }; ready() }
+            main { model.preferences(theme = original.theme, navigationSide = original.navigationSide, navigationInset = original.navigationInset) }; ready()
+        }
+    }
 
     private fun documentNavigationTest(case: String) {
         fun body() = main { checkNotNull(model.textState).text.toString() }
