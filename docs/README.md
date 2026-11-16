@@ -11,6 +11,7 @@
 | 视觉、导航、双视图、字体与品牌素材 | [设计原则](design.md)、[导航与双视图草案](specs/0003-workspace-and-markdown-views.md)、[素材与许可证](third-party-assets.md)、[品牌草案](../assets/brand/README.md) |
 | 编辑、保存、导入导出 | [数据安全](data-safety.md)、[首片设计](specs/0001-plain-text-editor.md)、[导入 / 关联协议](specs/0002-import-and-file-association.md)、[测试](testing.md) |
 | Markdown 三视图、实时预览与写作工具 | [行为规范](specs/0005-markdown-three-modes.md)、[连续源码 ADR](adr/0011-markdown-source-projection.md)、[任务](tasks/0026-markdown-three-modes.md)、[页签与分组工具栏](tasks/0027-markdown-toolbar-layout.md) |
+| Markdown 长文排版滚动性能 | [优化任务](tasks/0043-markdown-scroll-performance.md)、[同机比较与验收](testing/2026-11-16-markdown-scroll.md) |
 | Markdown 表格单元格编辑 | [单元格输入 ADR](adr/0012-markdown-table-cells.md)、[实施与验证](tasks/0028-markdown-table-editing.md)、[内容高度与整篇滚动](tasks/0030-markdown-table-flow.md) |
 | Markdown 菜单开关与表后正文 | [边界修复](tasks/0029-markdown-menu-and-table-boundary.md)、[行为规范](specs/0005-markdown-three-modes.md) |
 | 缓存概览、提示文案与设置卡片范式 | [任务](tasks/0040-cache-overview-and-ui-audit.md)、[设计](design.md)、[审查与用户决定](reviews/2026-11-14-ui-copy-and-settings-layout.md) |

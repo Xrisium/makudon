@@ -123,3 +123,5 @@ Markdown 三视图专项使用 `-e case markdown`，覆盖原生连续选区、�
 `-e case images` 执行最终 51 项图片专项，覆盖真实 content URI 导入、EXIF、双指缩放 / 双击复位、两处面板、目录显示偏好、缓存命中 / 重建 / 并发清理、迟到插入、缺图恢复和单篇 ZIP。语言、主题、临时屏幕尺寸与字号在 finally 恢复，合成材料独立清理。APK 与本轮其余回归见[图片验收记录](testing/2026-11-12-images.md)。
 
 行距、纯文本阅读与长文导航使用 `-e case document-navigation`（28 项）；`document-navigation-restart-seed` → 模拟器 force-stop → `document-navigation-restart-verify` 验证冷进程接续（1 + 2 项）。包含真实拖动、无障碍进度、左右布局、长短文 / 单长段落、重开 / 重建及中英文 320dp / 200% 字号；仅创建 / 清理本次合成稿并恢复临时偏好，详见[验收记录](testing/2026-11-16-reading-navigation.md)。
+
+Markdown 排版长文滚动使用 `-e case markdown-scroll`：正好 10 万 Unicode 码点的密集中文 Markdown，以 Choreographer 从顶端连续滚动，记录主线程滚动回调间隔，检查源文 / 选区 / 修订保真、真实手势、重开接续及远距离任务点击 / 撤销。该数值不是 GPU 耗时或真机帧率；比较须使用同机、相同文本 / 起点 / 距离，详见[性能验收](testing/2026-11-16-markdown-scroll.md)。
