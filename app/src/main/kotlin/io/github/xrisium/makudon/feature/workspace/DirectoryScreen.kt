@@ -190,21 +190,24 @@ private fun EntryRow(model: WorkspaceViewModel, entry: Entry, depth: Int, expand
     val inheritedLabel = stringResource(R.string.selection_inherited)
     val colors = MaterialTheme.colorScheme
     val angle by animateFloatAsState(if (expanded) 90f else 0f, tween(160, easing = FastOutSlowInEasing), label = "folder-chevron")
-    Box {
+    BoxWithConstraints {
+        // Preserve room for a one-line name and its suffix at deep indentation / large system fonts.
+        val maxIndent = (maxWidth - 48.dp - 24.dp - 9.dp - 10.dp - (if (selection != null) 48.dp else 0.dp) - 112.dp).coerceAtLeast(0.dp)
+        val indent = minOf((depth * 17).coerceAtMost(102).dp, maxIndent)
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (selected || menu) colors.surfaceVariant else Color.Transparent)
             .combinedClickable(enabled = !busy, onLongClickLabel = actionLabel, onLongClick = { menu = true }, onClick = onClick)
             .semantics { customActions = buildList {
                 add(CustomAccessibilityAction(actionLabel) { if (!busy) menu = true; !busy })
                 if (selection == null) add(CustomAccessibilityAction(selectionLabel) { if (!busy) onAction("select"); !busy })
             } }
-            .padding(start = (depth * 17).coerceAtMost(102).dp, end = 10.dp).defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            .padding(start = indent, end = 10.dp).defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             if (entry.folder) Tool(R.drawable.ic_chevron_down, stringResource(if (expanded) R.string.collapse_folder else R.string.expand_folder, entry.name), enabled = !busy, rotation = angle - 90f, onClick = onToggle)
             else Spacer(Modifier.width(48.dp))
             if (entry.isImage && model.ui.workspace?.directoryImages == DirectoryImages.Thumbnail) {
                 ImageThumbnail(model, WorkspaceViewModel.ImageTarget(entry), Modifier.size(20.dp).alpha(if (cut) .65f else 1f), usage = ThumbnailUsage.Directory)
             } else Glyph(if (entry.isImage) R.drawable.ic_image else if (entry.folder) { if (expanded) R.drawable.ic_folder_open else R.drawable.ic_folder } else { if (entry.kind == DocumentKind.Markdown) R.drawable.ic_markdown else R.drawable.ic_file_text }, Modifier.alpha(if (cut) .65f else 1f), tint = colors.onSurfaceVariant)
             Column(Modifier.weight(1f).padding(start = 9.dp, top = 10.dp, bottom = 10.dp).alpha(if (cut) .65f else 1f)) {
-                Text(entry.filename, style = MaterialTheme.typography.bodyMedium)
+                DirectoryFilename(entry)
                 if (path != null) Text(path, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                 if (entry.unreadable) Text(stringResource(R.string.open_failed), style = MaterialTheme.typography.labelSmall, color = colors.error)
             }
