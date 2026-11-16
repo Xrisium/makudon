@@ -81,8 +81,11 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
         if (typeset) OutputTransformation { currentOutput?.let { with(it) { transformOutput() } } } else null
     }
     val input = remember(model, field, markdown) { InputTransformation {
-        if (model.ui.busy || model.ui.transitioning || model.ui.storageBlocked || model.ui.page != Page.Editor || model.ui.editorMode == EditorMode.Reading) { revertAllChanges(); return@InputTransformation }
         val before = originalText.toString()
+        // Selection gestures also run this transformation. A read-only field must still
+        // accept selection-only updates; revertAllChanges would collapse them as well.
+        if (asCharSequence().toString() == before) return@InputTransformation
+        if (model.ui.busy || model.ui.transitioning || model.ui.storageBlocked || model.ui.page != Page.Editor || model.ui.editorMode == EditorMode.Reading) { revertAllChanges(); return@InputTransformation }
         val beforeSelection = TextSelection(originalSelection.start, originalSelection.end)
         val raw = asCharSequence().toString()
         val normalized = TextRules.normalize(raw)

@@ -49,6 +49,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyDetails = false
     private var navigationCase: String? = null
     private var onlyEdgeFade = false
+    private var onlyReadingSelection = false
     private var onlyEditorControls = false
     private var onlyTextSize = false
     private var onlyBackup = false
@@ -86,6 +87,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyDetails = arguments?.getString("case") == "details"
         navigationCase = arguments?.getString("case")?.takeIf { it.startsWith("document-navigation") }
         onlyEdgeFade = arguments?.getString("case") == "edge-fade"
+        onlyReadingSelection = arguments?.getString("case") == "reading-selection"
         onlyEditorControls = arguments?.getString("case") == "editor-controls"
         onlyTextSize = arguments?.getString("case") == "text-size"
         onlyBackup = arguments?.getString("case") == "backup"
@@ -100,7 +102,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     override fun onStart() {
         try {
-            if (onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+            if (onlyReadingSelection || onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitFor("language bootstrap and first workspace frame") {
                 val label = main { currentActivity?.getString(R.string.recent) }
@@ -113,7 +115,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyEdgeFade -> edgeFadeTest(); onlyEditorControls -> editorControlsTest(); onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyReadingSelection -> readingSelectionTest(); onlyEdgeFade -> edgeFadeTest(); onlyEditorControls -> editorControlsTest(); onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -186,7 +188,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
         visit(root)
-        if (onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
+        if (onlyReadingSelection || onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
             val activeLayer = uiAutomation.windows.firstOrNull { it.id == root.windowId }?.layer ?: 0
             uiAutomation.windows.filter { it.layer > activeLayer && it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.forEach { window -> window.root?.let(::visit) }
         }
@@ -763,6 +765,57 @@ class WorkspaceInstrumentation : Instrumentation() {
         return File(targetContext.filesDir, if (active == "legacy") "workspace" else "library-generations/$active")
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
+
+    private fun readingSelectionTest() {
+        val ids = mutableListOf<String>()
+        val sample = "Selectable words remain available for copying.\n\n第二段中文正文，用来验证只读选择。"
+        val density = targetContext.resources.displayMetrics.density
+        fun press(x: Float, y: Float) {
+            val start = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP)) {
+                if (action == MotionEvent.ACTION_MOVE) SystemClock.sleep(800)
+                if (action == MotionEvent.ACTION_UP) SystemClock.sleep(800)
+                MotionEvent.obtain(start, SystemClock.uptimeMillis(), action, if(action==MotionEvent.ACTION_DOWN) x else x+125*density, y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }.let {
+                    check(uiAutomation.injectInputEvent(it, true)); it.recycle()
+                }
+            }
+            SystemClock.sleep(500); waitForIdleSync()
+        }
+        fun copyAction() = nodes().firstOrNull { it.text?.toString() in listOf("Copy", "复制") || it.contentDescription?.toString() in listOf("Copy", "复制") }
+        try {
+            runBlocking { withContext(Dispatchers.IO) {
+                for (kind in listOf(DocumentKind.Plain,DocumentKind.Markdown)) ids += currentStore().create("阅读选择-${kind.name}",Workspace.ROOT,kind,sample)
+            } }
+            main { model.reload() }; ready()
+            for ((index,id) in ids.withIndex()) {
+                main { model.open(id) }; ready()
+                if (index == 1) waitFor("selection Markdown parsed") { main { model.markdownDocument?.source == sample } }
+                click("阅读"); ready()
+                val revision = main { model.editorRevision }
+                val node = if (index == 0) find("编辑正文") else find(sample.substringBefore("\n"))
+                val area = Rect().also(node::getBoundsInScreen)
+                press(area.left+35*density,area.top+12*density)
+                if (index == 0) verify(main { model.currentSelection().let { it.min < it.max } }, "Plain reading real long press selects a word")
+                verify(copyAction() != null,"${if(index==0) "Plain" else "Markdown"} reading exposes Copy after real long press")
+                val expected = if(index == 0) main { model.currentSelection().let { sample.substring(it.min,it.max) } } else null
+                if (index == 0) verify(checkNotNull(expected).contains(' '),"Plain reading long-press drag expands selection across multiple words")
+                screenshot("reading-selection-$index")
+                verify(nodes().none { it.text?.toString() in listOf("Cut","Paste","剪切","粘贴") },"Reading selection offers no modifying clipboard actions")
+                node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"REJECTED READ-ONLY REPLACEMENT") })
+                verify(main { model.textState?.text.toString() == sample && model.editorRevision == revision },"Reading rejects accessibility text replacement while selected")
+                check(checkNotNull(copyAction()).performAction(AccessibilityNodeInfo.ACTION_CLICK)); ready()
+                val copied = main { (targetContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString() }
+                verify(!copied.isNullOrBlank() && sample.contains(copied),"Reading Copy writes the explicitly selected text to system clipboard")
+                if (index == 0) verify(copied == expected,"Plain reading Copy preserves the exact expanded selection")
+                sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DEL); ready()
+                verify(main { model.textState?.text.toString() == sample && model.editorRevision == revision },"Selection and Copy preserve the entire source and revision")
+                main { model.go(Page.Recent) }; ready()
+            }
+        } finally {
+            main { model.go(Page.Recent) }; ready()
+            ids.forEach { main { model.delete(it) }; ready() }
+        }
+    }
 
     private fun edgeFadeTest() {
         val original = main { checkNotNull(model.ui.workspace) }
