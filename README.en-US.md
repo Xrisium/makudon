@@ -111,7 +111,7 @@ Open **Settings** to choose a color theme and separate interface and document fo
 
 The editor’s more menu offers three **Text size** settings, S / M / L, followed by three **Line spacing** settings, W / M / N (wide / medium / narrow). Both apply to all document views.
 
-Long documents show a fast scroller and top/bottom shortcuts when you are far enough from either end. Short documents hide these controls. Choose the left or right side in **Settings → Document editing → Navigation control side**; the default is right. **Navigation control inset** offers Standard and Wide options to keep controls away from curved screen edges.
+Long documents show a fast scroller and top/bottom shortcuts when you are far enough from either end. Short documents hide these controls. Choose the left or right side in **Settings → Document editing → Navigation control side**; the default is right. **Navigation control inset** offers Standard and Wide options to keep controls away from curved screen edges. **Fade document edges** is on by default and can be turned off in the same group. The corresponding fade disappears at the start or end of the document.
 
 The app currently supports Simplified Chinese and English. Under **Settings → Language**, choose **System default / 简体中文 / English**.
 
