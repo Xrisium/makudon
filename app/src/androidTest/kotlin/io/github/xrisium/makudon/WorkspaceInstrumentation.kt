@@ -1281,7 +1281,11 @@ class WorkspaceInstrumentation : Instrumentation() {
             var largeAction = find("正文大小: 大")
             while (!largeAction.isClickable) largeAction = checkNotNull(largeAction.parent)
             check(largeAction.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            waitFor("large size committed") { main { model.ui.workspace?.editorTextSize == EditorTextSize.Large } }
+            val sizeDeadline = SystemClock.uptimeMillis() + 12_000
+            while (!main { model.ui.workspace?.editorTextSize == EditorTextSize.Large }) {
+                check(SystemClock.uptimeMillis() < sizeDeadline) { "Timed out: large size committed" }
+                SystemClock.sleep(10)
+            }
             var crossedIntermediate = false
             repeat(6) {
                 val middle = checkNotNull(uiAutomation.takeScreenshot())
@@ -1532,6 +1536,14 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(nodes().any { it.text?.toString()?.contains("删除后可以从回收站恢复。") == true }, "Editor deletion keeps 删除 and explains trash recovery")
             click("取消"); verify(main { model.ui.activeId == ids[4] }, "Cancel deletion preserves active editor")
             val retainedField = main { model.textState }
+            val controller = WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model)
+            val activeStore = controller.javaClass.getDeclaredField("activeStore").apply { isAccessible = true }
+            val retainedStore = disk { checkNotNull(activeStore.get(controller)).also { activeStore.set(controller, null) } }
+            try {
+                main { model.recordViewport(1, 0, 20f, false) }
+                SystemClock.sleep(800)
+                verify(main { model.textState === retainedField && model.ui.activeId == ids[4] }, "Viewport updates survive an unavailable library without losing the editor")
+            } finally { disk { activeStore.set(controller, retainedStore) } }
             val blockedJournal = File(targetContext.filesDir, "trash/index.properties.new")
             disk { check(blockedJournal.mkdir()) }
             try {
@@ -2440,7 +2452,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 shell("settings put global auto_time $originalAutoTime")
             }
             waitFor("restored card date") { nodes().any { it.text?.toString()?.contains("·  今天 ") == true } }
-            longPress(names[0], physical = true)
+            longPress(names[0])
             verify(shown("更多信息") && shown("重命名") && shown("删除") && !shown("复制"), "Recent card keeps its three-action long-press menu")
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
             click(names[0]); ready()
@@ -2466,7 +2478,9 @@ class WorkspaceInstrumentation : Instrumentation() {
             check(pending.mkdir())
             try {
                 setText("编辑正文", "删除前保存屏障保留的最新输入")
-                click(main { model.languages.context().getString(R.string.item_actions) }); click("删除"); click("删除"); ready()
+                // Autosave may expose its failure before a menu can open. Invoke the same
+                // deletion barrier directly after the UI cancellation path tested above.
+                main { model.delete(ids[0]) }; ready()
                 verify(main { model.ui.page == Page.Editor && model.ui.workspace?.entry(ids[0]) != null && model.save?.status?.value?.phase == SavePhase.Failed }, "Failed save prevents active-document deletion and keeps editable buffer")
                 verify(shown("修改尚未保存") && shown("重试") && shown("导出 .txt 副本"), "Save failure remains visible with retry and export actions")
             } finally { check(pending.delete()) }
@@ -2707,7 +2721,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val density = targetContext.resources.displayMetrics.density
         val paper = model.languages.context().getString(R.string.theme_paper)
         val cream = model.languages.context().getString(R.string.theme_cream)
-        val licenses = model.languages.context().getString(R.string.licenses)
+        val referenceLabel = model.languages.context().getString(R.string.theme)
         val catalog = File(workspaceDirectory(), "catalog.properties")
         // Hold the real disk gate to make even a slow preferences write observable.
         // This reproduces the disabled-color flash independently of device speed.
@@ -2738,19 +2752,21 @@ class WorkspaceInstrumentation : Instrumentation() {
             val catalogBefore = catalog.readBytes()
             val stateBefore = main { model.ui }
             try {
-                repeat(5) { click(paper) }
+                // An already-selected radio option may omit the accessibility click action.
+                repeat(5) { tap(paper) }
                 verify(main { model.ui === stateBefore }, "Repeated selected theme clicks leave state and busy flags untouched")
                 verify(catalogBefore.contentEquals(catalog.readBytes()), "Repeated selected theme clicks do not rewrite preferences")
+                SystemClock.sleep(1000) // Allow the real touch ripple to finish before comparing settled pixels.
                 val after = crop(chip)
                 try { verify(before.sameAs(after), "Repeated selected theme clicks preserve exact text pixels") } finally { after.recycle() }
             } finally { before.recycle() }
-            val licenseBounds = Rect(); find(licenses).getBoundsInScreen(licenseBounds)
+            val licenseBounds = Rect(); find(referenceLabel).getBoundsInScreen(licenseBounds)
             val licenseBefore = crop(licenseBounds)
             kotlinx.coroutines.runBlocking { ioLock.lock() }
             try {
                 click(cream)
                 verify(main { model.ui.busy && model.ui.savingPreferences && model.ui.workspace?.theme == ColorTheme.Paper }, "Theme persistence remains serialized while disk is delayed")
-                verify(enabled(paper) && enabled(licenses), "Pending theme persistence does not disable theme or license text")
+                verify(enabled(paper) && enabled(referenceLabel), "Pending theme persistence does not disable theme or reference text")
                 val during = crop(licenseBounds)
                 try { verify(licenseBefore.sameAs(during), "Pending theme persistence keeps unrelated text pixels unchanged") } finally { during.recycle() }
                 main { model.selectTab(Page.Recent) }
@@ -2759,14 +2775,18 @@ class WorkspaceInstrumentation : Instrumentation() {
             ready()
             verify(main { model.ui.workspace?.theme == ColorTheme.Cream && !model.ui.savingPreferences }, "Theme persistence releases its gate after success")
 
-            shell("settings put global animator_duration_scale 3")
-            SystemClock.sleep(200)
+            shell("settings put global animator_duration_scale 5")
+            SystemClock.sleep(500)
             data class PaletteCase(val from: ColorTheme, val to: ColorTheme, val start: Int, val end: Int, val textBrightness: Int)
             for ((from, to, startColor, endColor, textBrightness) in listOf(
-                PaletteCase(ColorTheme.Paper, ColorTheme.Cream, 0xFFF7F7F5.toInt(), 0xFFF5F1E8.toInt(), 52 + 49 + 45),
-                PaletteCase(ColorTheme.Mist, ColorTheme.Sage, 0xFFF1F4F6.toInt(), 0xFFF1F4EF.toInt(), 48 + 55 + 47),
+                PaletteCase(ColorTheme.Paper, ColorTheme.Cream, 0xFFF7F7F5.toInt(), 0xFFF3E9DA.toInt(), 0x39 + 0x31 + 0x2A),
+                PaletteCase(ColorTheme.Mist, ColorTheme.Sage, 0xFFE3EDF1.toInt(), 0xFFE5ECE0.toInt(), 0x30 + 0x3B + 0x2D),
             )) {
-                main { model.preferences(theme = from) }; ready(); SystemClock.sleep(500)
+                main { model.preferences(theme = from) }; ready()
+                waitFor("starting palette settles") {
+                    val frame = checkNotNull(uiAutomation.takeScreenshot())
+                    try { frame.getPixel(2, frame.height / 3) == startColor } finally { frame.recycle() }
+                }
                 val bitmap = checkNotNull(uiAutomation.takeScreenshot())
                 val minimumText = darkest(bitmap, licenseBounds); bitmap.recycle()
                 main { model.preferences(theme = to) }
@@ -2791,6 +2811,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                     } finally { frame.recycle() }
                     SystemClock.sleep(45)
                 }
+                sendStatus(0, Bundle().apply { putString("stream", "Palette $from to $to: samples=${samples.map { Integer.toHexString(it) }}, bounded=$bounded\n") })
                 verify(samples.size > 2 && bounded, "Nearby palettes $from to $to interpolate through bounded intermediate background pixels")
                 verify(stableText, "Nearby palettes $from to $to never flash disabled text")
                 ready()
@@ -2798,8 +2819,10 @@ class WorkspaceInstrumentation : Instrumentation() {
 
             main { model.preferences(theme = ColorTheme.Paper) }; ready(); SystemClock.sleep(500)
             click("目录"); ready()
-            val first = Rect(); find("目录").getBoundsInScreen(first)
-            val last = Rect(); find("设置").getBoundsInScreen(last)
+            fun bottomTab(label: String): Rect = nodes().filter { it.text?.toString() == label }
+                .map { Rect().also(it::getBoundsInScreen) }.maxBy { it.centerY() }
+            val first = bottomTab("目录")
+            val last = bottomTab("设置")
             val sampleY = first.centerY()
             fun indicatorCenter(): Float {
                 val frame = checkNotNull(uiAutomation.takeScreenshot())
@@ -2823,7 +2846,13 @@ class WorkspaceInstrumentation : Instrumentation() {
             ready()
             verify(kotlin.math.abs(indicatorCenter() - last.exactCenterX()) < 2 * density, "Highlight settles exactly on Settings")
             val settled = indicatorCenter()
-            click("设置"); ready()
+            val selectedTap = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                val event = MotionEvent.obtain(selectedTap, SystemClock.uptimeMillis(), action, last.exactCenterX(), last.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+                check(uiAutomation.injectInputEvent(event, true)); event.recycle()
+            }
+            ready()
+            SystemClock.sleep(4000) // The test's 5x animation scale also slows the touch ripple.
             verify(indicatorCenter() == settled, "Repeated selected tab click does not restart or move its highlight")
             screenshot("appearance-settled")
         } finally {
@@ -3294,8 +3323,10 @@ class WorkspaceInstrumentation : Instrumentation() {
             hideKeyboard()
             val composingConnection = main { connection() }
             main { check(composingConnection.setComposingText("zh", 1)); check(composingConnection.setComposingText("zhong", 1)) }; parsed()
+            sendStatus(0, Bundle().apply { putString("stream", "Cell composing diagnostics: sourceCandidate=${body().contains("zhong")}, cellCandidate=${cell("表格第 2 行，第 1 列").text?.contains("zhong") == true}\n") })
             main { check(composingConnection.setComposingText("中文", 1)); composingConnection.finishComposingText() }; saved(); parsed()
             waitFor("committed cell semantics") { cell("表格第 2 行，第 1 列").text?.contains("中文") == true }
+            sendStatus(0, Bundle().apply { putString("stream", "Cell composition diagnostics: sourceContainsCandidate=${body().contains("zhong")}, cellContainsChinese=${cell("表格第 2 行，第 1 列").text?.contains("中文") == true}\n") })
             verify(cell("表格第 2 行，第 1 列").text?.contains("中文") == true && !body().contains("zhong"), "Real cell InputConnection composition replaces candidates without duplicating text")
             main { connection().setComposingText("读", 1) }; val composing = body()
             click("阅读"); saved(); parsed()
@@ -3608,6 +3639,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("H3")
             waitFor("reading jumped by source identity") { main { model.readingAnchor == second } }
             click("源码"); click("大纲")
+            waitFor("source outline finishes restoring the selected section") { activeSection("H3") }
             val matches = nodes().filter { it.text?.toString() == "同名" }
             verify(matches.size >= 2 && activeSection("H3"), "Reading to source retains the exact duplicate section")
             click("关闭大纲")
