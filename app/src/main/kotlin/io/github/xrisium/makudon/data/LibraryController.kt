@@ -24,6 +24,7 @@ class LibraryController(
     private var pointer: Pointer? = null
     private var activeStore: WorkspaceStore? = null
     val store: WorkspaceStore get() = activeStore ?: throw WorkspaceException(Failure.Corrupt)
+    fun isActiveStore(candidate: WorkspaceStore): Boolean = activeStore === candidate
     val activeId: String get() = pointer?.active ?: throw WorkspaceException(Failure.Corrupt)
     var beforeChange: () -> Unit = {}
 

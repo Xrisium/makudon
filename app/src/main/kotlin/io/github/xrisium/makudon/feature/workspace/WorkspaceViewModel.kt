@@ -91,6 +91,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     var viewportLineHeight = 1f
     private var positionJob: Job? = null
     private var pendingPosition: Triple<WorkspaceStore, String, ViewportPosition>? = null
+    private var editorStore: WorkspaceStore? = null
 
     fun recordViewport(anchor: Int, offset: Int, lineHeight: Float, reading: Boolean) {
         if (ui.page != Page.Editor || ui.transitioning || lineHeight <= 0f) return
@@ -100,7 +101,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         else { editorAnchor = anchor; editorAnchorOffset = offset }
         viewportLineHeight = lineHeight
         val id = ui.activeId ?: return
-        val next = Triple(store, id, ViewportPosition(anchor, offset, lineHeight, ui.editorMode))
+        val next = Triple(editorStore ?: return, id, ViewportPosition(anchor, offset, lineHeight, ui.editorMode))
         if (next == pendingPosition) return
         pendingPosition = next
         positionJob?.cancel()
@@ -113,7 +114,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         withContext(Dispatchers.IO + NonCancellable) {
             ioLock.withLock {
                 // A retired generation may already have been cleaned; never recreate it.
-                if (pending.first === store) pending.first.writePosition(pending.second, pending.third)
+                if (trash.ready && library.isActiveStore(pending.first)) pending.first.writePosition(pending.second, pending.third)
             }
         }
     }
@@ -560,14 +561,14 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         observer?.cancel()
         val field = TextFieldState(text)
         val epoch = libraryEpoch
-        val openedStore = store
+        val openedStore = disk { store }
         val session = SaveCoordinator(viewModelScope, text, SystemClock::uptimeMillis) { value -> disk {
             if (epoch != libraryEpoch || store !== openedStore) throw WorkspaceException(Failure.StaleRestore)
             store.save(id, value)
         } }
         sessionId++
         departingSession = null
-        textState = field; save = session
+        textState = field; save = session; editorStore = openedStore
         history = EditHistory(); historySource = text; canUndo = false; canRedo = false
         markdownDocument = null; tableBoundary = null; editorRevision = 0; editorMessage = null; immersive = false
         positionJob?.cancel(); pendingPosition = null
