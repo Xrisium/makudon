@@ -1,4 +1,29 @@
-# 高频测试指南
+# 测试指南
+
+## 按场景选择
+
+| 场景 | 最小验证 |
+| --- | --- |
+| 仅界面文字 / 简单本地化 | 审查文案、两种语言对应关系、占位符及差异；无需运行测试或构建。存在布局或资源格式风险时按需检查。 |
+| 文档、注释等 | 审查差异和链接；无需构建或自动测试。 |
+| 日常 bugfix | 复现问题并选择直接覆盖修复的测试或模拟器操作；有价值时增加回归测试。涉及代码时按需编译，不默认跑全部测试或 Lint。 |
+| 日常 feature / 重构 | 编译受影响部分，运行覆盖新行为及受影响边界的针对性测试；界面交互按需在模拟器验证。数据保存、迁移、权限和生命周期按风险覆盖失败路径。 |
+| 构建 / 依赖 / 工具链 | 验证受影响的构建入口和兼容性；按风险选择 Lint 或相关测试。 |
+| 确认发布版本前 | 对最终候选代码执行 Check、Release 构建与 Lint、完整模拟器专项和适当的人工视觉 / 性能检查，记录结果及未覆盖项；真机人工验收单独记录。 |
+
+具体风险或用户指令优先。下方专项是按需选择的测试目录，不是每次修改都要运行的清单；发布前新增的测试也不自动进入日常流程。CI 的既有任务独立执行，不代表本地每次修改必须运行全量检查。
+
+发布前模拟器回归须逐个运行下列 case，默认 runner 只执行 `workspace`，不会自动运行其他专项：
+
+```text
+workspace long markdown markdown-table markdown-toolbar markdown-outline
+markdown-visual markdown-long markdown-scroll images thumbnail-cache
+backup backup-visual files export-dialog trash selection selection-visual
+recent recent-overview details localization document-navigation edge-fade
+reading-selection editor-controls text-size motion motion-visual tabs appearance launch
+```
+
+还须分别执行 `localization-restart-seed`、`trash-restart-seed`、`document-navigation-restart-seed`，每组 seed 后 force-stop 开发包再执行相应 `-verify`；每组独立完成，不跨组混用。逐个保留原始日志并检查最终 `Passed N checks`、`FAILED after` 和进程崩溃；不能仅看 adb 退出码。遇到失败先保存证据、判断原因并复测，未跑完或未解决的专项明确标记，不能称作发布通过。模拟器性能采样不等于真机帧率；真机输入法、升级及厂商行为仍需人工验收。
 
 ## 最短路径
 
@@ -10,7 +35,7 @@
 
 无 `-Serial` 的 Run / Screenshot / Logcat 选择配置 AVD，不会自动转向真机；脚本不创建新镜像、卸载、清数据或 wipe。
 
-日常迭代先集中完成本地修改、增量构建与 `Check`，禁止在真机上频繁、反复覆盖安装，测试 APK 同样适用。最终交付合并安装；额外安装须说明原因和影响并获用户明确授权。用户叫停后本轮不再安装，也不改用模拟器绕过，具体见 [安装频率约定](device-policy.md#安装频率与测试数据)。正常退出保存的 Quick Boot 快照通常可加快下次模拟器启动。
+日常迭代集中完成本地修改和按场景选择的检查，禁止在真机上频繁、反复覆盖安装，测试 APK 同样适用。最终交付合并安装；额外安装须说明原因和影响并获用户明确授权。用户叫停后本轮不再安装，也不改用模拟器绕过，具体见 [安装频率约定](device-policy.md#安装频率与测试数据)。正常退出保存的 Quick Boot 快照通常可加快下次模拟器启动。
 
 连接的测试真机只用于本软件人工测试，可按需要覆盖、重建或重置 Makudon 开发包的文稿与目录树，无需逐次确认；不默认卸载应用、清除其他设置或操作其他应用。该测试授权不改变产品数据保护规则。覆盖安装会重启进程，交付前提示并记录本次是否重置文稿。
 
