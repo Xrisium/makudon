@@ -1546,7 +1546,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.ui.workspace?.entry(ids[4]) == null && model.trashInventory.nodes.any { it.entry.id == ids[4] } }, "Deleted editor never resurrects after autosave interval")
             main { model.go(Page.Directory) }; ready(); main { model.startSelection(ids[0]); model.requestDelete() }
             find("删除 1 项？")
-            verify(nodes().any { it.text?.toString()?.contains("共 2 个文件夹、2 篇文稿") == true }, "Batch deletion confirms full recursive scope")
+            verify(nodes().any { it.text?.toString() == main { model.languages.context().getString(R.string.delete_many_warning, 2, 2) } }, "Batch deletion confirms full recursive scope")
             click("删除"); ready()
             main { model.exitSelection(); model.go(Page.Settings) }; ready()
             val summary = showPrefix("回收站")
@@ -3909,7 +3909,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         main { model.copy(copied, true) }; ready(); main { model.paste(defaultLocation) }; ready()
         verify(main { model.ui.workspace?.entry(copied)?.parent == defaultLocation && model.clipboard == null }, "Cut moves stable ID only after successful paste")
         // Only synthetic items created by this run are removed.
-        longPress(prefix + "-改名"); click("删除"); find("删除文件夹？"); verify(nodes().any { it.text?.toString()?.contains("1 篇文稿") == true }, "Recursive delete confirms actual descendant document count")
+        longPress(prefix + "-改名"); click("删除"); find("删除文件夹？"); verify(nodes().any { it.text?.toString() == main { model.languages.context().getString(R.string.delete_folder_warning, prefix + "-改名", 0, 1) } }, "Recursive delete confirms actual descendant document count")
         click("删除"); ready()
         verify(main { model.ui.workspace?.entry(folder) == null && model.ui.workspace?.entry(plain) == null && model.ui.workspace?.entry(copied) != null }, "Confirmed subtree deletion preserves moved peer")
         main { model.preferences(theme = ColorTheme.Ink) }; ready(); screenshot("directory-dark")
