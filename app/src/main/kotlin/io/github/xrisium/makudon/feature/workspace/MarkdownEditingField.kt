@@ -37,7 +37,7 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     var viewportHeight by remember { mutableIntStateOf(0) }
     var viewportWidth by remember { mutableIntStateOf(0) }
     var visibleSourceStart by remember(field) { mutableIntStateOf(0) }
-    var visibleSourceEnd by remember(field) { mutableIntStateOf(2048) }
+    var visibleSourceEnd by remember(field) { mutableIntStateOf(1024) }
     val requester = remember { FocusRequester() }
     val density = LocalDensity.current
     val displayDocument = model.tableBoundaryDocument ?: model.markdownDocument
@@ -70,7 +70,9 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
         node.range.start to if (info == null) with(density) { 72.dp.toPx() } else minOf(width * info.displayHeight.toFloat() / info.displayWidth, with(density) { 320.dp.toPx() })
     }
     val tableHeights = tableLayouts.mapValues { with(density) { it.value.height.toSp().value } } + imageHeights.mapValues { with(density) { it.value.toSp().value } }
-    fun window(start: Int, end: Int) = SourceRange((start - 1024).coerceAtLeast(0), (end + 1024).coerceAtMost(source.length))
+    // Keep styles ahead of the viewport and around the selection without making
+    // Android scan thousands of off-screen spans on every draw.
+    fun window(start: Int, end: Int) = SourceRange((start - 256).coerceAtLeast(0), (end + 256).coerceAtMost(source.length))
     val windows = listOf(window(visibleSourceStart.coerceAtMost(source.length), visibleSourceEnd.coerceAtMost(source.length)), window(sourceSelection.min, sourceSelection.min), window(sourceSelection.max, sourceSelection.max))
     val output = remember(typeset, parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, windows) {
         if (typeset) liveTransformation(parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, windows) else null
@@ -139,8 +141,8 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             val visible = result.getOffsetForPosition(Offset(0f, scroll.toFloat()))
             val original = projection.sourceOffset(visible).coerceIn(0, source.length)
             val bottom = result.getOffsetForPosition(Offset(0f, (scroll + viewportHeight).toFloat()))
-            visibleSourceStart = (original / 1024) * 1024
-            visibleSourceEnd = (((projection.sourceOffset(bottom).coerceIn(original, source.length) / 1024) + 1) * 1024).coerceAtMost(source.length)
+            visibleSourceStart = (original / 512) * 512
+            visibleSourceEnd = (((projection.sourceOffset(bottom).coerceIn(original, source.length) / 512) + 1) * 512).coerceAtMost(source.length)
             val block = parsed.root.children.lastOrNull { it.range.start <= original }
             val start = if (markdown) block?.range?.start ?: original else result.getLineStart(result.getLineForOffset(visible))
             val at = projection.offset(start).coerceIn(0, result.layoutInput.text.length)
