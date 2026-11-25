@@ -2834,11 +2834,15 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
             val initialCenter = indicatorCenter()
             verify(kotlin.math.abs(initialCenter - first.exactCenterX()) < 2 * density, "Single highlight initially aligns with Directory")
+            shell("settings put global animator_duration_scale 10")
+            SystemClock.sleep(500)
             main { model.selectTab(Page.Settings) }
             val positions = mutableListOf<Float>()
-            repeat(9) {
+            val sampleDeadline = SystemClock.uptimeMillis() + 12_000
+            while (SystemClock.uptimeMillis() < sampleDeadline) {
                 positions += indicatorCenter()
-                if (it == 2) screenshot("appearance-tab-mid")
+                if (positions.size == 3) screenshot("appearance-tab-mid")
+                if (positions.last() >= last.exactCenterX() - 2 * density && positions.size >= 3) break
                 SystemClock.sleep(45)
             }
             verify(positions.any { it > first.centerX() + 20 * density && it < last.centerX() - 20 * density }, "Cross-tab highlight has real horizontal intermediate positions")
@@ -2852,7 +2856,10 @@ class WorkspaceInstrumentation : Instrumentation() {
                 check(uiAutomation.injectInputEvent(event, true)); event.recycle()
             }
             ready()
-            SystemClock.sleep(4000) // The test's 5x animation scale also slows the touch ripple.
+            waitFor("selected tab ripple finishes") {
+                val frame = checkNotNull(uiAutomation.takeScreenshot())
+                try { (0 until frame.width).any { frame.getPixel(it, sampleY) == 0xFFEEEFEA.toInt() } } finally { frame.recycle() }
+            }
             verify(indicatorCenter() == settled, "Repeated selected tab click does not restart or move its highlight")
             screenshot("appearance-settled")
         } finally {
@@ -3328,6 +3335,13 @@ class WorkspaceInstrumentation : Instrumentation() {
             waitFor("committed cell semantics") { cell("表格第 2 行，第 1 列").text?.contains("中文") == true }
             sendStatus(0, Bundle().apply { putString("stream", "Cell composition diagnostics: sourceContainsCandidate=${body().contains("zhong")}, cellContainsChinese=${cell("表格第 2 行，第 1 列").text?.contains("中文") == true}\n") })
             verify(cell("表格第 2 行，第 1 列").text?.contains("中文") == true && !body().contains("zhong"), "Real cell InputConnection composition replaces candidates without duplicating text")
+            repeat(5) {
+                setText("表格第 2 行，第 1 列", ""); saved(); parsed()
+                val candidate = main { connection() }
+                main { check(candidate.setComposingText("zhong", 1)) }; parsed()
+                main { check(candidate.setComposingText("中文", 1)); check(candidate.finishComposingText()) }; saved(); parsed()
+                verify(cell("表格第 2 行，第 1 列").text?.toString() == "中文" && !body().contains("zhong"), "Repeated candidate replacement after background parse preserves the composed cell")
+            }
             main { connection().setComposingText("读", 1) }; val composing = body()
             click("阅读"); saved(); parsed()
             verify(body() == composing && nodes().none { it.isEditable }, "Switching to reading during cell composition keeps visible input and becomes read-only")
