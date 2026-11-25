@@ -101,9 +101,13 @@ private fun EditableCell(model: WorkspaceViewModel, document: MarkdownDocument, 
     val currentStyled by rememberUpdatedState(styled)
     // Input is published synchronously; this mirror only owns the platform IME composition.
     // Background parses and undo may refresh the mirror, but never replace an unchanged composition.
-    LaunchedEffect(document, cell) {
+    LaunchedEffect(document, cell, state.composition) {
         if (model.textState?.text?.toString() != document.source) return@LaunchedEffect
         if (model.markdownDocument?.source == document.source || state.text.toString() == cell.text) {
+            // A late parse can describe an older cell while the IME owns a newer
+            // composition. Replacing the mirror commits that composition and makes
+            // the next candidate append; retry reconciliation when composition ends.
+            if (state.composition != null && state.text.toString() != cell.text) return@LaunchedEffect
             if (state.text.toString() != cell.text) state.edit {
                 replace(0, length, cell.text)
                 selection = TextRange(selection.start.coerceAtMost(length), selection.end.coerceAtMost(length))
