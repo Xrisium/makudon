@@ -37,7 +37,8 @@ import androidx.compose.ui.unit.sp
 internal fun editorBodyStyle(workspace: Workspace?): androidx.compose.ui.text.TextStyle {
     val size = workspace?.editorTextSize ?: EditorTextSize.Medium
     val spacing = workspace?.editorLineSpacing ?: EditorLineSpacing.Medium
-    return EditorStyle.copy(fontSize = size.sp.sp, lineHeight = (spacing.height * size.sp / 18f).sp)
+    return EditorStyle.copy(fontSize = size.sp.sp, lineHeight = (spacing.height * size.sp / 18f).sp,
+        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, androidx.compose.ui.text.style.LineHeightStyle.Trim.None))
 }
 
 @Composable

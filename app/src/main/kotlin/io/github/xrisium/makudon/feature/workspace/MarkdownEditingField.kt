@@ -1,6 +1,9 @@
 package io.github.xrisium.makudon.feature.workspace
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.InputTransformation
@@ -39,6 +42,7 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     var visibleSourceStart by remember(field) { mutableIntStateOf(0) }
     var visibleSourceEnd by remember(field) { mutableIntStateOf(1024) }
     val requester = remember { FocusRequester() }
+    val editorInteractions = remember(field) { MutableInteractionSource() }
     val density = LocalDensity.current
     val displayDocument = model.tableBoundaryDocument ?: model.markdownDocument
     val parsed = remember(displayDocument, source) { provisionalDocument(displayDocument, source) }
@@ -53,6 +57,10 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
         if (typeset) projection(parsed, active, composition, tables + imageParagraphs) else MarkdownProjection(emptyList())
     }
     val textMeasurer = rememberTextMeasurer()
+    val listIndents = remember(projection, textMeasurer, bodyStyle, density) {
+        projection.changes.filter { it.text.trimStart().let { marker -> marker.startsWith("• ") || marker.startsWith("☐ ") || marker.startsWith("☑ ") } }
+            .associate { change -> change.range.start to with(density) { textMeasurer.measure(change.text, bodyStyle).size.width.toSp().value } }
+    }
     val imageIndents = remember(imageParagraphs, source, projection, textMeasurer, bodyStyle) {
         imageParagraphs.associate { node ->
             val start = source.lastIndexOf('\n', node.range.start - 1) + 1
@@ -74,10 +82,20 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     // Android scan thousands of off-screen spans on every draw.
     fun window(start: Int, end: Int) = SourceRange((start - 256).coerceAtLeast(0), (end + 256).coerceAtMost(source.length))
     val windows = listOf(window(visibleSourceStart.coerceAtMost(source.length), visibleSourceEnd.coerceAtMost(source.length)), window(sourceSelection.min, sourceSelection.min), window(sourceSelection.max, sourceSelection.max))
-    val output = remember(typeset, parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, windows) {
-        if (typeset) liveTransformation(parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, windows) else null
+    val output = remember(typeset, parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, listIndents, windows) {
+        if (typeset) liveTransformation(parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, listIndents, windows) else null
     }
     val currentOutput by rememberUpdatedState(output)
+    var trailing by remember(field, source, model.ui.editorMode) { mutableStateOf<VisualLineEnd?>(null) }
+    val currentLayout by rememberUpdatedState(layout)
+    val currentProjection by rememberUpdatedState(projection)
+    val trailingMatchesLayout = trailing?.let { end -> layout?.let { result ->
+        end.line < result.lineCount && result.getLineEnd(end.line) == end.displayOffset && projection.offset(end.sourceOffset) == end.displayOffset
+    } } == true
+    val trailingActive = focused && editable && trailingMatchesLayout && field.selection.collapsed && trailing?.sourceOffset == field.selection.start && field.composition == null
+    LaunchedEffect(field.selection, focused, field.composition) {
+        if (!field.selection.collapsed || field.selection.start != trailing?.sourceOffset || !focused || field.composition != null) trailing = null
+    }
     // AST/style refreshes must not restart the native IME's composing session.
     val stableOutput = remember(field, typeset) {
         if (typeset) OutputTransformation { currentOutput?.let { with(it) { transformOutput() } } } else null
@@ -151,21 +169,28 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     }
     val description = stringResource(R.string.edit_body)
     Box(modifier.clipToBounds().onSizeChanged { viewportHeight = it.height; viewportWidth = it.width }) {
-        BasicTextField(state = field, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp).focusRequester(requester)
+        BasicTextField(state = field, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp).focusRequester(requester)
+            .observeLineEndTap(editable, hit = { point -> currentLayout?.let { visualLineEnd(it, point.copy(y = point.y + model.editorScroll.value), currentProjection) } }, select = { end ->
+                // A native double-tap selection takes precedence over visual caret affinity.
+                trailing = end.takeIf { field.selection.collapsed }
+                if (trailing != null) field.edit { selection = TextRange(checkNotNull(trailing).sourceOffset.coerceIn(0, length)) }
+            })
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent {
                 if (editable && it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key in listOf(Key.Z, Key.Y)) { model.undo(it.key == Key.Y || it.isShiftPressed); true } else false
             }.testTag(if (model.ui.editorMode == EditorMode.Reading) "reading-view" else if (typeset) "typeset-editor" else "source-editor").semantics { contentDescription = description },
-            readOnly = !editable, textStyle = bodyStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
+            readOnly = !editable, textStyle = bodyStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(if (trailingActive) androidx.compose.ui.graphics.Color.Transparent else colors.primary), inputTransformation = input,
             outputTransformation = stableOutput, scrollState = model.editorScroll,
+            interactionSource = editorInteractions,
             onTextLayout = { get -> layout = get() },
             decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = bodyStyle, color = colors.onSurfaceVariant); inner() } })
         if (typeset && layout != null) MarkdownEditingOverlays(model, parsed, projection, checkNotNull(layout), source, active,
             imageParagraphs, imageIndents, imageHeights, tables, tableLayouts, bodyStyle, editable, viewportHeight, viewportWidth)
-        DocumentEdgeFade(model, verticalInset = 16.dp,
+        VisualLineEndCursor(trailing, layout, trailingActive) { model.editorScroll.value }
+        DocumentEdgeFade(model,
             fromStart = { if (model.editorScroll.maxValue == Int.MAX_VALUE) 0f else model.editorScroll.value.toFloat() },
             fromEnd = { if (model.editorScroll.maxValue == Int.MAX_VALUE) 0f else (model.editorScroll.maxValue - model.editorScroll.value).toFloat() })
-        EditingNavigation(model, viewportHeight)
+        EditingNavigation(model, viewportHeight, editorInteractions)
     }
 }
 
@@ -190,7 +215,7 @@ private fun MarkdownEditingOverlays(
                 if (top + height >= 0 && top < viewportHeight) {
                     val indent = imageIndents.getValue(paragraph.range.start)
                     val width = (viewportWidth - with(density) { 48.dp.roundToPx() } - indent).coerceAtLeast(1)
-                    Box(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() } + indent, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
+                    Box(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() } + indent, top.roundToInt()) }
                         .width(with(density) { width.toDp() }).height(with(density) { height.toDp() }).background(colors.background)) {
                         MarkdownImage(model, paragraph.children.single(), Modifier.fillMaxSize())
                     }
@@ -204,7 +229,7 @@ private fun MarkdownEditingOverlays(
                 val tableLayout = tableLayouts.getValue(table.range.start)
                 val heightPx = tableLayout.height.toFloat()
                 if (top + heightPx >= 0 && top < viewportHeight) {
-                    Column(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() }, top.roundToInt() + with(density) { 16.dp.roundToPx() }) }
+                    Column(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() }, top.roundToInt()) }
                         .fillMaxWidth().padding(end = 48.dp).wrapContentHeight(align = androidx.compose.ui.Alignment.Top, unbounded = true)
                         .height(with(density) { heightPx.toDp() }).background(colors.background)) {
                         MarkdownEditableTable(model, parsed, bodyStyle, editable, Modifier.fillMaxSize(), tableLayout,
@@ -237,7 +262,7 @@ private fun MarkdownEditingOverlays(
             val y = rect.top - scroll
             if (y < -rect.height || y > viewportHeight) continue
             val checked = task.checked
-            Box(Modifier.offset { IntOffset(rect.left.roundToInt() + with(density) { 14.dp.roundToPx() }, y.roundToInt() + with(density) { 8.dp.roundToPx() }) }
+            Box(Modifier.offset { IntOffset(rect.left.roundToInt() + with(density) { 14.dp.roundToPx() }, y.roundToInt() - with(density) { 8.dp.roundToPx() }) }
                 .size(48.dp).semantics { contentDescription = taskDescription; role = Role.Checkbox; toggleableState = if (checked) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off }
                 .clickable(enabled = editable, onClickLabel = stringResource(R.string.md_toggle_task)) {
                     val at = task.sourceOffset
@@ -250,8 +275,9 @@ private fun MarkdownEditingOverlays(
 private data class TaskTarget(val displayOffset: Int, val sourceOffset: Int, val checked: Boolean)
 
 @Composable
-private fun BoxScope.EditingNavigation(model: WorkspaceViewModel, viewportHeight: Int) {
-    DocumentNavigation(model, DocumentScrollRange(viewportHeight.toFloat(), model.editorScroll.maxValue.toFloat().takeIf { it < Int.MAX_VALUE }?.plus(viewportHeight) ?: 0f, model.editorScroll.value.toFloat()), model.editorScroll.isScrollInProgress) { progress ->
+private fun BoxScope.EditingNavigation(model: WorkspaceViewModel, viewportHeight: Int, interactions: InteractionSource) {
+    val dragging by interactions.collectIsDraggedAsState()
+    DocumentNavigation(model, DocumentScrollRange(viewportHeight.toFloat(), model.editorScroll.maxValue.toFloat().takeIf { it < Int.MAX_VALUE }?.plus(viewportHeight) ?: 0f, model.editorScroll.value.toFloat()), model.editorScroll.isScrollInProgress, dragging) { progress ->
         model.editorScroll.scrollTo((model.editorScroll.maxValue * progress).roundToInt())
     }
 }

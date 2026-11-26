@@ -1,6 +1,7 @@
 package io.github.xrisium.makudon.feature.workspace
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
@@ -58,7 +59,7 @@ internal fun MarkdownReader(model: WorkspaceViewModel, document: MarkdownDocumen
     }
     Box(modifier) {
         SelectionContainer(Modifier.fillMaxSize()) {
-            LazyColumn(state = model.readingList, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp)) {
+            LazyColumn(state = model.readingList, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 24.dp)) {
                 items(blocks, key = { it.range.start }) { node ->
                     Column {
                         ReadingNode(model, node, document, style, query, caseSensitive)
@@ -133,7 +134,8 @@ private fun BoxScope.MarkdownNavigation(model: WorkspaceViewModel, document: Mar
             value = ReaderNavigationMetrics(DocumentScrollRange(viewport, total, position), starts)
         }
     }
-    DocumentNavigation(model, metrics.range, model.readingList.isScrollInProgress) { progress ->
+    val dragging by model.readingList.interactionSource.collectIsDraggedAsState()
+    DocumentNavigation(model, metrics.range, model.readingList.isScrollInProgress, dragging) { progress ->
         if (progress <= 0) model.readingList.scrollToItem(0)
         else if (progress >= 1) model.readingList.scrollToItem(blocks.size)
         else {

@@ -8,6 +8,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.sp
 import io.github.xrisium.makudon.domain.*
 
@@ -27,6 +28,16 @@ internal data class MarkdownProjection(val changes: List<DisplayChange>) {
         val index = firstEnd(displayEnds, displayOffset)
         val change = changes.getOrNull(index)
         return if (change != null && displayOffset >= change.range.start + deltas[index]) change.range.start else displayOffset - deltas[index]
+    }
+    /** At a visual line boundary, continue after collapsed markup, like the next line's start. */
+    fun sourceCaretOffset(displayOffset: Int): Int {
+        var index = firstEnd(displayEnds, displayOffset)
+        var boundary: Int? = null
+        while (index < changes.size && displayEnds[index] == displayOffset) {
+            boundary = changes[index].range.end
+            index++
+        }
+        return boundary ?: sourceOffset(displayOffset)
     }
     fun offset(sourceOffset: Int): Int {
         val index = firstEnd(sourceEnds, sourceOffset)
@@ -159,7 +170,7 @@ internal fun projection(document: MarkdownDocument, selection: TextSelection?, c
     return MarkdownProjection(nonOverlapping)
 }
 
-internal fun liveTransformation(document: MarkdownDocument, projection: MarkdownProjection, body: TextStyle, link: Color, surface: Color, tableHeights: Map<Int, Float>, windows: List<SourceRange>): OutputTransformation = OutputTransformation {
+internal fun liveTransformation(document: MarkdownDocument, projection: MarkdownProjection, body: TextStyle, link: Color, surface: Color, tableHeights: Map<Int, Float>, listIndents: Map<Int, Float>, windows: List<SourceRange>): OutputTransformation = OutputTransformation {
     if (asCharSequence().toString() != document.source) return@OutputTransformation
     projection.outputChanges(document.source, windows).asReversed().forEach { replace(it.range.start, it.range.end, it.text) }
     for (node in document.elements) {
@@ -179,6 +190,27 @@ internal fun liveTransformation(document: MarkdownDocument, projection: Markdown
             if (start < end) addStyle(style, start, end)
         }
     }
+    // A continuous field needs a paragraph hanging indent; replacing the marker alone
+    // only indents the first visual line. Keep source/selection offsets unchanged.
+    val listParagraphs = mutableListOf<Triple<Int, Int, Float>>()
+    for (node in document.elements) {
+        if (node.kind != "ListItem") continue
+        val paragraph = node.children.firstOrNull { it.kind == "Paragraph" } ?: continue
+        val start = document.source.lastIndexOf('\n', paragraph.range.start - 1) + 1
+        val indent = listIndents[start] ?: continue
+        val from = projection.offset(start).coerceIn(0, length)
+        val paragraphEnd = paragraph.range.end + if (document.source.getOrNull(paragraph.range.end) == '\n') 1 else 0
+        val end = projection.offset(paragraphEnd).coerceIn(from, length)
+        if (from < end) {
+            val previous = listParagraphs.lastOrNull()
+            // A style boundary itself starts a Compose paragraph. Merge adjacent
+            // identical list styles so their existing LF is the only item break.
+            if (previous != null && previous.second == from && previous.third == indent)
+                listParagraphs[listParagraphs.lastIndex] = Triple(previous.first, end, indent)
+            else listParagraphs += Triple(from, end, indent)
+        }
+    }
+    listParagraphs.forEach { (start, end, indent) -> addStyle(ParagraphStyle(textIndent = TextIndent(0.sp, indent.sp)), start, end) }
     // Table heights also matter off screen: they determine document scroll and anchors.
     projection.changes.filter { it.text == "\uFFFC" }.forEach {
         val at = projection.offset(it.range.start)

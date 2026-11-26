@@ -63,6 +63,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     val document = model.markdownDocument?.takeIf { it.source == source }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val selectionMenu = remember(entry.id, ui.editorMode) { EditorSelectionMenu() }
     val context = LocalContext.current
     val uriHandler = remember(context) { object : UriHandler {
         override fun openUri(uri: String) {
@@ -87,6 +88,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         if (formatMenu != 0) formatMenu = 0 else if (model.immersive) model.immersive = false else findOpen = false
     }
     fun changeMode(mode: EditorMode) {
+        selectionMenu.dismiss()
         if (markdown && mode == EditorMode.Reading) { model.readingAnchor = model.editorAnchor; model.readingAnchorOffset = model.editorAnchorOffset; focusManager.clearFocus(); keyboard?.hide() }
         else if (markdown && reading) { model.editorAnchor = model.readingAnchor; model.editorAnchorOffset = model.readingAnchorOffset }
         model.editorMode(mode)
@@ -113,6 +115,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         } catch (e: WorkspaceException) { model.inputRejected(e.reason) }
     }
     CompositionLocalProvider(LocalUriHandler provides uriHandler) {
+    EditorSelectionMenuHost(selectionMenu) {
     Column(Modifier.fillMaxSize().onGloballyPositioned { editorOrigin = it.positionInWindow() }
         .pointerInput(formatMenu, formatAnchor, editorOrigin) {
             awaitEachGesture {
@@ -188,6 +191,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
                 }
             }
         }
+    }
     }
     }
     openOutline?.let { outline ->
