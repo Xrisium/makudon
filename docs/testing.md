@@ -20,7 +20,7 @@ workspace long markdown markdown-table markdown-toolbar markdown-outline
 markdown-visual markdown-long markdown-scroll images thumbnail-cache
 backup backup-visual files export-dialog trash selection selection-visual
 recent recent-overview details localization document-navigation edge-fade
-reading-selection editor-controls text-size motion motion-visual tabs appearance launch
+reading-selection editor-geometry editor-regressions editor-controls text-size motion motion-visual tabs appearance launch
 ```
 
 还须分别执行 `localization-restart-seed`、`trash-restart-seed`、`document-navigation-restart-seed`，每组 seed 后 force-stop 开发包再执行相应 `-verify`；每组独立完成，不跨组混用。逐个保留原始日志并检查最终 `Passed N checks`、`FAILED after` 和进程崩溃；不能仅看 adb 退出码。遇到失败先保存证据、判断原因并复测，未跑完或未解决的专项明确标记，不能称作发布通过。模拟器性能采样不等于真机帧率；真机输入法、升级及厂商行为仍需人工验收。
@@ -109,6 +109,8 @@ pwsh -NoProfile -File scripts/android.ps1 -Action Run -Serial emulator-5554
 最近概览开关使用 `-e case recent-overview`（23 项）：仅开关本体可操作，标题按压像素无闪动及标题 / 卡片空白触摸无动作；慢 IO 时双向动画中间位置和单向运动、即时响应、重复点击门控、待保存 Activity 重建、零动画倍率及真实索引写盘失败回退；同时覆盖正文与空稿占位显隐、卡片高度收紧、读取失败提示保留、索引重读和中英文 320dp / 200% 字号。只创建 / 清理本轮合成稿，恢复临时字号、尺寸、动画倍率和语言；结果见[任务 0034](tasks/0034-recent-content-overview.md)。
 
 ## 常见问题
+
+编辑视口专项 `-e case editor-geometry` 使用真实语义布局和触摸，检查五视图视口直接衔接信息行、导航默认隐藏 / 单点不唤起 / 侧拖与快速长滑唤起 / 停止三秒隐藏、软换行行尾实际编辑偏移与光标像素，以及列表续行对齐和项目基线。`-e case editor-regressions` 在菜单实际出现后点击切换纯文本双视图和 Markdown 三视图，断言模式真的切换、旧菜单关闭、正文不变且进程存活。阅读复制沿用 `reading-selection`；旧版与修复版比较、真机崩溃堆栈和最终结果见[本轮记录](testing/2026-11-26-editor-viewport-selection.md)。这些是针对性检查，不代替完整发布验收。
 
 表格自然高度回归包含在 `markdown-table`（当前 38 项）：长表内真实纵向拖动需改变正文滚动位置，末行可达且可编辑 / 撤销；阅读同样滚动整篇。短表高度、长单元格换行撑高与撤销缩回、多表格独立占位，以及英文 320dp / 200% 字号均需验证。记录见[任务 0030](tasks/0030-markdown-table-flow.md)。
 
