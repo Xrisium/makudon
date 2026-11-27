@@ -20,7 +20,8 @@ workspace long markdown markdown-table markdown-toolbar markdown-outline
 markdown-visual markdown-long markdown-scroll images thumbnail-cache
 backup backup-visual files export-dialog trash selection selection-visual
 recent recent-overview details localization document-navigation edge-fade
-reading-selection editor-geometry editor-regressions editor-controls text-size motion motion-visual tabs appearance launch
+reading-selection reading-links unified-rendering view-switch-benchmark
+editor-geometry editor-regressions editor-controls text-size motion motion-visual tabs appearance launch
 ```
 
 还须分别执行 `localization-restart-seed`、`trash-restart-seed`、`document-navigation-restart-seed`，每组 seed 后 force-stop 开发包再执行相应 `-verify`；每组独立完成，不跨组混用。逐个保留原始日志并检查最终 `Passed N checks`、`FAILED after` 和进程崩溃；不能仅看 adb 退出码。遇到失败先保存证据、判断原因并复测，未跑完或未解决的专项明确标记，不能称作发布通过。模拟器性能采样不等于真机帧率；真机输入法、升级及厂商行为仍需人工验收。

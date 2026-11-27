@@ -14,10 +14,9 @@
 | [0010](0010-remove-document-history.md) | 接受并实施 | 移除单篇历史 / 恢复，补全精确时间与文件夹递归磁盘大小 |
 | [0011](0011-markdown-source-projection.md) | 接受并实施 | 同一源码连续编辑、实时预览与只读阅读 |
 | [0012](0012-markdown-table-cells.md) | 接受并实施 | 表格单元格原位编辑、正文背景与 Markdown 单一导出 |
-
 | [0013](0013-library-images.md) | 接受并实施 | 私有图片、稳定引用、图片 ZIP 与可清理缩略图缓存 |
 | [0014](0014-scoped-thumbnail-cache.md) | 接受并实施 | 分场景缩略图版本、占用与关闭清理 |
-
 | [0015](0015-document-viewport.md) | 接受并实施 | 独立文稿视口、静默接续与库代际隔离 |
+| [0016](0016-shared-markdown-presentation.md) | 接受并实施 | 排版 / 阅读共用连续呈现、长文缓存及原生行尾插入手柄 |
 
 新决定使用 [模板](../templates/adr.md)，顺序编号。已接入原生工作区、私有保存和文件出入口；实现与未覆盖验收以 [当前状态](../status.md) 为准。

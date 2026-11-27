@@ -44,6 +44,8 @@ ZIP 的 BackupCoordinator 与原 ViewModel 共用 IO Mutex / 保存屏障，Comp
 
 缩略图缓存二级页的三个场景偏好以可选字段写入现有版本 2 索引，缺省开启，复用设置写盘互斥与失败处理。三个场景按摘要、尺寸、场景分别缓存，页内各显示实际磁盘占用；正文等其他预览及旧版共享文件另计，仍受同一总容量约束。关闭时存在内存或磁盘缓存才确认，取消保持设置，确认先发布偏好再清理对应缓存；没有缓存直接关闭。清理以场景时间戳隔离，其他场景的旧任务仍能正常提交，全量清理继续阻断全部旧任务；统计请求过期不覆盖新结果。设置写盘的按钮外观与动作互斥分开，清理部分失败显示实际剩余空间。见 [ADR 0014](adr/0014-scoped-thumbnail-cache.md)。
 
+Markdown 排版与阅读已按 [ADR 0016](adr/0016-shared-markdown-presentation.md) 共用连续正文组件、源码投影、滚动状态和覆盖层。阅读通过原生只读属性和模型动作门控保护正文；旧独立 LazyColumn 阅读器已删除。窗口外样式、覆盖层及表格测量缓存按实际需要缩减开销，原生连续文本仍布局全文。
+
 ## 按需增长的依赖方向
 
 文件交互由 FileExchange 协调、FileExchangeDialog 显示应用与导出方式；AndroidFileAccess 处理 Intent / URI / Downloads，ExportFiles 管理独立生命周期的分享副本。四个文稿 / ZIP 出入口共用这条链路，不改变私有库格式。正文与 ZIP 复制 / 回读 / 清理均在 IO dispatcher；FileProvider 仅开放 files/shared-exports，见 [ADR 0007](adr/0007-file-manager-first.md)。
