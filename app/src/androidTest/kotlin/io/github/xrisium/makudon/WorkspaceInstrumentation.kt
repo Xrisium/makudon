@@ -56,6 +56,8 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyEditorRegressions = false
     private var onlySwitchBenchmark = false
     private var onlyUnified = false
+    private var caretTapMillis = 80L
+    private var unifiedPlain = false
     private var onlyReadingLinks = false
     private var onlyEditorGeometry = false
     private var onlyEditorControls = false
@@ -99,6 +101,8 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyEditorRegressions = arguments?.getString("case") == "editor-regressions"
         onlySwitchBenchmark = arguments?.getString("case") == "view-switch-benchmark"
         onlyUnified = arguments?.getString("case") == "unified-rendering"
+        caretTapMillis = arguments?.getString("tap-ms")?.toLongOrNull()?.coerceIn(0,300) ?: 80L
+        unifiedPlain = arguments?.getString("plain") == "true"
         onlyReadingLinks = arguments?.getString("case") == "reading-links"
         onlyEditorGeometry = arguments?.getString("case") == "editor-geometry"
         onlyEditorControls = arguments?.getString("case") == "editor-controls"
@@ -840,20 +844,28 @@ class WorkspaceInstrumentation : Instrumentation() {
         val sample = "Caret wrapping words remain available for copying without inserting a newline. 中文与😀一起换行。\n\n" +
             "# 一级标题 #\n\n二级标题\n---\n\n**粗体**、*斜体*、~~删除~~、`code`、[链接](https://example.com)。\n\n" +
             "- First list item with enough words to wrap onto the following line and keep its indentation.\n- Second item\n  - Nested item\n\n1. Numbered item wraps with enough text to extend beyond the first visual line in a narrow screen.\n2. Second number\n\n- [ ] Task one\n- [x] Task two\n\n> Quote line\n> More quoted content\n\n```kotlin\nval a = 1\n```\n\n---\n\n| Name | Value |\n| --- | ---: |\n| Bold **cell** | 42 |\n\nEnd."
-        val id = runBlocking { withContext(Dispatchers.IO) { currentStore().create("统一显示专项", Workspace.ROOT, DocumentKind.Markdown, sample) } }
+        val id = runBlocking { withContext(Dispatchers.IO) { currentStore().create("统一显示专项", Workspace.ROOT, if (unifiedPlain) DocumentKind.Plain else DocumentKind.Markdown, sample) } }
         fun body() = textLayouts().first { it.first.config.getOrNull(SemanticsProperties.TestTag) in listOf("source-editor", "typeset-editor", "reading-view") }
-        fun tapAt(x: Float, y: Float) {
+        fun windowNodes() = main {
+            fun owners(view: android.view.View): List<SemanticsOwner> = if (view.javaClass.simpleName == "AndroidComposeView") listOf(view.javaClass.getMethod("getSemanticsOwner").invoke(view) as SemanticsOwner)
+                else if (view is android.view.ViewGroup) (0 until view.childCount).flatMap { owners(view.getChildAt(it)) } else emptyList()
+            android.view.inspector.WindowInspector.getGlobalWindowViews().flatMap(::owners).flatMap { it.getAllSemanticsNodes(false) }
+        }
+        fun cursorHandles() = windowNodes().mapNotNull { n -> n.config.firstOrNull { it.key.name == "SelectionHandleInfo" }?.value }.filter { it.toString().contains("Cursor") }
+        fun tapAt(x: Float, y: Float, duration: Long = caretTapMillis) {
             val time = SystemClock.uptimeMillis()
             for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
-                if (action == MotionEvent.ACTION_UP) SystemClock.sleep(80)
+                if (action == MotionEvent.ACTION_UP) SystemClock.sleep(duration)
                 MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, x, y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }.let { check(uiAutomation.injectInputEvent(it,true)); it.recycle() }
             }
             ready()
         }
         try {
             main { model.reload() }; ready(); main { model.open(id) }; ready()
-            waitFor("unified parsed") { main { model.markdownDocument?.source == sample } }
-            if (main { model.ui.editorMode != EditorMode.Typeset }) { click("排版"); ready() }
+            if (!unifiedPlain) {
+                waitFor("unified parsed") { main { model.markdownDocument?.source == sample } }
+                if (main { model.ui.editorMode != EditorMode.Typeset }) { click("排版"); ready() }
+            }
             val typeset = body().second
             click("阅读"); ready()
             val reading = body().second
@@ -861,9 +873,9 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(composeNodes().none { it.config.getOrNull(SemanticsProperties.IsEditable) == true }, "Reading body and table cells expose native readonly semantics")
             verify(typeset.layoutInput.text == reading.layoutInput.text, "Typeset and reading share identical display text, inline styles and paragraph styles")
             verify(typeset.lineCount == reading.lineCount && (0 until typeset.lineCount).all { typeset.getLineStart(it) == reading.getLineStart(it) && typeset.getLineEnd(it) == reading.getLineEnd(it) && typeset.getLineBaseline(it) == reading.getLineBaseline(it) }, "Headings, nested and numbered lists, tasks, quotes, fences and tables share wrapping and baseline positions")
-            verify(!reading.layoutInput.text.text.contains("---\n") && !reading.layoutInput.text.text.contains("# 一级"), "ATX closing markers and Setext underline are hidden consistently")
+            if (!unifiedPlain) verify(!reading.layoutInput.text.text.contains("---\n") && !reading.layoutInput.text.text.contains("# 一级"), "ATX closing markers and Setext underline are hidden consistently")
             verify(main { model.textState?.text.toString() == sample }, "Unified readonly rendering preserves Markdown source")
-            for (label in listOf("源码", "排版")) {
+            for (label in if (unifiedPlain) listOf("编辑") else listOf("源码", "排版")) {
                 click(label); ready()
                 runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }; ready()
                 val (node, before) = body()
@@ -876,11 +888,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 sendStatus(0, Bundle().apply { putString("stream", "NATIVE_CARET $label raw=${main { model.currentSelection() }} rect=$rect expected=$expectedX,$expectedY\n") })
                 verify(main { model.currentSelection().min == end && model.currentSelection().max == end }, "$label upstream caret retains the downstream editing offset")
                 verify(kotlin.math.abs(rect.left - expectedX) < 3 && kotlin.math.abs(rect.bottom - expectedY) < 3, "$label native caret rectangle stays at the previous line end")
-                val handles = main {
-                    fun owners(view: android.view.View): List<SemanticsOwner> = if (view.javaClass.simpleName == "AndroidComposeView") listOf(view.javaClass.getMethod("getSemanticsOwner").invoke(view) as SemanticsOwner)
-                        else if (view is android.view.ViewGroup) (0 until view.childCount).flatMap { owners(view.getChildAt(it)) } else emptyList()
-                    android.view.inspector.WindowInspector.getGlobalWindowViews().flatMap(::owners).flatMap { it.getAllSemanticsNodes(false) }.mapNotNull { n -> n.config.firstOrNull { it.key.name == "SelectionHandleInfo" }?.value }
-                }
+                val handles = cursorHandles()
                 sendStatus(0, Bundle().apply { putString("stream", "NATIVE_HANDLES $label ${handles.joinToString()}\n") })
                 val handle = handles.firstOrNull { it.toString().contains("Cursor") }
                 verify(handle != null, "$label exposes a real native insertion handle after the edge tap")
@@ -888,22 +896,48 @@ class WorkspaceInstrumentation : Instrumentation() {
                 val hx = Float.fromBits((packed shr 32).toInt()); val hy = Float.fromBits(packed.toInt())
                 verify(kotlin.math.abs(hx - expectedX) < 3 && kotlin.math.abs(hy - expectedY) < 3, "$label native insertion handle shares the upstream caret position")
                 screenshot("unified-$label-native-handle")
+                val scrollBody = body().first.boundsInWindow
+                val screen = targetContext.resources.displayMetrics
+                val rawSelection = main { model.currentSelection() }
+                swipe(scrollBody.center.x/screen.widthPixels, (scrollBody.top+scrollBody.height*.75f)/screen.heightPixels,
+                    scrollBody.center.x/screen.widthPixels,(scrollBody.top+scrollBody.height*.55f)/screen.heightPixels)
+                verify(main { model.editorScroll.value > 0 && model.currentSelection() == rawSelection }, "$label body drag scrolls without changing the editing offset")
+                runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }; ready()
+                val restored = body().second
+                val restoredCaret = restored.getCursorRect(end)
+                verify(restored.layoutInput.text.text.contains('\u200B') && kotlin.math.abs(restoredCaret.bottom-restored.getLineBottom(0)) < 3,
+                    "$label scrolling away and back retains the previous-line visual caret")
+                // Wait out navigation before the next edge action; its thumb owns its touch area.
+                SystemClock.sleep(3400)
+                tapAt(node.boundsInWindow.right - 2, node.boundsInWindow.top + expectedY / 2)
+                verify(cursorHandles().isNotEmpty(), "$label placement after scrolling restores the native insertion handle")
+                val handleBounds = body().first.boundsInWindow
+                tapAt(handleBounds.left+hx, handleBounds.top+hy+12*screen.density, 80)
+                screenshot("caret-handle-menu")
+                verify(windowNodes().any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == "全选" } == true }, "$label native insertion handle opens the clipboard menu")
+                // Reposition outside the menu before dragging the actual handle.
+                tapAt(node.boundsInWindow.right - 2, node.boundsInWindow.top + expectedY / 2)
                 val display = targetContext.resources.displayMetrics
                 swipe((node.boundsInWindow.left+hx)/display.widthPixels,(node.boundsInWindow.top+hy+12*display.density)/display.heightPixels,
                     (node.boundsInWindow.left+160*display.density)/display.widthPixels,(node.boundsInWindow.top+before.getLineBottom(1)-10)/display.heightPixels)
                 ready()
                 verify(main { model.currentSelection().min > end && model.currentSelection().min == model.currentSelection().max }, "$label real insertion handle drag reaches the following visual line")
                 verify(main { model.textState?.text.toString() == sample }, "$label native handle drag never writes a display wedge into source")
-                if (label == "源码") {
+                if (label == "源码" || label == "编辑") {
                     main { model.textState?.edit { selection = androidx.compose.ui.text.TextRange(0,length) } }; ready()
                     val action = composeNodes().first { it.config.getOrNull(SemanticsProperties.TestTag) == "source-editor" }.config.getOrNull(SemanticsActions.CopyText)?.action
                     main { check(checkNotNull(action).invoke()) }; ready()
                     verify(main { targetContext.getSystemService(android.content.ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString() == sample }, "Native Source Copy excludes all display-only caret characters")
                 }
                 main { model.textState?.edit { selection = androidx.compose.ui.text.TextRange(end) } }; ready()
-                val token = main { model.editToken() }
-                main { model.applyEditorEdit(MarkdownEdits.applyEdits(sample, listOf(SourceEdit(SourceRange(end,end), "!")), TextSelection(end,end)), token) }; ready()
+                runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }; ready()
+                val inputBounds = body().first.boundsInWindow
+                tapAt(inputBounds.right - 2, inputBounds.top + expectedY / 2)
+                verify(main { model.currentSelection() == TextSelection(end,end) }, "$label real input starts at the raw soft-wrap boundary")
+                main { check(checkNotNull(currentActivity!!.window.decorView.findFocus()?.onCreateInputConnection(android.view.inputmethod.EditorInfo())).commitText("!", 1)) }; ready()
+                sendStatus(0, Bundle().apply { putString("stream", "NATIVE_INPUT $label selection=${main { model.currentSelection() }} addedAt=${main { model.textState?.text.toString().indexOf('!') }} length=${main { model.textState?.text?.length }}\n") })
                 verify(main { model.textState?.text.toString() == sample.substring(0,end) + "!" + sample.substring(end) }, "$label insertion at the upstream visual caret edits the exact raw boundary")
+                verify(cursorHandles().isEmpty(), "$label actual source edits still hide the native insertion handle")
                 main { model.undo() }; ready()
                 verify(main { model.textState?.text.toString() == sample }, "$label display-only caret wedge never enters undo or saved source")
             }

@@ -48,10 +48,6 @@ internal fun Modifier.observeLineEndTap(
         if (!enabled) return@pointerInput
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            val target = currentHit(down.position)
-            // Prepare the display before the native tap completes. Changing visual text
-            // after onTap would make Foundation hide its insertion handle as a text edit.
-            currentSelect(target)
             var moved = false
             var up: Offset? = null
             var duration = 0L
@@ -60,13 +56,13 @@ internal fun Modifier.observeLineEndTap(
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                 if (!moved && ((change.position - down.position).getDistance() > viewConfiguration.touchSlop || event.changes.size > 1)) {
                     moved = true
-                    currentSelect(null)
                 }
                 duration = change.uptimeMillis - down.uptimeMillis
                 if (!change.pressed) up = change.position
             } while (up == null)
-            if (!moved && duration < viewConfiguration.longPressTimeoutMillis) currentSelect(target)
-            else currentSelect(null)
+            // Commit affinity only for placement taps. Scrolling/long presses must not
+            // discard the two visual positions that share the same source offset.
+            if (!moved && up != null && duration < viewConfiguration.longPressTimeoutMillis) currentSelect(currentHit(up))
         }
     }
 }
