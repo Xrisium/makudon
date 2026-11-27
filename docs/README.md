@@ -20,6 +20,7 @@
 | 编辑导航边距、目录长文件名与羽化预览 | [任务与确认边界](tasks/0044-editor-controls-and-filename.md)、[导航规范](specs/0006-reading-and-navigation.md) |
 | 正文边缘羽化、开关与首尾保护 | [任务](tasks/0045-document-edge-fade.md)、[行为规范](specs/0006-reading-and-navigation.md) |
 | 编辑视口空档、导航显隐、行尾光标、列表与选区菜单 | [修复任务](tasks/0049-editor-viewport-selection.md)、[根因与验证](testing/2026-11-26-editor-viewport-selection.md)、[行为规范](specs/0006-reading-and-navigation.md) |
+| 行尾插入手柄消失、滑动后视觉光标跳行 | [任务](tasks/0051-caret-handle-and-scroll-affinity.md)、[原生观察器 ADR](adr/0017-native-caret-observer.md)、[验收](testing/2026-11-27-caret-handle-affinity.md) |
 | Markdown 大纲 | [底部面板与标题跳转](tasks/0031-markdown-outline.md)、[行为规范](specs/0005-markdown-three-modes.md) |
 | 启动产品页 | [品牌布局、主题首帧与验收](tasks/0032-startup-product-page.md) |
 | 最近卡片内容概览开关 | [偏好、显示范围与验证](tasks/0034-recent-content-overview.md) |
