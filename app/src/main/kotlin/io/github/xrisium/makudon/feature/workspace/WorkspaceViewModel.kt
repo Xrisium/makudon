@@ -83,10 +83,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
     var editorMessage by mutableStateOf<Int?>(null)
         private set
     val editorScroll = androidx.compose.foundation.ScrollState(0)
-    val readingList = androidx.compose.foundation.lazy.LazyListState()
-    var readingAnchor by mutableIntStateOf(0)
     var editorAnchor by mutableIntStateOf(0)
-    var readingAnchorOffset by mutableIntStateOf(0)
     var editorAnchorOffset by mutableIntStateOf(0)
     var viewportLineHeight = 1f
     private var positionJob: Job? = null
@@ -97,8 +94,7 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         if (ui.page != Page.Editor || ui.transitioning || lineHeight <= 0f) return
         val markdownReading = ui.editorMode == EditorMode.Reading && ui.workspace?.entry(ui.activeId.orEmpty())?.kind == DocumentKind.Markdown
         if (reading != markdownReading) return
-        if (reading) { readingAnchor = anchor; readingAnchorOffset = offset }
-        else { editorAnchor = anchor; editorAnchorOffset = offset }
+        editorAnchor = anchor; editorAnchorOffset = offset
         viewportLineHeight = lineHeight
         val id = ui.activeId ?: return
         val next = Triple(editorStore ?: return, id, ViewportPosition(anchor, offset, lineHeight, ui.editorMode))
@@ -572,8 +568,8 @@ class WorkspaceViewModel(application: Application) : AndroidViewModel(applicatio
         history = EditHistory(); historySource = text; canUndo = false; canRedo = false
         markdownDocument = null; tableBoundary = null; editorRevision = 0; editorMessage = null; immersive = false
         positionJob?.cancel(); pendingPosition = null
-        editorAnchor = (position?.anchor ?: 0).coerceIn(0, text.length); readingAnchor = editorAnchor
-        editorAnchorOffset = position?.offset ?: 0; readingAnchorOffset = editorAnchorOffset
+        editorAnchor = (position?.anchor ?: 0).coerceIn(0, text.length)
+        editorAnchorOffset = position?.offset ?: 0
         viewportLineHeight = position?.lineHeight ?: 1f
         val mode = position?.mode ?: if (refreshed.entry(id)?.kind == DocumentKind.Plain) EditorMode.Source else EditorMode.Typeset
         ui = ui.copy(activeId = id, origin = origin, editorMode = mode, workspace = refreshed)

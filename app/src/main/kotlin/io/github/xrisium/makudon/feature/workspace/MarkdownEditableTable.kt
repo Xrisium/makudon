@@ -4,6 +4,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.InputTransformation
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -24,7 +26,11 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import io.github.xrisium.makudon.R
@@ -33,37 +39,32 @@ import io.github.xrisium.makudon.domain.*
 internal data class TableRowLayout(val cells: List<MarkdownCellText>, val styled: List<AnnotatedString>, val top: Int, val height: Int)
 internal data class TableLayout(val rows: List<TableRowLayout>, val height: Int)
 
-@Composable
-internal fun rememberTableLayout(node: MdElement, document: MarkdownDocument, style: TextStyle): TableLayout {
-    val measurer = rememberTextMeasurer(cacheSize = 256)
-    val density = LocalDensity.current
-    val link = MaterialTheme.colorScheme.primary
-    return remember(node, document, style, density, measurer, link) {
-        val width = with(density) { 140.dp.roundToPx() }
-        val padding = with(density) { 20.dp.roundToPx() }
-        val minimum = with(density) { 48.dp.roundToPx() }
-        var top = 0
-        val rows = node.descendants().filter { it.kind == "TableRow" }.mapIndexed { index, row ->
-            val cells = MarkdownTableEdits.cells(document, row)
-            val styled = row.children.map { mdText(it, document, link) }
-            val rowStyle = if (index == 0) style.copy(fontWeight = FontWeight.Bold) else style
-            val height = maxOf(minimum, styled.mapIndexed { column, text ->
-                // Provisional AST literals can lag behind native input; measure the current cell.
-                val visible = if (text.text == cells[column].text) text else AnnotatedString(cells[column].text)
-                measurer.measure(if (visible.isEmpty()) AnnotatedString(" ") else visible, rowStyle, constraints = Constraints(maxWidth = width)).size.height + padding
-            }.maxOrNull() ?: minimum)
-            TableRowLayout(cells, styled, top, height).also { top += height }
-        }.toList()
-        TableLayout(rows, top)
-    }
+internal fun measureTableLayout(node: MdElement, document: MarkdownDocument, style: TextStyle, measurer: TextMeasurer,
+    density: Density, link: Color, highlight: Color, query: String = "", caseSensitive: Boolean = true): TableLayout {
+    val width = with(density) { 140.dp.roundToPx() }
+    val padding = with(density) { 20.dp.roundToPx() }
+    val minimum = with(density) { 48.dp.roundToPx() }
+    var top = 0
+    val rows = node.descendants().filter { it.kind == "TableRow" }.mapIndexed { index, row ->
+        val cells = MarkdownTableEdits.cells(document, row)
+        val styled = row.children.map { mdText(it, document, link, query, caseSensitive, highlight) }
+        val rowStyle = if (index == 0) style.copy(fontWeight = FontWeight.Bold) else style
+        val height = maxOf(minimum, styled.mapIndexed { column, text ->
+            // Provisional AST literals can lag behind native input; measure the current cell.
+            val visible = if (text.text == cells[column].text) text else AnnotatedString(cells[column].text)
+            measurer.measure(if (visible.isEmpty()) AnnotatedString(" ") else visible, rowStyle, constraints = Constraints(maxWidth = width)).size.height + padding
+        }.maxOrNull() ?: minimum)
+        TableRowLayout(cells, styled, top, height).also { top += height }
+    }.toList()
+    return TableLayout(rows, top)
 }
 
 @Composable
 internal fun MarkdownEditableTable(model: WorkspaceViewModel, document: MarkdownDocument,
-    style: TextStyle, editable: Boolean, modifier: Modifier, layout: TableLayout, visibleTop: Float, visibleBottom: Float) {
+    style: TextStyle, editable: Boolean, modifier: Modifier, layout: TableLayout, visibleTop: Float, visibleBottom: Float, interactions: MutableInteractionSource) {
     val colors = MaterialTheme.colorScheme
     val density = LocalDensity.current
-    Box(modifier.scrollable(model.editorScroll, Orientation.Vertical, reverseDirection = true)
+    Box(modifier.scrollable(model.editorScroll, Orientation.Vertical, reverseDirection = true, interactionSource = interactions)
         .horizontalScroll(rememberScrollState()).background(colors.background)) {
         Column(Modifier.width(160.dp * (layout.rows.firstOrNull()?.cells?.size ?: 1))) {
             var position = 0
@@ -99,6 +100,8 @@ private fun EditableCell(model: WorkspaceViewModel, document: MarkdownDocument, 
     var snapshot by remember { mutableStateOf(document.source) }
     var focused by remember { mutableStateOf(false) }
     val currentStyled by rememberUpdatedState(styled)
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val uri = LocalUriHandler.current
     // Input is published synchronously; this mirror only owns the platform IME composition.
     // Background parses and undo may refresh the mirror, but never replace an unchanged composition.
     LaunchedEffect(document, cell, state.composition) {
@@ -117,6 +120,9 @@ private fun EditableCell(model: WorkspaceViewModel, document: MarkdownDocument, 
     }
     LaunchedEffect(state.text.toString()) { state.undoState.clearHistory() }
     val input = remember(model, state) { InputTransformation {
+        // Selection-only gestures also run this filter in a read-only cell.
+        // Reverting them through the model's edit gate would break native Copy.
+        if (asCharSequence().toString() == originalText.toString()) return@InputTransformation
         val before = model.textState?.text?.toString()
         if (model.editToken().session != session || before != snapshot || originalText.toString() != mapped.text) { revertAllChanges(); return@InputTransformation }
         val normalized = TextRules.normalize(asCharSequence().toString()).replace('\n', ' ')
@@ -142,7 +148,11 @@ private fun EditableCell(model: WorkspaceViewModel, document: MarkdownDocument, 
             if (start < end) addStyle(span.item, start, end)
         }
     } }
-    BasicTextField(state, modifier.onFocusChanged {
+    BasicTextField(state, modifier.observeReadingTap(model.ui.editorMode == EditorMode.Reading, { state.selection.collapsed }) { point ->
+        layout?.takeIf { currentStyled.text == state.text.toString() }?.characterAt(point)?.let { offset ->
+            (currentStyled.getLinkAnnotations(offset, offset + 1).firstOrNull()?.item as? LinkAnnotation.Url)?.let { uri.openUri(it.url) }
+        }
+    }.onFocusChanged {
         focused = it.isFocused
         if (it.isFocused && model.textState?.text?.toString() == snapshot) {
             model.textState?.edit { selection = TextRange(mapped.units.firstOrNull()?.start ?: mapped.range.start) }
@@ -154,5 +164,6 @@ private fun EditableCell(model: WorkspaceViewModel, document: MarkdownDocument, 
     }.semantics { contentDescription = label }, readOnly = !editable, textStyle = style.copy(color = colors.onBackground),
         cursorBrush = SolidColor(colors.primary), inputTransformation = input,
         outputTransformation = output,
+        onTextLayout = { get -> layout = get() },
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = true))
 }

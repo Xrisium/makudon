@@ -30,6 +30,8 @@ data class MarkdownDocument(val source: String, val root: MdElement) {
 object MarkdownParser {
     private val parser = Parser.builder().extensions(listOf(TablesExtension.create(), StrikethroughExtension.create(), TaskListItemsExtension.create()))
         .includeSourceSpans(IncludeSourceSpans.BLOCKS_AND_INLINES).build()
+    // Keep decoding identical to the pinned parser, including HTML5 multi-codepoint entities.
+    internal fun unescapeLiteral(token: String): String = org.commonmark.internal.util.Escaping.unescapeString(token)
     fun parse(source: String): MarkdownDocument {
         fun convert(node: Node): MdElement {
             val spans = node.sourceSpans

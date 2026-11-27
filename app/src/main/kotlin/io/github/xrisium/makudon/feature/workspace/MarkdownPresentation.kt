@@ -107,13 +107,38 @@ internal fun provisionalDocument(previous: MarkdownDocument?, source: String): M
 internal fun projection(document: MarkdownDocument, selection: TextSelection?, composition: SourceRange?, tables: List<MdElement> = emptyList()): MarkdownProjection {
     val source = document.source
     val changes = mutableListOf<DisplayChange>()
+    // Compile once per projection, not once per token / source line in a long document.
+    val presentedKinds = setOf("Text", "StrongEmphasis", "Emphasis", "Strikethrough", "Code", "Link", "LinkReferenceDefinition", "HardLineBreak", "Heading", "FencedCodeBlock", "ThematicBreak")
+    val escapedLiteral = Regex("\\\\[!\"#$%&'()*+,\\-./:;<=>?@\\[\\]\\\\^_`{|}~]|&(?:#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]+);")
+    val headingPrefix = Regex("^#{1,6} +")
+    val headingClosing = Regex(" +#+ *$")
+    val setext = Regex("(?:=+|-+)")
+    val fenceClosing = Regex("(?:`{3,}|~{3,})")
+    val hardBreak = Regex(" {2,}")
+    val quotePrefix = Regex("^( *> ?)+")
+    val listPrefix = Regex("^((?: *> ?)* *)([-+*]|\\d+[.)]) (\\[[ xX]] )?")
+    val quoteMarker = Regex("> ?")
     fun active(range: SourceRange) = selection?.let { range.intersects(it.min, it.max) } == true || composition?.let { range.intersects(it.start, it.end) } == true
+    val folded = tables.sortedBy { it.range.start }
+    fun insideFold(start: Int, end: Int): Boolean {
+        val index = folded.binarySearchBy(start) { it.range.start }.let { if (it < 0) -it - 2 else it }
+        return folded.getOrNull(index)?.range?.let { start >= it.start && end <= it.end } == true
+    }
     fun change(start: Int, end: Int, replacement: String = "") {
-        if (start < end && start >= 0 && end <= source.length && tables.none { start >= it.range.start && end <= it.range.end }) changes += DisplayChange(SourceRange(start, end), replacement)
+        if (start < end && start >= 0 && end <= source.length && !insideFold(start, end)) changes += DisplayChange(SourceRange(start, end), replacement)
     }
     for (node in document.elements) {
-        val range = node.range; val raw = document.raw(node)
+        val range = node.range
+        if (node.kind !in presentedKinds || insideFold(range.start, range.end)) continue
+        val raw = document.raw(node)
         when (node.kind) {
+            "Text" -> if (raw != node.text && !active(range)) {
+                // Replace individual escapes/entities, retaining exact selection between words.
+                escapedLiteral.findAll(raw).forEach { token ->
+                    val decoded = MarkdownParser.unescapeLiteral(token.value)
+                    if (decoded != token.value) change(range.start + token.range.first, range.start + token.range.last + 1, decoded)
+                }
+            }
             "StrongEmphasis", "Emphasis", "Strikethrough" -> if (!active(range)) {
                 val width = if (node.kind == "Emphasis") 1 else 2
                 change(range.start, range.start + width); change(range.end - width, range.end)
@@ -121,25 +146,45 @@ internal fun projection(document: MarkdownDocument, selection: TextSelection?, c
             "Code" -> if (!active(range)) {
                 val width = raw.takeWhile { it == '`' }.length
                 change(range.start, range.start + width); change(range.end - width, range.end)
+                if (raw.substring(width, raw.length - width) != node.text) change(range.start + width, range.end - width, node.text)
             }
-            "Link" -> if (!active(range) && raw.startsWith('[')) {
-                val labelEnd = raw.lastIndexOf("](")
-                if (labelEnd > 0) { change(range.start, range.start + 1); change(range.start + labelEnd, range.end) }
+            "Link" -> if (!active(range)) {
+                if (raw.startsWith('[') && node.children.isNotEmpty()) {
+                    change(range.start, range.start + 1)
+                    change(node.children.last().range.end, range.end)
+                } else if (raw.startsWith('<') && raw.endsWith('>')) {
+                    change(range.start, range.start + 1); change(range.end - 1, range.end)
+                }
             }
+            "LinkReferenceDefinition" -> if (!active(range)) change(range.start, range.end)
+            "HardLineBreak" -> if (!active(range) && (raw == "\\" || hardBreak.matches(raw))) change(range.start, range.end)
             "Heading" -> {
-                val prefix = Regex("^#{1,6} +").find(raw)
+                val prefix = headingPrefix.find(raw)
                 if (prefix != null && !active(SourceRange(range.start, range.start + raw.substringBefore('\n').length))) change(range.start, range.start + prefix.value.length)
+                if (!active(range)) {
+                    if (prefix == null) {
+                        val last = raw.lastIndexOf('\n')
+                        if (last >= 0 && setext.matches(raw.substring(last + 1).trim())) change(range.start + last, range.end)
+                    } else {
+                        val closing = headingClosing.find(raw)
+                        if (closing != null) change(range.start + closing.range.first, range.end)
+                    }
+                }
             }
             "FencedCodeBlock" -> if (!active(range)) {
                 val first = raw.indexOf('\n')
                 val last = raw.lastIndexOf('\n')
                 if (first >= 0) change(range.start, range.start + first + 1)
-                if (last > first && raw.substring(last + 1).trim().matches(Regex("(?:`{3,}|~{3,})"))) change(range.start + last, range.end)
+                if (last > first && fenceClosing.matches(raw.substring(last + 1).trim())) change(range.start + last, range.end)
             }
             "ThematicBreak" -> if (!active(range)) change(range.start, range.end, "────────")
         }
     }
-    val literalBlocks = document.elements.filter { it.kind in setOf("FencedCodeBlock", "IndentedCodeBlock", "HtmlBlock", "Raw") }.sortedBy { it.range.start }
+    val literalKinds = setOf("FencedCodeBlock", "IndentedCodeBlock", "HtmlBlock", "Raw")
+    val literalBlocks = document.elements.filter { it.kind in literalKinds }.sortedBy { it.range.start }
+    val orderedMarkers = document.elements.filter { it.kind == "OrderedList" }.flatMap { list ->
+        list.children.filter { it.kind == "ListItem" }.mapIndexed { index, item -> item.range.start to (list.level + index) }
+    }.toMap()
     var literalIndex = 0
     var start = 0
     for (line in source.split('\n')) {
@@ -147,14 +192,16 @@ internal fun projection(document: MarkdownDocument, selection: TextSelection?, c
         while (literalIndex < literalBlocks.size && literalBlocks[literalIndex].range.end < range.start) literalIndex++
         val literal = literalBlocks.getOrNull(literalIndex)?.range?.intersects(range.start, range.end) == true
         if (!active(range) && !literal) {
-            val quote = Regex("^( *> ?)+").find(line)
-            if (quote != null) change(start, start + quote.value.length, "│ ".repeat(quote.value.count { it == '>' }))
-            val marker = Regex("^( *)([-+*]) (\\[[ xX]] )?").find(line)
+            val quote = quotePrefix.find(line)
+            val marker = listPrefix.find(line)
             if (marker != null) {
                 val task = marker.groupValues[3]
-                val replacement = marker.groupValues[1] + if (task.isNotEmpty()) { if (task.contains('x', true)) "☑ " else "☐ " } else "• "
+                val prefix = marker.groupValues[1].replace(quoteMarker, "│ ")
+                val number = orderedMarkers[start + marker.groupValues[1].length]
+                val replacement = prefix + if (task.isNotEmpty()) { if (task.contains('x', true)) "☑ " else "☐ " }
+                    else if (marker.groupValues[2].first().isDigit()) "${number ?: marker.groupValues[2].dropLast(1)}. " else "• "
                 change(start, start + marker.value.length, replacement)
-            }
+            } else if (quote != null) change(start, start + quote.value.length, "│ ".repeat(quote.value.count { it == '>' }))
         }
         start += line.length + 1
     }
@@ -170,7 +217,38 @@ internal fun projection(document: MarkdownDocument, selection: TextSelection?, c
     return MarkdownProjection(nonOverlapping)
 }
 
-internal fun liveTransformation(document: MarkdownDocument, projection: MarkdownProjection, body: TextStyle, link: Color, surface: Color, tableHeights: Map<Int, Float>, listIndents: Map<Int, Float>, windows: List<SourceRange>): OutputTransformation = OutputTransformation {
+/** Expand folded tables for explicit reading Copy / Find without exposing their Markdown syntax. */
+internal fun readingProjection(document: MarkdownDocument): MarkdownProjection {
+    val tables = document.elements.filter { it.kind == "TableBlock" }
+    val base = projection(document, null, null, tables)
+    return MarkdownProjection(base.changes.map { change ->
+        val table = tables.firstOrNull { it.range == change.range && change.text == "\uFFFC" }
+        if (table == null) change else DisplayChange(change.range, mdText(table, document, Color.Unspecified).text)
+    })
+}
+
+internal fun MarkdownProjection.displayText(source: String): String {
+    val out = StringBuilder(source.length)
+    var previous = 0
+    changes.forEach { change -> out.append(source, previous, change.range.start); out.append(change.text); previous = change.range.end }
+    return out.append(source, previous, source.length).toString()
+}
+
+internal fun readingMatches(document: MarkdownDocument, query: String, caseSensitive: Boolean): List<SourceRange> {
+    if (query.isEmpty()) return emptyList()
+    val display = readingProjection(document)
+    return LiteralSearch.matches(display.displayText(document.source), query, caseSensitive).map {
+        SourceRange(display.sourceCaretOffset(it.start), display.sourceCaretOffset(it.end))
+    }
+}
+
+internal fun readingCopy(document: MarkdownDocument, selection: TextSelection): String {
+    val display = readingProjection(document)
+    val text = display.displayText(document.source)
+    return text.substring(display.offset(selection.min).coerceIn(0, text.length), display.offset(selection.max).coerceIn(0, text.length))
+}
+
+internal fun liveTransformation(document: MarkdownDocument, projection: MarkdownProjection, body: TextStyle, link: Color, surface: Color, tableHeights: Map<Int, Float>, listIndents: Map<Int, Float>, windows: List<SourceRange>, findMatch: SourceRange? = null, highlight: Color = Color.Unspecified): OutputTransformation = OutputTransformation {
     if (asCharSequence().toString() != document.source) return@OutputTransformation
     projection.outputChanges(document.source, windows).asReversed().forEach { replace(it.range.start, it.range.end, it.text) }
     for (node in document.elements) {
@@ -195,6 +273,8 @@ internal fun liveTransformation(document: MarkdownDocument, projection: Markdown
     val listParagraphs = mutableListOf<Triple<Int, Int, Float>>()
     for (node in document.elements) {
         if (node.kind != "ListItem") continue
+        // Hanging indents change wrapping and total height. Keep their geometry
+        // off screen too, or native relayout can pull a scrolling field back to its caret.
         val paragraph = node.children.firstOrNull { it.kind == "Paragraph" } ?: continue
         val start = document.source.lastIndexOf('\n', paragraph.range.start - 1) + 1
         val indent = listIndents[start] ?: continue
@@ -216,6 +296,11 @@ internal fun liveTransformation(document: MarkdownDocument, projection: Markdown
         val at = projection.offset(it.range.start)
         addStyle(SpanStyle(color = Color.Transparent), at, at + 1)
         addStyle(ParagraphStyle(lineHeight = tableHeights.getValue(it.range.start).sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None)), at, at + 1)
+    }
+    findMatch?.let {
+        val start = projection.offset(it.start).coerceIn(0, length)
+        val end = projection.offset(it.end).coerceIn(start, length)
+        if (start < end) addStyle(SpanStyle(background = highlight), start, end)
     }
 }
 

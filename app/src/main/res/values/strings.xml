@@ -461,8 +461,6 @@
     <string name="navigation_side">Navigation control side</string>
     <string name="navigation_left">Left</string>
     <string name="navigation_right">Right</string>
-    <string name="scroll_top">Scroll to top</string>
-    <string name="scroll_bottom">Scroll to bottom</string>
     <string name="fast_scroll">Fast scroll</string>
     <string name="spacing_wide_short">W</string>
     <string name="spacing_medium_short">M</string>

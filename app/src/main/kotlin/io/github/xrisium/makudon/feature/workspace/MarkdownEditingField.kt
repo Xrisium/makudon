@@ -28,38 +28,46 @@ import io.github.xrisium.makudon.domain.*
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
+private val listMarkerDisplay = Regex("^[ │]*(?:[•☐☑]|\\d+[.)]) $")
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, bodyStyle: TextStyle, editable: Boolean, findOpen: Boolean, modifier: Modifier, outlineJump: OutlineJump?, onOutlineJumped: () -> Unit) {
+internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, bodyStyle: TextStyle, editable: Boolean, findOpen: Boolean, modifier: Modifier, outlineJump: OutlineJump?, onOutlineJumped: () -> Unit, findMatch: SourceRange? = null, query: String = "", caseSensitive: Boolean = true) {
     val field = model.textState ?: return
     val colors = MaterialTheme.colorScheme
     val source = field.text.toString()
-    val typeset = markdown && model.ui.editorMode == EditorMode.Typeset
+    val reading = model.ui.editorMode == EditorMode.Reading
+    val typeset = markdown && model.ui.editorMode != EditorMode.Source
     var focused by remember { mutableStateOf(false) }
+    var trailing by remember(field, source, model.ui.editorMode) { mutableStateOf<VisualLineEnd?>(null) }
     var layout by remember(field) { mutableStateOf<TextLayoutResult?>(null) }
     var viewportHeight by remember { mutableIntStateOf(0) }
     var viewportWidth by remember { mutableIntStateOf(0) }
-    var visibleSourceStart by remember(field) { mutableIntStateOf(0) }
-    var visibleSourceEnd by remember(field) { mutableIntStateOf(1024) }
-    val requester = remember { FocusRequester() }
+    var visibleSourceStart by remember(field) { mutableIntStateOf(model.editorAnchor.coerceIn(0, source.length)) }
+    var visibleSourceEnd by remember(field) { mutableIntStateOf((model.editorAnchor + 1024).coerceIn(0, source.length)) }
     val editorInteractions = remember(field) { MutableInteractionSource() }
     val density = LocalDensity.current
     val displayDocument = model.tableBoundaryDocument ?: model.markdownDocument
     val parsed = remember(displayDocument, source) { provisionalDocument(displayDocument, source) }
     val sourceSelection = field.selection.let { TextSelection(it.start, it.end) }
     val composition = field.composition?.let { SourceRange(it.start, it.end) }
-    val active = if (focused || findOpen) sourceSelection else null
+    val active = if (!reading && (focused || findOpen)) sourceSelection else null
     val tables = remember(typeset, parsed) { if (typeset) parsed.elements.filter { it.kind == "TableBlock" } else emptyList() }
     val imageParagraphs = remember(typeset, parsed, active, composition) { if (typeset) ImageReferences.standalone(parsed).filter { node ->
         active?.let { node.range.intersects(it.min, it.max) } != true && composition?.let { node.range.intersects(it.start, it.end) } != true
     } else emptyList() }
-    val projection = remember(typeset, parsed, active, composition, tables, imageParagraphs) {
+    val baseProjection = remember(typeset, parsed, active, composition, tables, imageParagraphs) {
         if (typeset) projection(parsed, active, composition, tables + imageParagraphs) else MarkdownProjection(emptyList())
+    }
+    val useTrailing = editable && sourceSelection.min == sourceSelection.max && trailing != null && composition == null
+    val projection = remember(baseProjection, source, trailing, useTrailing) {
+        if (useTrailing) caretProjection(baseProjection, source, checkNotNull(trailing).sourceOffset) else baseProjection
     }
     val textMeasurer = rememberTextMeasurer()
     val listIndents = remember(projection, textMeasurer, bodyStyle, density) {
-        projection.changes.filter { it.text.trimStart().let { marker -> marker.startsWith("• ") || marker.startsWith("☐ ") || marker.startsWith("☑ ") } }
-            .associate { change -> change.range.start to with(density) { textMeasurer.measure(change.text, bodyStyle).size.width.toSp().value } }
+        val widths = mutableMapOf<String, Float>()
+        projection.changes.filter { listMarkerDisplay.matches(it.text) }
+            .associate { change -> change.range.start to widths.getOrPut(change.text) { with(density) { textMeasurer.measure(change.text, bodyStyle).size.width.toSp().value } } }
     }
     val imageIndents = remember(imageParagraphs, source, projection, textMeasurer, bodyStyle) {
         imageParagraphs.associate { node ->
@@ -71,7 +79,13 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             node.range.start to if (prefix.isEmpty()) 0 else textMeasurer.measure(prefix, bodyStyle).size.width
         }
     }
-    val tableLayouts = tables.associate { table -> table.range.start to key(table.range.start) { rememberTableLayout(table, parsed, bodyStyle) } }
+    val tableMeasurer = rememberTextMeasurer(cacheSize = 256)
+    val tableQuery = if (reading && findOpen) query else ""
+    // Retain measured geometry across Source / Typeset / Reading without one LRU per table.
+    val tableCache = remember(parsed, bodyStyle, density, tableMeasurer, colors.primary, colors.secondaryContainer, tableQuery, caseSensitive) { mutableMapOf<Int, TableLayout>() }
+    val tableLayouts = tables.associate { table -> table.range.start to tableCache.getOrPut(table.range.start) {
+        measureTableLayout(table, parsed, bodyStyle, tableMeasurer, density, colors.primary, colors.secondaryContainer, tableQuery, caseSensitive)
+    } }
     val imageHeights = imageParagraphs.associate { node ->
         val info = ImageReferences.key(node.children.single().destination)?.let(model::imageEntry)?.image
         val width = (viewportWidth - with(density) { 48.dp.roundToPx() } - imageIndents.getValue(node.range.start)).coerceAtLeast(1)
@@ -82,23 +96,34 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     // Android scan thousands of off-screen spans on every draw.
     fun window(start: Int, end: Int) = SourceRange((start - 256).coerceAtLeast(0), (end + 256).coerceAtMost(source.length))
     val windows = listOf(window(visibleSourceStart.coerceAtMost(source.length), visibleSourceEnd.coerceAtMost(source.length)), window(sourceSelection.min, sourceSelection.min), window(sourceSelection.max, sourceSelection.max))
-    val output = remember(typeset, parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, listIndents, windows) {
-        if (typeset) liveTransformation(parsed, projection, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, listIndents, windows) else null
+    val highlightedMatch = if (reading && findOpen) findMatch else null
+    fun transform(display: MarkdownProjection): OutputTransformation = if (typeset)
+        liveTransformation(parsed, display, bodyStyle, colors.primary, colors.surfaceVariant, tableHeights, listIndents, windows, highlightedMatch, colors.secondaryContainer)
+        else OutputTransformation {
+            if (asCharSequence().toString() == source) display.changes.asReversed().forEach { replace(it.range.start, it.range.end, it.text) }
+        }
+    // Read-only mode alone changes no text styles. Retain the same transformer
+    // across Typeset / Reading instead of reapplying every source replacement.
+    val baseOutput = remember(typeset, parsed, baseProjection, bodyStyle, colors, tableHeights, listIndents, windows, highlightedMatch) { transform(baseProjection) }
+    val output = remember(baseOutput, projection) {
+        if (projection === baseProjection) baseOutput else transform(projection)
     }
     val currentOutput by rememberUpdatedState(output)
-    var trailing by remember(field, source, model.ui.editorMode) { mutableStateOf<VisualLineEnd?>(null) }
+    val currentBaseOutput by rememberUpdatedState(baseOutput)
+    val currentTrailing by rememberUpdatedState(trailing)
     val currentLayout by rememberUpdatedState(layout)
     val currentProjection by rememberUpdatedState(projection)
-    val trailingMatchesLayout = trailing?.let { end -> layout?.let { result ->
-        end.line < result.lineCount && result.getLineEnd(end.line) == end.displayOffset && projection.offset(end.sourceOffset) == end.displayOffset
-    } } == true
-    val trailingActive = focused && editable && trailingMatchesLayout && field.selection.collapsed && trailing?.sourceOffset == field.selection.start && field.composition == null
+    val currentDisplay by rememberUpdatedState(remember(projection, source) { projection.displayText(source) })
+    val parsedReady = !typeset || displayDocument?.source == source
     LaunchedEffect(field.selection, focused, field.composition) {
-        if (!field.selection.collapsed || field.selection.start != trailing?.sourceOffset || !focused || field.composition != null) trailing = null
+        if (!field.selection.collapsed || field.composition != null) trailing = null
     }
     // AST/style refreshes must not restart the native IME's composing session.
-    val stableOutput = remember(field, typeset) {
-        if (typeset) OutputTransformation { currentOutput?.let { with(it) { transformOutput() } } } else null
+    val stableOutput = remember(field) {
+        OutputTransformation {
+            val transform = if (field.selection.collapsed && currentTrailing != null && field.composition == null) currentOutput else currentBaseOutput
+            with(transform) { transformOutput() }
+        }
     }
     val input = remember(model, field, markdown) { InputTransformation {
         val before = originalText.toString()
@@ -137,9 +162,10 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
         model.editorAnchor to (model.editorAnchorOffset * lineHeight / model.viewportLineHeight).roundToInt()
     }
     var restoring by remember(field, model.ui.editorMode, bodyStyle, viewportWidth) { mutableStateOf(true) }
-    LaunchedEffect(restoreAnchor, model.ui.editorMode, bodyStyle, viewportWidth) {
+    LaunchedEffect(restoreAnchor, model.ui.editorMode, bodyStyle, viewportWidth, parsedReady) {
+        if (!restoring || !parsedReady) return@LaunchedEffect
         withFrameNanos { }
-        val result = snapshotFlow { layout }.first { it != null && it.layoutInput.style.fontSize == bodyStyle.fontSize && it.layoutInput.style.lineHeight == bodyStyle.lineHeight } ?: return@LaunchedEffect
+        val result = snapshotFlow { layout }.first { it != null && it.layoutInput.text.text == currentDisplay && it.layoutInput.style.fontSize == bodyStyle.fontSize && it.layoutInput.style.lineHeight == bodyStyle.lineHeight } ?: return@LaunchedEffect
         val at = projection.offset(restoreAnchor.first).coerceIn(0, result.layoutInput.text.length)
         model.editorScroll.scrollTo((result.getLineTop(result.getLineForOffset(at)).roundToInt().toLong() + restoreAnchor.second).coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
         restoring = false
@@ -155,6 +181,7 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
     LaunchedEffect(layout, projection, parsed, viewportHeight, restoring) {
         if (restoring) return@LaunchedEffect
         val result = layout ?: return@LaunchedEffect
+        if (!parsedReady || result.layoutInput.text.text != currentDisplay) return@LaunchedEffect
         snapshotFlow { model.editorScroll.value }.collect { scroll ->
             val visible = result.getOffsetForPosition(Offset(0f, scroll.toFloat()))
             val original = projection.sourceOffset(visible).coerceIn(0, source.length)
@@ -162,31 +189,39 @@ internal fun MarkdownEditingField(model: WorkspaceViewModel, markdown: Boolean, 
             visibleSourceStart = (original / 512) * 512
             visibleSourceEnd = (((projection.sourceOffset(bottom).coerceIn(original, source.length) / 512) + 1) * 512).coerceAtMost(source.length)
             val block = parsed.root.children.lastOrNull { it.range.start <= original }
-            val start = if (markdown) block?.range?.start ?: original else result.getLineStart(result.getLineForOffset(visible))
+            val start = if (markdown) block?.range?.start ?: original else projection.sourceCaretOffset(result.getLineStart(result.getLineForOffset(visible)))
             val at = projection.offset(start).coerceIn(0, result.layoutInput.text.length)
-            model.recordViewport(start, (scroll - result.getLineTop(result.getLineForOffset(at)).roundToInt()).coerceAtLeast(0), lineHeight, reading = false)
+            model.recordViewport(start, (scroll - result.getLineTop(result.getLineForOffset(at)).roundToInt()).coerceAtLeast(0), lineHeight, reading = markdown && reading)
         }
     }
     val description = stringResource(R.string.edit_body)
+    LaunchedEffect(findMatch, reading, layout) {
+        if (reading && findMatch != null) layout?.let { result ->
+            val at = projection.offset(findMatch.start).coerceIn(0, result.layoutInput.text.length)
+            model.editorScroll.scrollTo(result.getLineTop(result.getLineForOffset(at)).roundToInt())
+        }
+    }
     Box(modifier.clipToBounds().onSizeChanged { viewportHeight = it.height; viewportWidth = it.width }) {
-        BasicTextField(state = field, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp).focusRequester(requester)
+        BasicTextField(state = field, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)
+            .readingActions(reading && markdown, model, parsed, { currentLayout }, { currentProjection })
             .observeLineEndTap(editable, hit = { point -> currentLayout?.let { visualLineEnd(it, point.copy(y = point.y + model.editorScroll.value), currentProjection) } }, select = { end ->
                 // A native double-tap selection takes precedence over visual caret affinity.
-                trailing = end.takeIf { field.selection.collapsed }
-                if (trailing != null) field.edit { selection = TextRange(checkNotNull(trailing).sourceOffset.coerceIn(0, length)) }
+                trailing = end.takeIf { field.selection.collapsed && field.text.toString() == source }
+                if (trailing != null) {
+                    field.edit { selection = TextRange(checkNotNull(trailing).sourceOffset.coerceIn(0, length)) }
+                }
             })
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { if (focused && !it.isFocused) trailing = null; focused = it.isFocused }
             .onPreviewKeyEvent {
                 if (editable && it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key in listOf(Key.Z, Key.Y)) { model.undo(it.key == Key.Y || it.isShiftPressed); true } else false
             }.testTag(if (model.ui.editorMode == EditorMode.Reading) "reading-view" else if (typeset) "typeset-editor" else "source-editor").semantics { contentDescription = description },
-            readOnly = !editable, textStyle = bodyStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(if (trailingActive) androidx.compose.ui.graphics.Color.Transparent else colors.primary), inputTransformation = input,
+            readOnly = !editable, textStyle = bodyStyle.copy(color = colors.onBackground), cursorBrush = SolidColor(colors.primary), inputTransformation = input,
             outputTransformation = stableOutput, scrollState = model.editorScroll,
             interactionSource = editorInteractions,
             onTextLayout = { get -> layout = get() },
             decorator = TextFieldDecorator { inner -> Box { if (source.isEmpty()) Text(stringResource(R.string.editor_placeholder), style = bodyStyle, color = colors.onSurfaceVariant); inner() } })
         if (typeset && layout != null) MarkdownEditingOverlays(model, parsed, projection, checkNotNull(layout), source, active,
-            imageParagraphs, imageIndents, imageHeights, tables, tableLayouts, bodyStyle, editable, viewportHeight, viewportWidth)
-        VisualLineEndCursor(trailing, layout, trailingActive) { model.editorScroll.value }
+            imageParagraphs, imageIndents, imageHeights, tables, tableLayouts, bodyStyle, editable, viewportHeight, viewportWidth, editorInteractions)
         DocumentEdgeFade(model,
             fromStart = { if (model.editorScroll.maxValue == Int.MAX_VALUE) 0f else model.editorScroll.value.toFloat() },
             fromEnd = { if (model.editorScroll.maxValue == Int.MAX_VALUE) 0f else (model.editorScroll.maxValue - model.editorScroll.value).toFloat() })
@@ -200,13 +235,31 @@ private fun MarkdownEditingOverlays(
     model: WorkspaceViewModel, parsed: MarkdownDocument, projection: MarkdownProjection, result: TextLayoutResult,
     source: String, active: TextSelection?, imageParagraphs: List<MdElement>, imageIndents: Map<Int, Int>,
     imageHeights: Map<Int, Float>, tables: List<MdElement>, tableLayouts: Map<Int, TableLayout>,
-    bodyStyle: TextStyle, editable: Boolean, viewportHeight: Int, viewportWidth: Int,
+    bodyStyle: TextStyle, editable: Boolean, viewportHeight: Int, viewportWidth: Int, interactions: MutableInteractionSource,
 ) {
     val density = LocalDensity.current
     val colors = MaterialTheme.colorScheme
     val taskDescription = stringResource(R.string.md_toggle_task)
     val editToken = model.editToken()
+    val headings = remember(parsed) { parsed.elements.filter { it.kind == "Heading" } }
     if (result.layoutInput.text.isNotEmpty()) {
+        val firstVisible = projection.sourceOffset(result.getOffsetForPosition(Offset(0f, model.editorScroll.value.toFloat())))
+        val lastVisible = projection.sourceCaretOffset(result.getOffsetForPosition(Offset(viewportWidth.toFloat(), (model.editorScroll.value + viewportHeight).toFloat())))
+        val firstHeading = headings.binarySearchBy(firstVisible) { it.range.start }.let { if (it < 0) (-it - 2).coerceAtLeast(0) else it }
+        for (index in firstHeading until headings.size) {
+            val node = headings[index]
+            if (node.range.start > lastVisible) break
+            val offset = projection.offset(node.range.start).coerceIn(0, result.layoutInput.text.length)
+            val line = result.getLineForOffset(offset)
+            val top = result.getLineTop(line) - model.editorScroll.value
+            val bottom = result.getLineBottom(result.getLineForOffset(projection.offset(node.range.end).coerceIn(offset, result.layoutInput.text.length))) - model.editorScroll.value
+            if (bottom >= 0 && top < viewportHeight) {
+                val label = mdText(node, parsed, colors.primary).text
+                Box(Modifier.offset { IntOffset(with(density) { 24.dp.roundToPx() }, top.roundToInt()) }
+                    .width(with(density) { (viewportWidth - 48.dp.roundToPx()).coerceAtLeast(1).toDp() })
+                    .height(with(density) { (bottom - top).toDp() }).semantics { heading(); contentDescription = label })
+            }
+        }
         for (paragraph in imageParagraphs) {
             val offset = projection.offset(paragraph.range.start)
             if (offset < result.layoutInput.text.length && result.layoutInput.text[offset] == '\uFFFC') {
@@ -233,7 +286,7 @@ private fun MarkdownEditingOverlays(
                         .fillMaxWidth().padding(end = 48.dp).wrapContentHeight(align = androidx.compose.ui.Alignment.Top, unbounded = true)
                         .height(with(density) { heightPx.toDp() }).background(colors.background)) {
                         MarkdownEditableTable(model, parsed, bodyStyle, editable, Modifier.fillMaxSize(), tableLayout,
-                            -top - 200f, viewportHeight - top + 200f)
+                            -top - 200f, viewportHeight - top + 200f, interactions)
                     }
                 }
             }

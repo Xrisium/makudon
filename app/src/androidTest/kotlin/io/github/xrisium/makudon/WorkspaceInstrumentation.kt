@@ -54,6 +54,9 @@ class WorkspaceInstrumentation : Instrumentation() {
     private var onlyEdgeFade = false
     private var onlyReadingSelection = false
     private var onlyEditorRegressions = false
+    private var onlySwitchBenchmark = false
+    private var onlyUnified = false
+    private var onlyReadingLinks = false
     private var onlyEditorGeometry = false
     private var onlyEditorControls = false
     private var onlyTextSize = false
@@ -94,6 +97,9 @@ class WorkspaceInstrumentation : Instrumentation() {
         onlyEdgeFade = arguments?.getString("case") == "edge-fade"
         onlyReadingSelection = arguments?.getString("case") == "reading-selection"
         onlyEditorRegressions = arguments?.getString("case") == "editor-regressions"
+        onlySwitchBenchmark = arguments?.getString("case") == "view-switch-benchmark"
+        onlyUnified = arguments?.getString("case") == "unified-rendering"
+        onlyReadingLinks = arguments?.getString("case") == "reading-links"
         onlyEditorGeometry = arguments?.getString("case") == "editor-geometry"
         onlyEditorControls = arguments?.getString("case") == "editor-controls"
         onlyTextSize = arguments?.getString("case") == "text-size"
@@ -109,7 +115,7 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     override fun onStart() {
         try {
-            if (onlyEditorRegressions || onlyReadingSelection || onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+            if (onlyReadingLinks || onlyEditorRegressions || onlyReadingSelection || onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply { flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
             startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitFor("language bootstrap and first workspace frame") {
                 val label = main { currentActivity?.getString(R.string.recent) }
@@ -122,7 +128,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 main { model.changeLanguage("zh-Hans") }; ready()
                 waitFor("Chinese baseline") { main { model.languages.selected == "zh-Hans" } }
             }
-            when { onlyEditorGeometry -> editorGeometryTest(); onlyEditorRegressions -> editorRegressionsTest(); onlyReadingSelection -> readingSelectionTest(); onlyEdgeFade -> edgeFadeTest(); onlyEditorControls -> editorControlsTest(); onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
+            when { onlyReadingLinks -> readingLinksTest(); onlyUnified -> unifiedRenderingTest(); onlySwitchBenchmark -> viewSwitchBenchmark(); onlyEditorGeometry -> editorGeometryTest(); onlyEditorRegressions -> editorRegressionsTest(); onlyReadingSelection -> readingSelectionTest(); onlyEdgeFade -> edgeFadeTest(); onlyEditorControls -> editorControlsTest(); onlyMarkdownScroll -> markdownScrollTest(); navigationCase != null -> documentNavigationTest(checkNotNull(navigationCase)); onlyThumbnailCache -> thumbnailCacheTest(); onlyImages -> imageTest(); onlyRecentOverview -> recentOverviewTest(); onlyLaunch -> launchTest(); onlyMarkdownOutline -> markdownOutlineTest(); onlyMarkdownTable -> markdownTableTest(); onlyMarkdownToolbar -> markdownToolbarTest(); onlyMarkdownLong -> markdownLongTest(); onlyMarkdownVisual -> markdownVisualTest(); onlyMarkdown -> markdownTest(); onlyTextSize -> textSizeTest(); localizationRestartPhase != null -> localizationRestartTest(checkNotNull(localizationRestartPhase)); onlyLocalization -> localizationTest(); trashRestartPhase != null -> trashRestartTest(checkNotNull(trashRestartPhase)); onlyTrash -> trashTest(); onlyExportDialog -> exportDialogTest(); onlyFiles -> fileExchangeTest(); onlyBackupVisual -> backupVisualTest(); onlyBackup -> backupTest(); onlyDetails -> detailsTest(); onlyRecent -> recentTest(); onlySelectionVisual -> selectionVisualTest(); onlySelection -> selectionTest(); onlyAppearance -> appearanceTest(); onlyTabs -> tabTest(); onlyVisual -> motionVisualTest(); onlyMotion -> motionTest(); onlyLong -> longDocumentTest(); else -> exercise() }
             if (!onlyLocalization && localizationRestartPhase == null) runBlocking { withContext(Dispatchers.Main) { model.languages.change(originalLanguage) } }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nPassed ${checks.size} checks:\n" + checks.joinToString("\n") + "\n") })
         } catch (e: Exception) {
@@ -195,7 +201,7 @@ class WorkspaceInstrumentation : Instrumentation() {
         val result = mutableListOf<AccessibilityNodeInfo>()
         fun visit(node: AccessibilityNodeInfo) { result += node; for (i in 0 until node.childCount) node.getChild(i)?.let(::visit) }
         visit(root)
-        if (onlyEditorRegressions || onlyReadingSelection || onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
+        if (onlyReadingLinks || onlyEditorRegressions || onlyReadingSelection || onlyImages || onlyThumbnailCache || onlyMarkdown || onlyMarkdownToolbar || onlyMarkdownTable || onlyMarkdownOutline) {
             val activeLayer = uiAutomation.windows.firstOrNull { it.id == root.windowId }?.layer ?: 0
             uiAutomation.windows.filter { it.layer > activeLayer && it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.forEach { window -> window.root?.let(::visit) }
         }
@@ -451,7 +457,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             return checkNotNull(found)
         }
         fun filterImages(query: String) {
-            if (nodes().none { it.isEditable }) click(main { model.languages.context().getString(R.string.search) })
+            if (nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } }) click(main { model.languages.context().getString(R.string.search) })
             val field = nodes().first { it.isEditable }
             check(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query) }))
             shell("input keyevent 111"); ready()
@@ -773,13 +779,187 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
     private fun currentStore() = (WorkspaceViewModel::class.java.getDeclaredField("library").apply { isAccessible = true }.get(model) as io.github.xrisium.makudon.data.LibraryController).store
 
-    private fun composeNodes(): List<SemanticsNode> = main {
+    private fun readingLinksTest() {
+        val sample = "[body](makudon-test:ignored) [web](https://makudon-instrumentation.invalid)\n\n| A | B |\n| --- | --- |\n| [cell](https://makudon-instrumentation.invalid) | value |\n"
+        val id = runBlocking { withContext(Dispatchers.IO) { currentStore().create("阅读链接专项",Workspace.ROOT,DocumentKind.Markdown,sample) } }
+        // Block the external launch inside Instrumentation: no browser or network request.
+        val monitor = addMonitor(android.content.IntentFilter(Intent.ACTION_VIEW).apply {
+            addDataScheme("https"); addDataAuthority("makudon-instrumentation.invalid",null)
+        }, ActivityResult(Activity.RESULT_CANCELED,null),true)
+        fun open() {
+            main { model.open(id) }; ready()
+            waitFor("reading link parse") { main { model.markdownDocument?.source == sample } }
+            if (main { model.ui.editorMode != EditorMode.Reading }) { click("阅读"); ready() }
+        }
+        fun press(tag: String, text: String, duration: Long) {
+            val (node,layout) = textLayouts().first { it.first.config.getOrNull(SemanticsProperties.TestTag) == tag }
+            val at = layout.layoutInput.text.text.indexOf(text) + text.lastIndex
+            val glyph = layout.getBoundingBox(at)
+            val x = node.boundsInWindow.left + glyph.left + glyph.width*.8f
+            val y = node.boundsInWindow.top + glyph.center.y - if (tag == "reading-view") main { model.editorScroll.value.toFloat() } else 0f
+            val start = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)) {
+                if (action == MotionEvent.ACTION_UP) SystemClock.sleep(duration)
+                MotionEvent.obtain(start,SystemClock.uptimeMillis(),action,x,y,0).apply { source=InputDevice.SOURCE_TOUCHSCREEN }.let { check(uiAutomation.injectInputEvent(it,true)); it.recycle() }
+            }
+            ready()
+        }
+        try {
+            main { model.reload() }; ready(); open()
+            press("reading-view","body",850)
+            verify(main { model.editorMessage == null && model.currentSelection().min < model.currentSelection().max }, "Reading link long press selects text without opening its URI")
+            main { model.go(Page.Recent) }; ready(); open()
+            press("reading-view","body",80)
+            verify(main { model.editorMessage == R.string.md_link_unavailable }, "Trailing half of a body link glyph reaches the guarded URI handler")
+            main { model.go(Page.Recent) }; ready(); open()
+            press("table-cell-1-0","cell",850)
+            verify(main { model.editorMessage == null } && monitor.hits == 0, "Readonly table link long press keeps selection without opening its URI")
+            verify(nodes().any { it.text?.toString() == "复制" }, "Readonly table link keeps its native Copy menu")
+            click("复制")
+            verify(main { targetContext.getSystemService(android.content.ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString() == "cell" }, "Readonly table Copy writes its own selected cell text")
+            press("table-cell-1-0","cell",850)
+            click("源码")
+            verify(main { model.ui.editorMode == EditorMode.Source && model.textState?.text.toString() == sample } && nodes().none { it.text?.toString() == "复制" }, "Switching with a selected table-cell menu dismisses it and preserves source")
+            main { model.go(Page.Recent) }; ready(); open()
+            press("table-cell-1-0","cell",80)
+            verify(monitor.hits == 1 && main { model.editorMessage == null }, "Readonly table link tap reaches the guarded URI handler without a real external launch")
+            press("reading-view","web",80)
+            verify(monitor.hits == 2, "Safe body link tap retains the same guarded external-link behavior")
+            verify(main { model.textState?.text.toString() == sample && model.editorRevision == 0L }, "Body and table link gestures never edit Markdown source")
+            click(main { model.languages.context().getString(R.string.item_actions) })
+            screenshot("unified-reading-controls-menu")
+            verify(nodes().any { it.text?.toString() == "显示或隐藏阅读控件" }, "Reading controls action remains available beside its restored icon")
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
+        } finally {
+            removeMonitor(monitor)
+            main { model.go(Page.Recent) }; ready(); main { model.delete(id) }; ready()
+        }
+    }
+
+    private fun unifiedRenderingTest() {
+        val sample = "Caret wrapping words remain available for copying without inserting a newline. 中文与😀一起换行。\n\n" +
+            "# 一级标题 #\n\n二级标题\n---\n\n**粗体**、*斜体*、~~删除~~、`code`、[链接](https://example.com)。\n\n" +
+            "- First list item with enough words to wrap onto the following line and keep its indentation.\n- Second item\n  - Nested item\n\n1. Numbered item wraps with enough text to extend beyond the first visual line in a narrow screen.\n2. Second number\n\n- [ ] Task one\n- [x] Task two\n\n> Quote line\n> More quoted content\n\n```kotlin\nval a = 1\n```\n\n---\n\n| Name | Value |\n| --- | ---: |\n| Bold **cell** | 42 |\n\nEnd."
+        val id = runBlocking { withContext(Dispatchers.IO) { currentStore().create("统一显示专项", Workspace.ROOT, DocumentKind.Markdown, sample) } }
+        fun body() = textLayouts().first { it.first.config.getOrNull(SemanticsProperties.TestTag) in listOf("source-editor", "typeset-editor", "reading-view") }
+        fun tapAt(x: Float, y: Float) {
+            val time = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                if (action == MotionEvent.ACTION_UP) SystemClock.sleep(80)
+                MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, x, y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }.let { check(uiAutomation.injectInputEvent(it,true)); it.recycle() }
+            }
+            ready()
+        }
+        try {
+            main { model.reload() }; ready(); main { model.open(id) }; ready()
+            waitFor("unified parsed") { main { model.markdownDocument?.source == sample } }
+            if (main { model.ui.editorMode != EditorMode.Typeset }) { click("排版"); ready() }
+            val typeset = body().second
+            click("阅读"); ready()
+            val reading = body().second
+            sendStatus(0,Bundle().apply { putString("stream", "READONLY_NATIVE " + composeNodes().filter { it.config.getOrNull(SemanticsProperties.IsEditable) != null }.joinToString { "${it.config.getOrNull(SemanticsProperties.TestTag)}:${it.config.getOrNull(SemanticsProperties.IsEditable)}" } + " accessibility=" + nodes().filter { it.isEditable }.joinToString { "${it.className}:${it.contentDescription}" } + "\n") })
+            verify(composeNodes().none { it.config.getOrNull(SemanticsProperties.IsEditable) == true }, "Reading body and table cells expose native readonly semantics")
+            verify(typeset.layoutInput.text == reading.layoutInput.text, "Typeset and reading share identical display text, inline styles and paragraph styles")
+            verify(typeset.lineCount == reading.lineCount && (0 until typeset.lineCount).all { typeset.getLineStart(it) == reading.getLineStart(it) && typeset.getLineEnd(it) == reading.getLineEnd(it) && typeset.getLineBaseline(it) == reading.getLineBaseline(it) }, "Headings, nested and numbered lists, tasks, quotes, fences and tables share wrapping and baseline positions")
+            verify(!reading.layoutInput.text.text.contains("---\n") && !reading.layoutInput.text.text.contains("# 一级"), "ATX closing markers and Setext underline are hidden consistently")
+            verify(main { model.textState?.text.toString() == sample }, "Unified readonly rendering preserves Markdown source")
+            for (label in listOf("源码", "排版")) {
+                click(label); ready()
+                runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }; ready()
+                val (node, before) = body()
+                val end = before.getLineEnd(0)
+                val expectedY = before.getLineBottom(0)
+                tapAt(node.boundsInWindow.right - 2, node.boundsInWindow.top + (before.getLineTop(0) + expectedY) / 2)
+                val after = body().second
+                val expectedX = after.getLineRight(0)
+                val rect = after.getCursorRect(end)
+                sendStatus(0, Bundle().apply { putString("stream", "NATIVE_CARET $label raw=${main { model.currentSelection() }} rect=$rect expected=$expectedX,$expectedY\n") })
+                verify(main { model.currentSelection().min == end && model.currentSelection().max == end }, "$label upstream caret retains the downstream editing offset")
+                verify(kotlin.math.abs(rect.left - expectedX) < 3 && kotlin.math.abs(rect.bottom - expectedY) < 3, "$label native caret rectangle stays at the previous line end")
+                val handles = main {
+                    fun owners(view: android.view.View): List<SemanticsOwner> = if (view.javaClass.simpleName == "AndroidComposeView") listOf(view.javaClass.getMethod("getSemanticsOwner").invoke(view) as SemanticsOwner)
+                        else if (view is android.view.ViewGroup) (0 until view.childCount).flatMap { owners(view.getChildAt(it)) } else emptyList()
+                    android.view.inspector.WindowInspector.getGlobalWindowViews().flatMap(::owners).flatMap { it.getAllSemanticsNodes(false) }.mapNotNull { n -> n.config.firstOrNull { it.key.name == "SelectionHandleInfo" }?.value }
+                }
+                sendStatus(0, Bundle().apply { putString("stream", "NATIVE_HANDLES $label ${handles.joinToString()}\n") })
+                val handle = handles.firstOrNull { it.toString().contains("Cursor") }
+                verify(handle != null, "$label exposes a real native insertion handle after the edge tap")
+                val packed = checkNotNull(handle).javaClass.methods.first { it.name.startsWith("getPosition") }.invoke(handle) as Long
+                val hx = Float.fromBits((packed shr 32).toInt()); val hy = Float.fromBits(packed.toInt())
+                verify(kotlin.math.abs(hx - expectedX) < 3 && kotlin.math.abs(hy - expectedY) < 3, "$label native insertion handle shares the upstream caret position")
+                screenshot("unified-$label-native-handle")
+                val display = targetContext.resources.displayMetrics
+                swipe((node.boundsInWindow.left+hx)/display.widthPixels,(node.boundsInWindow.top+hy+12*display.density)/display.heightPixels,
+                    (node.boundsInWindow.left+160*display.density)/display.widthPixels,(node.boundsInWindow.top+before.getLineBottom(1)-10)/display.heightPixels)
+                ready()
+                verify(main { model.currentSelection().min > end && model.currentSelection().min == model.currentSelection().max }, "$label real insertion handle drag reaches the following visual line")
+                verify(main { model.textState?.text.toString() == sample }, "$label native handle drag never writes a display wedge into source")
+                if (label == "源码") {
+                    main { model.textState?.edit { selection = androidx.compose.ui.text.TextRange(0,length) } }; ready()
+                    val action = composeNodes().first { it.config.getOrNull(SemanticsProperties.TestTag) == "source-editor" }.config.getOrNull(SemanticsActions.CopyText)?.action
+                    main { check(checkNotNull(action).invoke()) }; ready()
+                    verify(main { targetContext.getSystemService(android.content.ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString() == sample }, "Native Source Copy excludes all display-only caret characters")
+                }
+                main { model.textState?.edit { selection = androidx.compose.ui.text.TextRange(end) } }; ready()
+                val token = main { model.editToken() }
+                main { model.applyEditorEdit(MarkdownEdits.applyEdits(sample, listOf(SourceEdit(SourceRange(end,end), "!")), TextSelection(end,end)), token) }; ready()
+                verify(main { model.textState?.text.toString() == sample.substring(0,end) + "!" + sample.substring(end) }, "$label insertion at the upstream visual caret edits the exact raw boundary")
+                main { model.undo() }; ready()
+                verify(main { model.textState?.text.toString() == sample }, "$label display-only caret wedge never enters undo or saved source")
+            }
+        } finally {
+            main { model.go(Page.Recent) }; ready(); main { model.delete(id) }; ready()
+        }
+    }
+
+    private fun viewSwitchBenchmark() {
+        val unit = "## 长文章节 😀\n\n这是 **粗体** 与 *斜体*，包含 [链接](https://example.com) 的正文。\n\n- [ ] 待完成任务\n- [x] 已完成任务\n\n> 引用的中文段落。\n\n"
+        val points = unit.codePointCount(0, unit.length)
+        val sample = unit.repeat(100_000 / points) + "中".repeat(100_000 % points)
+        val id = runBlocking { withContext(Dispatchers.IO) { currentStore().create("视图切换十万码点", Workspace.ROOT, DocumentKind.Markdown, sample) } }
+        try {
+            main { model.reload() }; ready(); main { model.open(id) }; ready()
+            waitFor("switch sample parsed", 60_000) { main { model.markdownDocument?.source == sample } }
+            main { model.textState?.edit { selection = androidx.compose.ui.text.TextRange(0) } }
+            click("源码"); ready()
+            repeat(3) { pass ->
+                for ((label, tag) in listOf("排版" to "typeset-editor", "阅读" to "reading-view", "排版" to "typeset-editor", "源码" to "source-editor")) {
+                    val tab = composeNodes().first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label) == true && it.config.getOrNull(SemanticsActions.OnClick) != null }
+                    val done = java.util.concurrent.CountDownLatch(1)
+                    var elapsed = 0L
+                    val start = System.nanoTime()
+                    main {
+                        val view = checkNotNull(currentActivity).window.decorView
+                        val listener = object : android.view.ViewTreeObserver.OnDrawListener {
+                            override fun onDraw() {
+                                if (composeNodesOnMain().any { it.config.getOrNull(SemanticsProperties.TestTag) == tag }) {
+                                    elapsed = System.nanoTime() - start
+                                    view.post { view.viewTreeObserver.removeOnDrawListener(this); done.countDown() }
+                                }
+                            }
+                        }
+                        view.viewTreeObserver.addOnDrawListener(listener)
+                        checkNotNull(tab.config.getOrNull(SemanticsActions.OnClick)?.action).invoke()
+                    }
+                    check(done.await(60, java.util.concurrent.TimeUnit.SECONDS)) { "Switch draw timed out: $label" }
+                    sendStatus(0, Bundle().apply { putString("stream", "VIEW_SWITCH pass=$pass mode=$label first_draw_ms=${elapsed / 1_000_000.0}\n") })
+                    SystemClock.sleep(400); waitForIdleSync()
+                }
+            }
+            verify(main { model.textState?.text.toString() == sample }, "All measured switches preserve the 100000-point source")
+        } finally {
+            main { model.go(Page.Recent) }; ready(); main { model.delete(id) }; ready()
+        }
+    }
+
+    private fun composeNodes(): List<SemanticsNode> = main { composeNodesOnMain() }
+    private fun composeNodesOnMain(): List<SemanticsNode> {
         fun owner(view: android.view.View): SemanticsOwner? {
             if (view.javaClass.simpleName == "AndroidComposeView") return view.javaClass.getMethod("getSemanticsOwner").invoke(view) as SemanticsOwner
             if (view is android.view.ViewGroup) for (i in 0 until view.childCount) owner(view.getChildAt(i))?.let { return it }
             return null
         }
-        checkNotNull(owner(checkNotNull(currentActivity).window.decorView)).getAllSemanticsNodes(mergingEnabled = false)
+        return checkNotNull(owner(checkNotNull(currentActivity).window.decorView)).getAllSemanticsNodes(mergingEnabled = false)
     }
 
     private fun textLayouts(): List<Pair<SemanticsNode, TextLayoutResult>> {
@@ -792,12 +972,19 @@ class WorkspaceInstrumentation : Instrumentation() {
     }
 
     private fun revealNavigation() {
-        val track = composeNodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == "fast-scroller" }?.boundsInWindow ?: return
-        val reader = main { model.ui.editorMode == EditorMode.Reading && model.ui.workspace?.entry(model.ui.activeId.orEmpty())?.kind == DocumentKind.Markdown }
-        val before = main { if (reader) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value }
+        val node = composeNodes().first { it.config.getOrNull(SemanticsProperties.TestTag) in listOf("source-editor", "typeset-editor", "reading-view") }
+        val area = node.boundsInWindow
         val display = targetContext.resources.displayMetrics
-        swipe(track.center.x / display.widthPixels, track.center.y / display.heightPixels, track.center.x / display.widthPixels, (track.center.y + 32 * display.density) / display.heightPixels)
-        runBlocking { withContext(Dispatchers.Main) { if (reader) model.readingList.scrollToItem(before.first, before.second) else model.editorScroll.scrollTo(before.second) } }
+        val start = SystemClock.uptimeMillis()
+        val up = if (main { model.editorScroll.value < model.editorScroll.maxValue / 2 }) true else false
+        for (step in 0..13) {
+            val fraction = step.coerceAtMost(12) / 12f
+            val action = when(step) { 0 -> MotionEvent.ACTION_DOWN; 13 -> MotionEvent.ACTION_UP; else -> MotionEvent.ACTION_MOVE }
+            val y = if (up) area.top + area.height * (.85f - .75f*fraction) else area.top + area.height * (.15f + .75f*fraction)
+            MotionEvent.obtain(start,start+step*12L,action,display.widthPixels*.5f,y,0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }.let { check(uiAutomation.injectInputEvent(it,true)); it.recycle() }
+            SystemClock.sleep(12)
+        }
+        waitFor("fast fling settled") { main { !model.editorScroll.isScrollInProgress } }
         ready()
     }
 
@@ -829,16 +1016,16 @@ class WorkspaceInstrumentation : Instrumentation() {
                     verify(kotlin.math.abs(body.bottom - info.top) <= 1f, "$index $mode body scroll viewport meets information row without an outside margin")
                     SystemClock.sleep(3400)
                     verify(!rail(), "$index $mode navigation is hidden at rest")
-                    val before = main { if (reading) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value }
-                    val x = body.right + if (reading) -8 * display.density else 16 * display.density
+                    val before = main { 0 to model.editorScroll.value }
+                    val x = body.right + 16 * display.density
                     tapAt(x, body.center.y)
-                    verify(!rail() && main { (if (reading) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value) == before }, "$index $mode single side tap neither reveals nor seeks")
+                    verify(!rail() && main { (0 to model.editorScroll.value) == before }, "$index $mode single side tap neither reveals nor seeks")
                     swipe(x / display.widthPixels, (body.top + body.height * .35f) / display.heightPixels, x / display.widthPixels, (body.top + body.height * .6f) / display.heightPixels)
-                    verify(rail(), "$index $mode deliberate side drag reveals navigation")
+                    verify(!rail(), "$index $mode side drag never reveals navigation")
                     screenshot("geometry-$index-$mode-navigation")
                     SystemClock.sleep(3400)
                     verify(!rail(), "$index $mode navigation hides three seconds after dragging")
-                    if (reading) runBlocking { withContext(Dispatchers.Main) { model.readingList.scrollToItem(0) } }
+                    if (reading) runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }
                     else runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }
                     ready()
                     val scrollSamples = mutableListOf<String>()
@@ -856,9 +1043,12 @@ class WorkspaceInstrumentation : Instrumentation() {
                     main { observer.cancel() }
                     sendStatus(0, Bundle().apply { putString("stream", "Fast swipe $index $mode: ${scrollSamples.joinToString()}\n") })
                     verify(rail(), "$index $mode fast long body swipe reveals navigation")
-                    if (reading) runBlocking { withContext(Dispatchers.Main) { model.readingList.scrollToItem(0) } }
+                    if (reading) runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }
                     else runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }
                     ready()
+                    // The thumb legitimately owns this edge while visible. Test body
+                    // caret affinity only after the previous fast swipe has timed out.
+                    SystemClock.sleep(3400)
                     screenshot("geometry-$index-$mode-top")
                     if (mode != EditorMode.Reading) {
                         val (node, result) = textLayouts().first { it.first.config.getOrNull(SemanticsProperties.TestTag) in listOf("source-editor", "typeset-editor") }
@@ -877,10 +1067,13 @@ class WorkspaceInstrumentation : Instrumentation() {
                             verify(kotlin.math.abs(result.getLineBaseline(secondLine) - result.getLineBaseline(lastListLine) - normal) < 2, "Typeset adjacent list items use the normal baseline spacing without extra empty paragraphs")
                         }
                         tapAt(node.boundsInWindow.right - 2, node.boundsInWindow.top + (result.getLineTop(0) + result.getLineBottom(0)) / 2)
+                        sendStatus(0,Bundle().apply { putString("stream",main { "GEOMETRY_EDGE $index $mode expected=$end actual=${model.currentSelection()} scroll=${model.editorScroll.value} bounds=${node.boundsInWindow}\n" }) })
+                        screenshot("geometry-edge-before-assert-$index-$mode")
                         verify(main { model.currentSelection().min == end && model.currentSelection().max == end }, "$index $mode soft-wrap edge uses the next-line start editing offset")
                         screenshot("geometry-$index-$mode-trailing-cursor")
-                        val caret = result.getCursorRect(end - 1)
-                        val caretX = (node.boundsInWindow.left + result.getLineRight(0)).toInt().coerceAtMost(display.widthPixels - 2)
+                        val liveResult = textLayouts().first { it.first.config.getOrNull(SemanticsProperties.TestTag) in listOf("source-editor", "typeset-editor") }.second
+                        val caret = liveResult.getCursorRect(end)
+                        val caretX = (node.boundsInWindow.left + caret.left).toInt().coerceAtMost(display.widthPixels - 2)
                         val caretTop = (node.boundsInWindow.top + caret.top).toInt()
                         val caretBottom = (node.boundsInWindow.top + caret.bottom).toInt()
                         var visibleCaret = false
@@ -904,15 +1097,6 @@ class WorkspaceInstrumentation : Instrumentation() {
                         main { model.applyEditorEdit(MarkdownEdits.applyEdits(sample, listOf(SourceEdit(SourceRange(end,end), "!")), TextSelection(end,end)), token) }; ready()
                         verify(main { model.textState?.text.toString() == sample.substring(0,end) + "!" + sample.substring(end) }, "$index $mode inserting at visual line end edits the shared boundary")
                         main { model.undo() }; ready()
-                    }
-                    if (reading) {
-                        val layouts = textLayouts()
-                        val first = layouts.first { it.second.layoutInput.text.text.startsWith("First list") }
-                        val second = layouts.first { it.second.layoutInput.text.text.startsWith("Second list") }
-                        val lastBaseline = first.first.boundsInWindow.top + first.second.getLineBaseline(first.second.lineCount - 1)
-                        val nextBaseline = second.first.boundsInWindow.top + second.second.getLineBaseline(0)
-                        val normal = first.second.getLineBaseline(1) - first.second.getLineBaseline(0)
-                        verify(kotlin.math.abs(nextBaseline - lastBaseline - normal) < 2, "Reading list item boundary keeps the same baseline spacing as wrapped text")
                     }
                     verify(main { model.textState?.text.toString() == sample }, "$index $mode navigation and cursor actions preserve source after undo")
                 }
@@ -938,11 +1122,11 @@ class WorkspaceInstrumentation : Instrumentation() {
                 if (index == 1) { click("源码"); ready() }
                 val modes = if (index == 0) listOf("编辑", "阅读", "编辑") else listOf("源码", "排版", "阅读", "源码", "阅读", "排版")
                 for ((from, to) in modes.zipWithNext()) {
-                    if (main { model.ui.editorMode == EditorMode.Reading } && index == 1) runBlocking { withContext(Dispatchers.Main) { model.readingList.scrollToItem(0) } }
+                    if (main { model.ui.editorMode == EditorMode.Reading } && index == 1) runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }
                     else runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }
                     ready()
                     val tab = Rect().also(find(to)::getBoundsInScreen)
-                    val node = if (from == "阅读" && index == 1) find(sample.substringBefore('\n')) else find("编辑正文")
+                    val node = find("编辑正文")
                     val area = Rect().also(node::getBoundsInScreen)
                     val x = area.left + 35 * density; val y = area.top + 12 * density
                     val start = SystemClock.uptimeMillis()
@@ -996,7 +1180,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 if (index == 1) waitFor("selection Markdown parsed") { main { model.markdownDocument?.source == sample } }
                 click("阅读"); ready()
                 val revision = main { model.editorRevision }
-                val node = if (index == 0) find("编辑正文") else find(sample.substringBefore("\n"))
+                val node = find("编辑正文")
                 val area = Rect().also(node::getBoundsInScreen)
                 press(area.left+35*density,area.top+12*density)
                 if (index == 0) verify(main { model.currentSelection().let { it.min < it.max } }, "Plain reading real long press selects a word")
@@ -1029,19 +1213,9 @@ class WorkspaceInstrumentation : Instrumentation() {
         val plain = (1..220).joinToString("\n") { "第${it}行，阳光穿过树叶，慢慢落在窗台。阅读与编辑都在这里继续。" }
         val markdown = "# 羽化长文\n\n" + (1..220).joinToString("\n") { "第${it}行，**阳光穿过树叶**，慢慢落在窗台。阅读与编辑都在这里继续。" }
         val density = targetContext.resources.displayMetrics.density
-        var readerViewport: Rect? = null
         fun fade(value: Boolean) { main { model.preferences(fadeDocumentEdges = value) }; ready() }
         fun capture() = checkNotNull(uiAutomation.takeScreenshot())
-        fun bodyBounds(readingMarkdown: Boolean): Rect {
-            if (!readingMarkdown) return Rect().also(find(main { model.languages.context().getString(R.string.edit_body) })::getBoundsInScreen)
-            val node = nodes().filter { it.isScrollable }.maxByOrNull { Rect().also(it::getBoundsInScreen).height() }
-            if (node != null) return Rect().also(node::getBoundsInScreen).also { readerViewport = it }
-            // A short reader intentionally exposes no scroll action. Its viewport still has
-            // the same measured bounds as the long reader in this unchanged screen layout.
-            return Rect(checkNotNull(readerViewport)).also { area ->
-                check(main { model.readingList.layoutInfo.viewportSize.height == area.height() && !model.readingList.canScrollForward && !model.readingList.canScrollBackward })
-            }
-        }
+        fun bodyBounds(readingMarkdown: Boolean): Rect = Rect().also(find(main { model.languages.context().getString(R.string.edit_body) })::getBoundsInScreen)
         fun differences(a: android.graphics.Bitmap, b: android.graphics.Bitmap, area: Rect): Int {
             var count = 0
             for (y in area.top.coerceAtLeast(0) until area.bottom.coerceAtMost(a.height)) for (x in area.left.coerceAtLeast(0) until area.right.coerceAtMost(a.width)) {
@@ -1064,9 +1238,9 @@ class WorkspaceInstrumentation : Instrumentation() {
         fun scroll(reading: Boolean, fraction: Float) {
             runBlocking { withContext(Dispatchers.Main) {
                 if (!reading) model.editorScroll.scrollTo((model.editorScroll.maxValue*fraction).toInt())
-                else if (fraction <= 0) model.readingList.scrollToItem(0)
-                else if (fraction >= 1) model.readingList.scrollToItem(checkNotNull(model.markdownDocument).root.children.size)
-                else model.readingList.scrollToItem(1, 12000)
+                else if (fraction <= 0) model.editorScroll.scrollTo(0)
+                else if (fraction >= 1) model.editorScroll.scrollTo(model.editorScroll.maxValue)
+                else model.editorScroll.scrollTo(model.editorScroll.maxValue/2)
             } }; ready()
         }
         fun compare(label: String, reading: Boolean, place: String) {
@@ -1075,7 +1249,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             val (top,bottom,middle) = edges(area)
             val field = main { model.textState }
             val selection = main { model.currentSelection() }
-            val beforeScroll = main { if (reading) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value }
+            val beforeScroll = main { 0 to model.editorScroll.value }
             try {
                 fade(false); val off = capture()
                 try {
@@ -1089,7 +1263,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                     if (centralChanges > 0) {
                         File(targetContext.cacheDir, "workspace-test-fade-diagnostic-on.png").outputStream().use { on.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
                         File(targetContext.cacheDir, "workspace-test-fade-diagnostic-off.png").outputStream().use { off.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
-                        sendStatus(0, Bundle().apply { putString("stream", main { "Fade center changes=$centralChanges before=$beforeScroll now=${if(reading) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value} max=${model.editorScroll.maxValue} parsed=${model.markdownDocument?.source == model.textState?.text?.toString()}\n" }) })
+                        sendStatus(0, Bundle().apply { putString("stream", main { "Fade center changes=$centralChanges before=$beforeScroll now=${0 to model.editorScroll.value} max=${model.editorScroll.maxValue} parsed=${model.markdownDocument?.source == model.textState?.text?.toString()}\n" }) })
                     }
                     verify(centralChanges == 0, "$label $place leaves central document pixels unchanged")
                     val rail = nodes().firstOrNull { it.contentDescription?.toString() == "快速滚动" }
@@ -1101,7 +1275,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                     }
                 } finally { off.recycle() }
             } finally { on.recycle() }
-            verify(main { model.textState === field && model.currentSelection() == selection && (if (reading) model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset else 0 to model.editorScroll.value) == beforeScroll }, "$label $place toggle retains the native buffer, selection and scroll position")
+            verify(main { model.textState === field && model.currentSelection() == selection && (0 to model.editorScroll.value) == beforeScroll }, "$label $place toggle retains the native buffer, selection and scroll position")
         }
         try {
             shell("settings put system font_scale 1.0"); ready()
@@ -1229,9 +1403,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                     val bitmap = checkNotNull(uiAutomation.takeScreenshot())
                     try {
                         val rail = axis(bitmap, bounds("快速滚动"), side)
-                        val up = axis(bitmap, bounds("回到顶部"), side)
-                        val down = axis(bitmap, bounds("回到底部"), side)
-                        verify(kotlin.math.abs(up-rail) <= 2 && kotlin.math.abs(down-rail) <= 2, "$side $inset: rendered scrollbar and jump buttons share the same visual axis")
+                        verify(nodes().none { it.contentDescription?.toString() in listOf("回到顶部", "回到底部") }, "$side $inset: navigation contains no jump buttons")
                         if (inset == NavigationInset.Standard) standardAxis = rail
                         else verify(kotlin.math.abs(kotlin.math.abs(rail-standardAxis)-16*density) <= 2, "$side wide inset moves the rendered control axis 16dp inward")
                     } finally { bitmap.recycle() }
@@ -1314,118 +1486,75 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.open(saved[0]) }; ready()
             waitFor("cold restart restored") { main { model.editorScroll.value > 0 && model.editorAnchor == saved[1].toInt() } }
             verify(main { model.ui.editorMode == EditorMode.Reading }, "Cold process reopens the last plain-text reading mode and viewport")
-            verify(!find(targetContext.getString(R.string.edit_body)).isEditable, "Cold restored plain-text reader is locked")
+            verify(!find(targetContext.getString(R.string.edit_body)).actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }, "Cold restored plain-text reader is locked")
             screenshot("navigation-cold-resume")
             main { model.go(Page.Recent) }; ready(); main { model.delete(saved[0]) }; ready()
             return
         }
         val original = main { checkNotNull(model.ui.workspace) }
-        val oldFont = shell("settings get system font_scale")
-        val oldScreen = Regex("Override size: (\\d+x\\d+)").find(shell("wm size"))?.groupValues?.get(1)
         val ids = mutableListOf<String>()
-        val plain = (1..350).joinToString("\n") { "第${it}行，阳光穿过树叶，缓缓落在安静的窗台上。这里可以继续记录今天的故事。😀" }
-        val markdown = (1..60).joinToString("\n\n") { "## 第${it}章\n\n一段**粗体**与普通正文。" + "慢慢阅读，观察行间的留白。".repeat(12) + "\n\n> 窗外有风，书页轻轻翻动。\n\n- 记录一个想法\n- 留下另一句话" }
+        val plain = (1..350).joinToString("\n") { "第${it}行，阳光穿过树叶，缓缓落在安静的窗台。😀" }
+        val markdown = (1..120).joinToString("\n\n") { "## 第${it}章\n\n一段**粗体**与普通正文。" + "慢慢阅读，观察行间的留白。".repeat(6) + "\n\n- 记录一个想法\n- 留下另一句话" }
+        val display = targetContext.resources.displayMetrics
+        fun tapAt(x: Float, y: Float) {
+            val start = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) MotionEvent.obtain(start,SystemClock.uptimeMillis(),action,x,y,0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }.let { check(uiAutomation.injectInputEvent(it,true)); it.recycle() }
+            ready()
+        }
+        fun thumb() = composeNodes().first { it.config.getOrNull(SemanticsProperties.TestTag) == "fast-scroll-thumb" }
         try {
             runBlocking { withContext(Dispatchers.IO) {
-                val store = currentStore()
-                ids += store.create("长文导航纯文本", Workspace.ROOT, DocumentKind.Plain, plain)
-                ids += store.create("长文导航Markdown", Workspace.ROOT, DocumentKind.Markdown, markdown)
-                ids += store.create("短文导航", Workspace.ROOT, DocumentKind.Plain, "只有一行。")
-                ids += store.create("单段长文导航", Workspace.ROOT, DocumentKind.Markdown, "长段落文字".repeat(1800))
+                ids += currentStore().create("长文导航纯文本",Workspace.ROOT,DocumentKind.Plain,plain)
+                ids += currentStore().create("长文导航Markdown",Workspace.ROOT,DocumentKind.Markdown,markdown)
+                ids += currentStore().create("短文导航",Workspace.ROOT,DocumentKind.Plain,"只有一行。")
             } }
-            main { model.reload() }; ready(); main { model.open(ids[2]) }; ready()
-            verify(!visible("快速滚动") && !visible("回到顶部") && !visible("回到底部"), "Short documents hide all long-document controls")
-            verify(visible("编辑") && visible("阅读") && !visible("排版"), "Plain text provides exactly edit and read mode tabs")
-            main { model.go(Page.Recent) }; ready(); main { model.open(ids[0]) }; ready()
-            verify(!visible("快速滚动"), "Long documents start with navigation hidden")
-            revealNavigation()
-            waitFor("long controls") { visible("快速滚动") && visible("回到底部") }
-            verify(!visible("回到顶部"), "At the top only the bottom jump is shown")
-            scroll(0.5f)
-            val middle = main { model.editorScroll.value }
-            val selection = main { model.currentSelection() }
-            click("阅读"); ready()
-            verify(main { model.ui.editorMode == EditorMode.Reading && kotlin.math.abs(model.editorScroll.value - middle) <= 2 }, "Plain-text hot switch retains scroll progress")
-            val reader = find(targetContext.getString(R.string.edit_body))
-            verify(!reader.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }, "Plain-text reading exposes no edit action")
-            verify(body() == plain && main { model.currentSelection() == selection }, "Reading preserves body, selection and shared session")
-            click("编辑"); ready()
-            verify(kotlin.math.abs(main { model.editorScroll.value } - middle) <= 2, "Returning to edit keeps the reading viewport")
-            click(main { model.languages.context().getString(R.string.item_actions) }); click("行距: 宽"); ready()
-            verify(main { model.ui.workspace?.editorLineSpacing == EditorLineSpacing.Wide }, "Real menu selects global wide spacing")
-            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
-            val wideRange = main { model.editorScroll.maxValue }
-            val anchor = main { model.editorAnchor }
-            main { model.preferences(editorLineSpacing = EditorLineSpacing.Narrow) }; ready()
-            verify(main { model.editorScroll.maxValue < wideRange && kotlin.math.abs(model.editorAnchor - anchor) < 100 }, "Narrow spacing changes layout and retains the source neighborhood")
-            verify(body() == plain, "Spacing never edits document content")
-            main { model.preferences(navigationSide = NavigationSide.Left) }; ready()
-            revealNavigation()
-            val left = Rect().also { find("快速滚动").getBoundsInScreen(it) }
-            verify(left.left < 40, "Left-side preference moves the actual fast-scroll touch region")
+            main { model.reload() }; ready()
             main { model.preferences(navigationSide = NavigationSide.Right) }; ready()
-            revealNavigation()
-            val right = Rect().also { find("快速滚动").getBoundsInScreen(it) }
-            verify(right.left > left.right, "Right-side preference moves all navigation controls together")
-            val beforeSeek = main { model.editorScroll.value }
-            val scroller = find("快速滚动")
-            verify(scroller.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id, Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, .8f) }), "Fast scroller supports accessible progress actions")
-            waitFor("accessible seek") { main { model.editorScroll.value > beforeSeek } }
-            val touch = Rect().also { find("快速滚动").getBoundsInScreen(it) }
-            swipe(touch.centerX().toFloat() / targetContext.resources.displayMetrics.widthPixels, (touch.top + touch.height() * .2f) / targetContext.resources.displayMetrics.heightPixels, touch.centerX().toFloat() / targetContext.resources.displayMetrics.widthPixels, (touch.top + touch.height() * .65f) / targetContext.resources.displayMetrics.heightPixels)
-            ready()
-            verify(main { model.editorScroll.value in (model.editorScroll.maxValue * .55f).toInt()..(model.editorScroll.maxValue * .8f).toInt() }, "Physical dragging seeks long text without moving the caret")
-            verify(main { model.currentSelection() == selection } && body() == plain, "Fast navigation preserves selection, undo buffer and source")
-            click("回到顶部"); ready()
-            verify(main { model.editorScroll.value == 0 } && !visible("回到顶部"), "Top jump reaches zero and hides near the top")
-            click("回到底部"); ready()
-            verify(main { model.editorScroll.value == model.editorScroll.maxValue } && !visible("回到底部"), "Bottom jump reaches the end and hides near the bottom")
-            scroll(.45f); click("阅读"); ready()
-            val remembered = main { model.editorAnchor }
-            main { model.go(Page.Recent) }; ready(); main { model.open(ids[0]) }; ready()
-            verify(main { model.editorAnchor == remembered && model.ui.editorMode == EditorMode.Reading }, "Reopening plain text restores its last viewport and mode")
-            main { currentActivity?.recreate() }; ready()
-            verify(main { model.editorAnchor == remembered && model.editorScroll.value > 0 }, "Activity recreation retains the document viewport")
-            main { model.go(Page.Recent) }; ready(); main { model.open(ids[1]) }; ready()
-            waitFor("Markdown parsed") { main { model.markdownDocument?.source == markdown } }
-            click("源码"); ready(); scroll(.4f)
-            val codeAnchor = main { model.editorAnchor }
-            click("阅读"); ready()
-            verify(main { kotlin.math.abs(model.readingAnchor - codeAnchor) < 400 }, "Markdown source-to-reader switches retain the source block")
-            revealNavigation()
-            verify(visible("快速滚动") && visible("回到顶部") && visible("回到底部"), "Markdown reader reveals long-document navigation after side dragging")
-            click("回到底部"); ready()
-            verify(main { !model.readingList.canScrollForward }, "Markdown bottom jump reaches the final block")
-            click("回到顶部"); ready()
-            verify(main { !model.readingList.canScrollBackward }, "Markdown top jump reaches the first block")
-            runBlocking { withContext(Dispatchers.Main) { model.readingList.scrollToItem(100, 32) } }; ready()
-            val mdAnchor = main { model.readingAnchor }
-            main { model.go(Page.Recent) }; ready(); main { model.open(ids[1]) }; ready()
-            waitFor("Markdown reader restore") { main { model.readingAnchor == mdAnchor && model.readingList.firstVisibleItemIndex > 0 } }
-            verify(body() == markdown, "Markdown reopening restores reader viewport without rewriting source")
-            screenshot("navigation-markdown-reading")
-            main { model.go(Page.Recent) }; ready(); main { model.open(ids[3]) }; ready(); click("阅读"); ready()
-            revealNavigation()
-            verify(visible("快速滚动"), "A single long Markdown paragraph also gets a fast scroller")
-            click("回到底部"); ready()
-            verify(main { !model.readingList.canScrollForward }, "Single-paragraph Markdown reaches its end")
-            main { model.go(Page.Recent) }; ready(); main { model.open(ids[0]) }; ready()
-            shell("wm size 840x1600"); shell("settings put system font_scale 2.0")
-            waitFor("navigation 200 percent") { main { currentActivity?.resources?.configuration?.fontScale == 2f } }; ready()
-            click(main { model.languages.context().getString(R.string.item_actions) }); screenshot("navigation-zh-200-menu")
-            verify(visible("行距: 宽") && visible("行距: 中") && visible("行距: 窄"), "Chinese spacing choices fit 320dp at 200 percent")
-            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
-            main { model.changeLanguage("en") }; ready()
-            click(main { model.languages.context().getString(R.string.item_actions) }); screenshot("navigation-en-200-menu")
-            verify(visible("Line spacing: Wide") && visible("Line spacing: Narrow"), "English spacing choices remain accessible at 200 percent")
-            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready(); screenshot("navigation-en-200-reader")
+            for ((index,id) in ids.take(2).withIndex()) {
+                main { model.open(id) }; ready()
+                if (index == 1) waitFor("navigation parsed") { main { model.markdownDocument?.source == markdown } }
+                for (mode in if (index == 0) listOf(EditorMode.Source,EditorMode.Reading) else EditorMode.entries) {
+                    val label = when(mode) { EditorMode.Source -> if(index==0) "编辑" else "源码"; EditorMode.Typeset -> "排版"; EditorMode.Reading -> "阅读" }
+                    if (main { model.ui.editorMode != mode }) { click(label); ready() }
+                    scroll(.3f)
+                    SystemClock.sleep(3300)
+                    verify(!visible("快速滚动"), "$index $mode is hidden after programmatic scroll and inactivity")
+                    revealNavigation()
+                    verify(visible("快速滚动") && !visible("回到顶部") && !visible("回到底部"), "$index $mode fast body gesture reveals only a draggable thumb")
+                    val before = main { model.editorScroll.value }
+                    val selection = main { model.currentSelection() }
+                    val track = composeNodes().first { it.config.getOrNull(SemanticsProperties.TestTag) == "fast-scroller" }.boundsInWindow
+                    val handle = thumb().boundsInWindow
+                    val emptyY = if (handle.center.y > track.center.y) track.top + 8 else track.bottom - 8
+                    tapAt(handle.center.x,emptyY)
+                    verify(main { model.editorScroll.value == before }, "$index $mode tapping the rail never seeks")
+                    val now = thumb()
+                    verify(now.config.getOrNull(SemanticsActions.SetProgress) == null && now.config.getOrNull(SemanticsActions.OnClick) == null, "$index $mode thumb exposes no click or progress-jump action")
+                    val targetY = if (handle.center.y < track.center.y) track.bottom - 12 else track.top + 12
+                    swipe(handle.center.x/display.widthPixels,handle.center.y/display.heightPixels,handle.center.x/display.widthPixels,targetY/display.heightPixels)
+                    ready()
+                    verify(main { kotlin.math.abs(model.editorScroll.value-before) > model.editorScroll.maxValue*.2f && model.currentSelection() == selection }, "$index $mode dragging the actual thumb seeks without moving the editing selection")
+                    verify(body() == if(index==0) plain else markdown, "$index $mode navigation preserves source")
+                }
+                scroll(.4f)
+                val remembered = main { model.editorAnchor }
+                main { model.go(Page.Recent) }; ready(); main { model.open(id) }; ready()
+                sendStatus(0,Bundle().apply { putString("stream",main { "NAV_REOPEN $index expected=$remembered actual=${model.editorAnchor} scroll=${model.editorScroll.value}\n" }) })
+                verify(main { kotlin.math.abs(model.editorAnchor-remembered) < 100 && model.editorScroll.value > 0 }, "$index shared viewport survives reopening")
+                main { model.go(Page.Recent) }; ready()
+            }
+            main { model.open(ids[0]) }; ready()
+            main { model.preferences(navigationSide = NavigationSide.Left) }; ready()
+            revealNavigation(); val left = thumb().boundsInWindow
+            main { model.preferences(navigationSide = NavigationSide.Right) }; ready()
+            revealNavigation(); val right = thumb().boundsInWindow
+            verify(left.left < 40 && right.left > left.right, "Left and right preferences position the actual thumb hit target")
+            main { model.go(Page.Recent) }; ready(); main { model.open(ids[2]) }; ready()
+            verify(composeNodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "fast-scroller" }, "Short text has no navigation rail or thumb")
         } finally {
-            shell(if (oldScreen == null) "wm size reset" else "wm size $oldScreen")
-            shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
-            main { model.changeLanguage("zh-Hans") }; ready()
             main { model.go(Page.Recent) }; ready()
-            ids.forEach { id -> main { model.delete(id) }; ready() }
-            main { model.preferences(editorLineSpacing = original.editorLineSpacing, navigationSide = original.navigationSide) }; ready()
+            ids.forEach { main { model.delete(it) }; ready() }
+            main { model.preferences(navigationSide = original.navigationSide) }; ready()
         }
     }
 
@@ -1788,7 +1917,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             screenshot("trash-menu")
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); ready()
             click("编辑删除-$stamp"); ready()
-            verify(nodes().any { it.text?.toString() == "删除前最新输入 😀" } && nodes().none { it.isEditable }, "Trash preview contains latest saved body and is read only")
+            verify(nodes().any { it.text?.toString() == "删除前最新输入 😀" } && nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } }, "Trash preview contains latest saved body and is read only")
             click("恢复"); ready()
             verify(main { model.ui.workspace?.entry(ids[4]) != null && model.trashPreview == null }, "Preview restore returns draft to original root")
             val restored = main { checkNotNull(model.trashRestored) }
@@ -3451,7 +3580,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(main { model.textState!!.text.toString() == dense }, "Dense Markdown typeset projection preserves all source")
             started = SystemClock.uptimeMillis(); click("阅读"); waitForIdleSync()
             sendStatus(0, Bundle().apply { putString("stream", "Dense Markdown reading_switch_ms=${SystemClock.uptimeMillis() - started}\n") })
-            verify(nodes().none { it.isEditable }, "Long Markdown reading uses a non-editable lazy viewport")
+            verify(nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } }, "Long Markdown reading uses a non-editable lazy viewport")
             click("源码")
             val emoji = "😀".repeat(100_000)
             started = SystemClock.uptimeMillis(); setText("编辑正文", emoji); saved(60_000)
@@ -3555,7 +3684,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
             main { connection().setComposingText("读", 1) }; val composing = body()
             click("阅读"); saved(); parsed()
-            verify(body() == composing && nodes().none { it.isEditable }, "Switching to reading during cell composition keeps visible input and becomes read-only")
+            verify(body() == composing && nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } }, "Switching to reading during cell composition keeps visible input and becomes read-only")
             click("源码"); verify(body() == composing && source(id, DocumentKind.Markdown) == composing, "Source view receives exact cell edits")
             click("排版")
             val pending = File(workspaceDirectory(), "documents/$id/body.md.new")
@@ -3622,10 +3751,10 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("撤销"); saved(); parsed()
             verify(body() == flowing, "Undo restores a cell edited after document scrolling")
             click("阅读"); ready()
-            runBlocking { withContext(Dispatchers.Main) { model.readingList.scrollToItem(0) } }; ready()
-            val readingBefore = main { model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset }
+            runBlocking { withContext(Dispatchers.Main) { model.editorScroll.scrollTo(0) } }; ready()
+            val readingBefore = main { 0 to model.editorScroll.value }
             swipe(.2f, .7f, .2f, .4f)
-            verify(main { (model.readingList.firstVisibleItemIndex to model.readingList.firstVisibleItemScrollOffset) != readingBefore }, "Reading table drags scroll the document rather than a nested table")
+            verify(main { (0 to model.editorScroll.value) != readingBefore }, "Reading table drags scroll the document rather than a nested table")
             click("源码"); setText("编辑正文", "| A | B |\n| --- | --- |\n| 短 | 后 |\n\n表后"); saved(); parsed()
             main { model.textState!!.edit { selection = androidx.compose.ui.text.TextRange(0) }; model.editorMode(EditorMode.Typeset) }; hideKeyboard(); ready()
             val compact = rect("表格第 2 行，第 1 列")
@@ -3856,13 +3985,13 @@ class WorkspaceInstrumentation : Instrumentation() {
             waitFor("typeset jumped to formatted Setext heading") { main { model.editorAnchor == setext } }
             verify(main { model.currentSelection() == TextSelection(2, 4) }, "Typeset maps a formatted Setext heading to its displayed line without moving the selection")
             click("阅读")
-            waitFor("reading retained outline anchor") { main { model.readingAnchor == setext } }
+            waitFor("reading retained outline anchor") { main { model.editorAnchor == setext } }
             click("大纲"); click("开始")
-            waitFor("reader jumped to document start") { main { model.readingAnchor == 0 } }
+            waitFor("reader jumped to document start") { main { model.editorAnchor == 0 } }
             click("大纲")
             verify(activeSection("开始") && !activeSection("H3"), "Reading highlights its own viewport position")
             click("H3")
-            waitFor("reading jumped by source identity") { main { model.readingAnchor == second } }
+            waitFor("reading jumped by source identity") { main { model.editorAnchor == second } }
             click("源码"); click("大纲")
             waitFor("source outline finishes restoring the selected section") { activeSection("H3") }
             val matches = nodes().filter { it.text?.toString() == "同名" }
@@ -3887,7 +4016,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             click("关闭大纲")
         } catch (e: Exception) {
             screenshot("outline-failure")
-            val outlineState = main { "anchor=${model.editorAnchor}, readingAnchor=${model.readingAnchor}, selection=${model.currentSelection()}, undo=${model.canUndo}" }
+            val outlineState = main { "anchor=${model.editorAnchor}, readingAnchor=${model.editorAnchor}, selection=${model.currentSelection()}, undo=${model.canUndo}" }
             sendStatus(0, Bundle().apply { putString("stream", "Outline state: $outlineState, keyboard=${keyboardVisible()}\n") })
             throw e
         } finally {
@@ -3910,7 +4039,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             main { model.preferences(theme = ColorTheme.Paper) }; ready()
             main { model.changeLanguage("en") }; ready()
             main { model.editorMode(EditorMode.Reading) }; ready(); screenshot("markdown-reading-en-light")
-            verify(nodes().none { it.isEditable } && nodes().any { it.text?.toString() == "Reading" }, "English light-theme reading stays read-only")
+            verify(nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } } && nodes().any { it.text?.toString() == "Reading" }, "English light-theme reading stays read-only")
             verify(nodes().any { it.isHeading }, "Reading exposes real accessibility heading semantics")
             verify(nodes().any { it.isCheckable && !it.isClickable }, "Reading task semantics expose state without a mutating click action")
             shell("wm size 840x1800"); shell("settings put system font_scale 2.0")
@@ -3927,7 +4056,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             shell("settings put system font_scale 1.0"); shell("wm size 1800x840")
             waitFor("landscape layout", 30_000) { main { currentActivity!!.resources.configuration.screenWidthDp > currentActivity!!.resources.configuration.screenHeightDp && currentActivity!!.resources.configuration.fontScale <= 1.01f } }; ready()
             main { model.editorMode(EditorMode.Reading) }; ready(); screenshot("markdown-reading-landscape")
-            verify(nodes().none { it.isEditable }, "Landscape reading has no editable body")
+            verify(nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } }, "Landscape reading has no editable body")
         } catch (e: Exception) { screenshot("markdown-visual-failure"); throw e } finally {
             shell(if (oldFont == "null") "settings delete system font_scale" else "settings put system font_scale $oldFont")
             shell(if (oldSize == null) "wm size reset" else "wm size $oldSize")
@@ -3981,7 +4110,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             verify(source(id, DocumentKind.Markdown) == sample, "Source input saves exact Unicode Markdown")
             click("排版"); verify(main { model.ui.editorMode == EditorMode.Typeset }, "Typeset is a continuous native editor")
             screenshot("markdown-typeset")
-            click("阅读"); verify(nodes().none { it.isEditable }, "Reading exposes no editable text field")
+            click("阅读"); verify(nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } }, "Reading exposes no editable text field")
             val revision = main { model.save!!.revision }
             verify(main { model.textState!!.text.toString() == sample }, "Reading uses latest memory text without rewriting source")
             screenshot("markdown-reading")
@@ -4054,7 +4183,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             }
             val composingVisible = main { model.textState!!.text.toString() }
             click("阅读"); parsed(); saved()
-            verify(main { model.textState!!.text.toString() == composingVisible } && nodes().none { it.isEditable }, "Switching to reading during composition keeps visible text and removes editing input")
+            verify(main { model.textState!!.text.toString() == composingVisible } && nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } }, "Switching to reading during composition keeps visible text and removes editing input")
 
             click("源码"); setText("编辑正文", sample); saved(); parsed(); click("排版")
             click(main { model.languages.context().getString(R.string.item_actions) }); click("查找与替换")
@@ -4098,7 +4227,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             waitFor("typeset mode after resize") { main { model.ui.editorMode == EditorMode.Typeset } }
             screenshot("markdown-typeset-narrow-200")
             main { model.editorMode(EditorMode.Reading); model.immersive = true }; waitForIdleSync(); screenshot("markdown-immersive")
-            verify(nodes().none { it.isEditable || it.text?.toString() == "格式" }, "Immersive reading remains non-editable")
+            verify(nodes().none { node -> node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } || node.text?.toString() == "格式" }, "Immersive reading remains non-editable")
         } catch (e: Exception) { screenshot("markdown-before-cleanup-failure"); throw e } finally {
             if (oldIme.isNotBlank() && oldIme != "null") shell("ime set $oldIme")
             shell("ime disable $fixtureIme")

@@ -52,8 +52,8 @@ internal fun EditorSelectionMenuHost(menu: EditorSelectionMenu, content: @Compos
         val session = menu.session
         val anchor = coordinates
         if (session != null && anchor?.isAttached == true) {
-            val keys = listOf(TextContextMenuKeys.CutKey, TextContextMenuKeys.CopyKey, TextContextMenuKeys.PasteKey, TextContextMenuKeys.SelectAllKey)
-            val items = session.data.data().components.filterIsInstance<TextContextMenuItem>().filter { it.key in keys }
+            val keys = listOf(TextContextMenuKeys.CutKey, TextContextMenuKeys.CopyKey, ReadingBodyCopyKey, TextContextMenuKeys.PasteKey, TextContextMenuKeys.SelectAllKey)
+            val items = session.data.data().components.filterIsInstance<TextContextMenuItem>().filter { it.key in keys }.sortedBy { keys.indexOf(it.key) }
             if (items.isNotEmpty()) {
                 val bounds = session.data.contentBounds(anchor).translate(anchor.positionInWindow())
                 val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }

@@ -1,10 +1,7 @@
 package io.github.xrisium.makudon.feature.workspace
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -12,10 +9,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
+import io.github.xrisium.makudon.domain.SourceRange
 
-internal data class VisualLineEnd(val sourceOffset: Int, val displayOffset: Int, val line: Int)
+internal data class VisualLineEnd(val sourceOffset: Int)
+
+/** The native caret and handle share the same upstream position before this display-only wedge. */
+internal fun caretProjection(base: MarkdownProjection, source: String, offset: Int): MarkdownProjection {
+    if (offset !in source.indices) return base
+    val end = offset + Character.charCount(source.codePointAt(offset))
+    val existing = base.changes.firstOrNull { it.range.start < end && it.range.end > offset }
+    if (existing != null) {
+        if (existing.range.start != offset || existing.text.isEmpty() || existing.text.contains('\uFFFC')) return base
+        return MarkdownProjection(base.changes.map { if (it === existing) it.copy(text = "\u200B" + it.text) else it })
+    }
+    return MarkdownProjection((base.changes + DisplayChange(SourceRange(offset, end), "\u200B" + source.substring(offset, end))).sortedBy { it.range.start })
+}
 
 /** A soft wrap has two visual caret positions for one editing offset. */
 internal fun visualLineEnd(result: TextLayoutResult, point: Offset, projection: MarkdownProjection): VisualLineEnd? {
@@ -26,7 +34,7 @@ internal fun visualLineEnd(result: TextLayoutResult, point: Offset, projection: 
     if (end <= 0 || result.layoutInput.text[end - 1] == '\n' || result.getLineStart(line + 1) != end) return null
     // Bidirectional paragraphs have more than a single right-edge affinity.
     if (result.getParagraphDirection(end - 1) != androidx.compose.ui.text.style.ResolvedTextDirection.Ltr) return null
-    return VisualLineEnd(projection.sourceCaretOffset(end), end, line)
+    return VisualLineEnd(projection.sourceCaretOffset(end))
 }
 
 internal fun Modifier.observeLineEndTap(
@@ -37,35 +45,28 @@ internal fun Modifier.observeLineEndTap(
     val currentHit by rememberUpdatedState(hit)
     val currentSelect by rememberUpdatedState(select)
     pointerInput(enabled) {
-    if (!enabled) return@pointerInput
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        currentSelect(null)
-        var moved = false
-        var up: Offset? = null
-        var duration = 0L
-        do {
-            val event = awaitPointerEvent(PointerEventPass.Final)
-            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop || event.changes.size > 1) moved = true
-            duration = change.uptimeMillis - down.uptimeMillis
-            if (!change.pressed) up = change.position
-        } while (up == null)
-        if (!moved && duration < viewConfiguration.longPressTimeoutMillis) up?.let { currentSelect(currentHit(it)) }
-    }
-    }
-}
-
-@Composable
-internal fun BoxScope.VisualLineEndCursor(end: VisualLineEnd?, result: TextLayoutResult?, active: Boolean, scroll: () -> Int) {
-    var on by remember(end, active) { mutableStateOf(true) }
-    LaunchedEffect(end, active) { if (end != null && active) while (true) { delay(500); on = !on } }
-    val color = MaterialTheme.colorScheme.primary
-    if (end != null && result != null && active) Canvas(Modifier.matchParentSize().padding(horizontal = 24.dp)) {
-        if (on && end.line < result.lineCount) {
-            val native = result.getCursorRect((end.displayOffset - 1).coerceAtLeast(0))
-            val x = result.getLineRight(end.line).coerceAtMost(size.width - 1.dp.toPx())
-            drawLine(color, Offset(x, native.top - scroll()), Offset(x, native.bottom - scroll()), strokeWidth = 2.dp.toPx())
+        if (!enabled) return@pointerInput
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val target = currentHit(down.position)
+            // Prepare the display before the native tap completes. Changing visual text
+            // after onTap would make Foundation hide its insertion handle as a text edit.
+            currentSelect(target)
+            var moved = false
+            var up: Offset? = null
+            var duration = 0L
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Final)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!moved && ((change.position - down.position).getDistance() > viewConfiguration.touchSlop || event.changes.size > 1)) {
+                    moved = true
+                    currentSelect(null)
+                }
+                duration = change.uptimeMillis - down.uptimeMillis
+                if (!change.pressed) up = change.position
+            } while (up == null)
+            if (!moved && duration < viewConfiguration.longPressTimeoutMillis) currentSelect(target)
+            else currentSelect(null)
         }
     }
 }

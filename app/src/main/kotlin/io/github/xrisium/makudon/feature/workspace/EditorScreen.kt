@@ -74,12 +74,13 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         }
     } }
     val matches = remember(source, query, caseSensitive, reading, document) {
-        if (!reading || !markdown) LiteralSearch.matches(source, query, caseSensitive)
-        else document?.root?.children?.flatMap { LiteralSearch.matches(mdText(it, document, colors.primary).text, query, caseSensitive) }.orEmpty()
+        if (query.isEmpty()) emptyList()
+        else if (reading && markdown && document != null) readingMatches(document, query, caseSensitive)
+        else LiteralSearch.matches(source, query, caseSensitive)
     }
     LaunchedEffect(reading) { if (reading) { focusManager.clearFocus(); keyboard?.hide() } }
     LaunchedEffect(query, caseSensitive, target, reading, findOpen) {
-        if ((!reading || !markdown) && findOpen && matches.isNotEmpty()) {
+        if (findOpen && matches.isNotEmpty()) {
             val match = matches[Math.floorMod(target, matches.size)]
             field.edit { selection = TextRange(match.start, match.end) }
         }
@@ -89,8 +90,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
     }
     fun changeMode(mode: EditorMode) {
         selectionMenu.dismiss()
-        if (markdown && mode == EditorMode.Reading) { model.readingAnchor = model.editorAnchor; model.readingAnchorOffset = model.editorAnchorOffset; focusManager.clearFocus(); keyboard?.hide() }
-        else if (markdown && reading) { model.editorAnchor = model.readingAnchor; model.editorAnchorOffset = model.readingAnchorOffset }
+        if (mode == EditorMode.Reading) { focusManager.clearFocus(); keyboard?.hide() }
         model.editorMode(mode)
     }
     fun dismissOutline(outline: OpenOutline) {
@@ -133,7 +133,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
                     more = false
                     formatMenu = 0
                     openOutline = OpenOutline(
-                        if (reading) model.readingAnchor else model.editorAnchor,
+                        model.editorAnchor,
                         field.text.toString(),
                         field.selection.takeIf { !reading && field.composition == null },
                     )
@@ -147,7 +147,7 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
                     EditorTextSizePicker(textSize, enabled = controlsEnabled) { if (editable) model.preferences(editorTextSize = it) }
                     EditorLineSpacingPicker(spacing, enabled = controlsEnabled) { if (editable) model.preferences(editorLineSpacing = it) }
                     DropdownMenuItem(text = { Text(stringResource(if (reading) R.string.md_find_reading else R.string.md_find)) }, leadingIcon = { Glyph(R.drawable.ic_search) }, onClick = { findOpen = true; more = false })
-                    if (reading) DropdownMenuItem(text = { Text(stringResource(R.string.md_immersive)) }, onClick = { model.immersive = true; more = false })
+                    if (reading) DropdownMenuItem(text = { Text(stringResource(R.string.md_immersive)) }, leadingIcon = { Glyph(R.drawable.ic_book_open) }, onClick = { model.immersive = true; more = false })
                     HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
                     DropdownMenuItem(text = { Text(stringResource(R.string.detailed_info)) }, leadingIcon = { Glyph(R.drawable.ic_info) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("info") } })
                     DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Glyph(R.drawable.ic_pencil_line) }, enabled = controlsEnabled, onClick = { if (editable) { more = false; onAction("rename") } })
@@ -175,10 +175,8 @@ fun EditorScreen(model: WorkspaceViewModel, onExport: () -> Unit, onAction: (Str
         if (findOpen) EditorFindBar(reading, query, replacement, caseSensitive, matches.size, target,
             { query = it; target = 0 }, { replacement = it }, { caseSensitive = it; target = 0 }, { target = it }, ::replace, { findOpen = false })
         val contentModifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = (ui.workspace?.navigationInset ?: NavigationInset.Standard).edgeDp.dp)
-        if (reading && markdown) {
-            if (document != null) MarkdownReader(model, document, bodyStyle, contentModifier.testTag("reading-view"), if (findOpen) query else "", caseSensitive, target, outlineJump) { outlineJump = null }
-            else Box(contentModifier, contentAlignment = Alignment.Center) { Text(stringResource(R.string.md_preparing)) }
-        } else MarkdownEditingField(model, markdown, bodyStyle, editable && !reading, findOpen, contentModifier, outlineJump, { outlineJump = null })
+        MarkdownEditingField(model, markdown, bodyStyle, editable && !reading, findOpen, contentModifier, outlineJump, { outlineJump = null },
+            if (findOpen && matches.isNotEmpty()) matches[Math.floorMod(target, matches.size)] else null, query, caseSensitive)
         if (!model.immersive) {
             if (markdown && !reading && !findOpen && tools) MarkdownTools(model, controlsEnabled, toolGroup,
                 formatMenu, { formatMenu = it }, { formatAnchor = it },

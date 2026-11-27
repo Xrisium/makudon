@@ -417,8 +417,6 @@
     <string name="navigation_side">导航控件位置</string>
     <string name="navigation_left">左侧</string>
     <string name="navigation_right">右侧</string>
-    <string name="scroll_top">回到顶部</string>
-    <string name="scroll_bottom">回到底部</string>
     <string name="fast_scroll">快速滚动</string>
     <string name="spacing_wide_short">宽</string>
     <string name="spacing_medium_short">中</string>
